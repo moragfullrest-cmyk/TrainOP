@@ -1,0 +1,153 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using TrainOP.Generators;
+using Xunit;
+
+namespace TrainOP.Generators.Tests
+{
+    public sealed class TrainRouteTravelGeneratorTests
+    {
+        [Fact]
+        public void Generator_Emits_ForSampleStyleRouteWithDataFail()
+        {
+            const string source = @"
+using TrainOP;
+
+namespace TrainOP.Samples;
+
+internal sealed class DataOrientedStationExample
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""data-route"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m })
+        .Station(""Validate"", (string paymentId, decimal amount) =>
+            amount > 0
+                ? Data.Ok(new { paymentId, amount })
+                : Data.Fail(""INVALID_TOTAL"", ""amount must be positive""));
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("public static class TrainRouteTravelExtensions", generated);
+            Assert.Contains("out global::System.String paymentId", generated);
+            Assert.Contains("out global::System.Decimal amount", generated);
+        }
+
+        [Fact]
+        public void Generator_EmitsRouteReportDeconstruct_ForDataOrientedChain()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class PaymentRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("public static class TrainRouteTravelExtensions", generated);
+            Assert.Contains("public static void Deconstruct(", generated);
+            Assert.Contains("this RouteReport report,", generated);
+            Assert.Contains("out global::System.String paymentId", generated);
+            Assert.Contains("out global::System.Decimal amount", generated);
+            Assert.Contains("manifest.PullCar<global::System.String>(\"paymentId\")", generated);
+        }
+
+        [Fact]
+        public void Generator_SkipsVarAmbiguousDeconstruct_WhenSchemasShareArity()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class PaymentRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m });
+}
+
+public static class OtherRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""other"", traceId = ""t"" });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("out global::System.String paymentId", generated);
+            Assert.Contains("out global::System.Decimal amount", generated);
+            Assert.DoesNotContain("out global::System.String traceId", generated);
+        }
+
+        [Fact]
+        public void Generator_EmitsTerminalWagons_AfterPartialReturn()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class PartialRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-partial"", amount = 3m, traceId = ""keep"" })
+        .Station(""Partial"", (string paymentId, decimal amount) =>
+            new { paymentId = paymentId + ""-merged"" });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("out global::System.String paymentId", generated);
+            Assert.Contains("out global::System.String traceId", generated);
+            Assert.DoesNotContain("out global::System.Decimal amount", generated);
+        }
+
+        private static string RunGenerators(string source)
+        {
+            var syntaxTree = CSharpSyntaxTree.ParseText(source);
+            var compilation = CSharpCompilation.Create(
+                "TravelGeneratorTests",
+                new[] { syntaxTree },
+                GetMetadataReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            var generators = new ISourceGenerator[]
+            {
+                new TrainRouteStationGenerator().AsSourceGenerator(),
+                new TrainRouteTravelGenerator().AsSourceGenerator(),
+            };
+
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(generators);
+            driver = driver.RunGenerators(compilation);
+
+            return string.Join(
+                Environment.NewLine + "-----" + Environment.NewLine,
+                driver.GetRunResult().Results
+                    .SelectMany(x => x.GeneratedSources)
+                    .Select(x => x.SourceText.ToString()));
+        }
+
+        private static MetadataReference[] GetMetadataReferences()
+        {
+            var coreDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
+            return new[]
+            {
+                MetadataReference.CreateFromFile(Path.Combine(coreDir, "System.Private.CoreLib.dll")),
+                MetadataReference.CreateFromFile(Path.Combine(coreDir, "System.Runtime.dll")),
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Attribute).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(TrainOP.CargoManifest).Assembly.Location),
+                MetadataReference.CreateFromFile(Assembly.Load("netstandard").Location)
+            };
+        }
+    }
+}
