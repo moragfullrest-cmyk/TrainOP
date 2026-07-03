@@ -1,7 +1,7 @@
 # План: data-oriented handlers (только данные на вход и выход)
 
-> **Статус:** фаза 4 завершена — следующий шаг фаза 5 (ref-вагоны)  
-> **Цель:** handler станции = чистая функция над данными; `CargoManifest`, `LoadCar`, `PullCar`, `RailwaySignals` скрыты в сгенерированном адаптере.  
+> **Статус:** фазы 0–6 завершены — data-oriented API является единственным целевым путём  
+> **Цель:** handler станции = чистая функция над данными; `CargoManifest`, `LoadWagon`, `PullWagon`, `RailwaySignals` скрыты в сгенерированном адаптере.  
 > **Аудитория:** разработчики и AI-агенты, продолжающие работу над TrainOP.
 
 ---
@@ -19,8 +19,8 @@ public static class PaymentRoute
           new { paymentId, amount = amount * 0.9m })
       .Station("Validate", (string paymentId, decimal amount) =>
           amount > 0
-              ? Data.Ok(new { paymentId, amount })
-              : Data.Fail("INVALID_TOTAL", "amount must be positive"));
+              ? RailwaySignals.Green(new { paymentId, amount })
+              : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"));
 }
 
 var report = PaymentRoute.Build().DispatchTrain().Travel();
@@ -29,17 +29,17 @@ var report = PaymentRoute.Build().DispatchTrain().Travel();
 **Без атрибутов.** Analyzer находит цепочку по `new TrainRoute()`…`.Station(…)`; `chainId` = FQN метода/типа-контейнера (например `PaymentRoute.Build`).
 
 **В теле handler'а нет:**
-- `CargoManifest`, `LoadCar`, `PullCar`, `UnloadCar`
+- `CargoManifest`, `LoadWagon`, `PullWagon`, `UnloadWagon`
 - `RailwaySignals.Red` / `Green`
 - `new CargoManifest()`
-- `[TrainTuple]` / `[Wagon]` (опционально остаются для legacy; **не** использовать в новом коде)
+- `[TrainTuple]` / `[Wagon]` — **удалены** (фаза 6)
 
 ### 1.2. Принципы
 
 | Принцип | Описание |
 |---------|----------|
 | **Data in** | Параметры handler'а = вагоны; имя параметра = ключ манифеста |
-| **Data out** | Анонимный тип / record / tuple / `Data.Ok` / `Data.Fail` |
+| **Data out** | Анонимный тип / record / tuple / `RailwaySignals.Green` / `RailwaySignals.Red` / `RailwaySignals.Pass` |
 | **Adapter generated** | Маппинг manifest ↔ handler — только в `*.g.cs` |
 | **Chain validated** | Компилятор проверяет поток вагонов по цепочке станций |
 | **Library at boundary** | TrainOP API только в точке сборки маршрута и в runtime-движке |
@@ -50,13 +50,13 @@ var report = PaymentRoute.Build().DispatchTrain().Travel();
 
 Пользователь пишет **только**:
 
-1. `new TrainRoute()` + `.Station(...)` — data-oriented цепочка; `.AttachStation(...)` — legacy manifest API.
+1. `new TrainRoute()` + `.Station(...)` — data-oriented цепочка; `.AttachStation(...)` — низкоуровневый manifest API.
 2. `.Station(name, (params…) => data)` — handler; **первая станция без входных параметров = seed**.
 3. `DispatchTrain().Travel(manifest?)` — запуск; внешний seed через `Travel(manifest)`.
 
-Всё остальное (адаптеры, `PullCar`/`LoadCar`, id цепочки, валидация, typed `Travel`) — **генератор и analyzer**, не ручные атрибуты.
+Всё остальное (адаптеры, `PullWagon`/`LoadWagon`, id цепочки, валидация, typed `Travel`) — **генератор и analyzer**, не ручные атрибуты.
 
-`[TrainTuple]` / `[Wagon]` — **legacy**, не целевой путь.
+`[TrainTuple]` / `[Wagon]` — **удалены** (см. §3.5).
 
 ### 1.3. Не-цели (v1)
 
@@ -70,16 +70,16 @@ var report = PaymentRoute.Build().DispatchTrain().Travel();
 
 ### 2.1. Уже есть
 
-- `CargoManifest`, `TrainRoute`, `Train`, сигналы, async, `AttachRedSignalStation`
+- `CargoManifest`, `TrainRoute`, `Train`, сигналы, async, `ServiceStation`
 - `[TrainTuple]` + `[Wagon]` → `ToTuple`, `ApplyStationReturn`, `AttachStation<TResult>`, `Deconstruct`
 - `WagonStationReturn` — чтение анонимных типов и кортежей (по позиции)
-- Сканирование `LoadCar`/`PullCar` → internal `TrainWagonCatalog`
+- Сканирование `LoadWagon`/`PullWagon` → internal `TrainWagonCatalog`
 - Перегрузки `(CargoManifest, wagons...)` для доступа к «чужим» вагонам
 
 ### 2.2. Боли текущего `[TrainTuple]`
 
 См. обсуждение в чате; кратко:
-- дублирование схемы (атрибуты vs `LoadCar`)
+- дублирование схемы (атрибуты vs `LoadWagon`)
 - жёсткий набор вагонов на класс
 - кортежи в возврате — порядок = порядок `[Wagon]`, не имена
 - нет compile-time проверки «вагон есть до станции»
@@ -96,7 +96,7 @@ var report = PaymentRoute.Build().DispatchTrain().Travel();
 └────────────────────────────┬─────────────────────────────┘
                              │ per-station adapter (*.g.cs)
 ┌────────────────────────────▼─────────────────────────────┐
-│ StationAdapter: PullCar → invoke → MergeReturn / Fail    │
+│ StationAdapter: PullWagon → invoke → MergeReturn / Fail    │
 │ Uses: WagonStationReturn, ApplyStationReturn (refactored)│
 └────────────────────────────┬─────────────────────────────┘
                              │
@@ -110,35 +110,22 @@ Parallel compile-time:
 
 ### 3.1. API ошибок — **РЕШЕНИЕ (фаза 0, п.2)**
 
-**Выбор: `Data.Ok` / `Data.Fail`**, не `Result<T>`, не исключения для бизнес-ошибок.
+**Выбор: `RailwaySignals.Green` / `RailwaySignals.Red`**, не `Result<T>`, не исключения для бизнес-ошибок.
 
 | Вариант | Решение |
 |---------|---------|
-| `Data.Ok` / `Data.Fail` | ✅ целевой API |
+| `RailwaySignals.Green(payload)` / `RailwaySignals.Red(code, msg)` | ✅ целевой API data-handler'ов |
 | `Result<T>` (внешняя библиотека) | ❌ лишняя зависимость |
 | `throw` в handler'е | ❌ для бизнес-валидации; исключения по-прежнему ловятся движком как `STATION_EXCEPTION` (manifest API) |
 
-**Runtime-типы** (`src/TrainOP/StationDataResult.cs`, фаза 4 — реализация; фаза 1 — адаптер должен знать контракт):
+**Runtime-типы** (`src/TrainOP/StationDataResult.cs`):
 
 ```csharp
-public abstract class StationDataResult { }
+public sealed class GreenPayload<T> { public T Value { get; } }
+public sealed class RedFailure { public string Code { get; } public string Message { get; } }
+public sealed class GreenPass { /* RailwaySignals.Pass */ }
 
-public sealed class StationDataOk<T> : StationDataResult
-{
-    public T Value { get; }
-}
-
-public sealed class StationDataFail : StationDataResult
-{
-    public string Code { get; }
-    public string Message { get; }
-}
-
-public static class Data
-{
-    public static StationDataOk<T> Ok<T>(T value) => ...;
-    public static StationDataFail Fail(string code, string message) => ...;
-}
+// RailwaySignals.Green<T>(payload), RailwaySignals.Red(code, msg), RailwaySignals.Pass
 ```
 
 **Допустимые возвраты handler'а (data-oriented):**
@@ -147,13 +134,13 @@ public static class Data
 |---------|-------------------|
 | Анонимный тип / record / struct | merge по именам полей в манифест → `Green` |
 | `(T1, T2, …)` ValueTuple | merge по ordinal (см. §3.4) → `Green` |
-| `Data.Ok(payload)` | merge `payload` как строка выше → `Green` |
-| `Data.Fail(code, msg)` | `RailwaySignals.Red` с `SignalIssue(code, msg, stationName)` |
+| `RailwaySignals.Green(payload)` | merge `payload` → `Green` |
+| `RailwaySignals.Red(code, msg)` | `RedSignal` с `SignalIssue(code, msg, stationName)` |
+| `RailwaySignals.Pass` | манифест без изменений → `Green` |
 | `CargoManifest` | escape hatch (фаза 5): заменяет манифест целиком → `Green`; analyzer `TOP005` |
 
-**Не в v1:** `Data.Skip()` / pass-through без изменений — отложено (можно добавить в фазе 4+).
 
-**Связь с `AttachRedSignalStation`:** остаётся manifest-level API; data-handler'ы используют `Data.Fail`, не `RailwaySignals`.
+**Связь с `ServiceStation`:** тот же контракт `Green` / `Red` / `Pass`; codegen читает вагоны из `red.Manifest`, опционально `SignalIssue` / `RedSignal`. Escape hatch `Func<RedSignal, Signal>` сохранён.
 ### 3.2. Точка сборки маршрута (fluent, v2 API)
 
 Новый builder **рядом** с `TrainRoute` (не ломать существующий API):
@@ -162,7 +149,7 @@ public static class Data
 public sealed class TrainRoute
 {
     public TrainRoute Station<THandler>(string name, THandler handler);  // data-oriented (codegen)
-    public TrainRoute AttachStation(...);  // legacy manifest
+    public TrainRoute AttachStation(...);  // низкоуровневый manifest API
     public Train DispatchTrain();
 }
 ```
@@ -260,9 +247,9 @@ public static class PaymentRoute
 
 ### 3.7. `StationMerge` — **РЕШЕНИЕ (фаза 0)**
 
-Утверждён shared helper §6.1: один `StationMerge.Apply` для legacy-генератора и `TrainRouteStationGenerator`. Семантика merge **не меняется** относительно текущего `ApplyStationReturn`.
+Утверждён shared helper §6.1: `StationMerge.Apply` / `StationMerge.ToSignal` для `TrainRouteStationGenerator`.
 
-**Опциональные вагоны (фаза 5):** `T?` / `Nullable<T>` → `HasCar` + `default` без throw; не часть фазы 1.
+**Опциональные вагоны (фаза 5):** `T?` / `Nullable<T>` → `HasWagon` + `default` без throw; не часть фазы 1.
 
 ## 4. Фазы реализации
 
@@ -270,7 +257,7 @@ public static class PaymentRoute
 
 **Задачи:**
 - [x] Утвердить якорь цепочки — **`new TrainRoute()` + `.Station` + analyzer, без атрибутов** (см. §3.3)
-- [x] Утвердить API ошибок — **`Data.Ok` / `Data.Fail`** (см. §3.1)
+- [x] Утвердить API ошибок — **`RailwaySignals.Green` / `Red` / `Pass`** (см. §3.1)
 - [x] Утвердить правила маппинга кортежей — **ordinal = порядок wagon-параметров handler'а** (см. §3.4)
 - [x] Утвердить список диагностик — **`TOP001`–`TOP008`** (см. §5)
 - [x] Судьба `[TrainTuple]` — **удалён** (см. §3.5)
@@ -289,8 +276,8 @@ public static class PaymentRoute
 - [x] Новый generator: `TrainRouteStationGenerator` (**отдельно** от `WagonTupleGenerator`, см. §3.5)
 - [x] Сканировать `.Station(...)` на `TrainRoute` (не путать с `.AttachStation` для data-graph)
 - [x] Из SemanticModel извлечь: имена и типы параметров, тип возврата, `CancellationToken`, `CargoManifest` escape
-- [x] Emit адаптер: `PullCar` → handler → `StationMerge.ToSignal`
-- [x] `StationMerge.Apply` + `Data.Ok` / `Data.Fail` runtime (`StationDataResult.cs`, `StationMerge.cs`)
+- [x] Emit адаптер: `PullWagon` → handler → `StationMerge.ToSignal`
+- [x] `StationMerge.Apply` + `RailwaySignals` runtime (`StationDataResult.cs`, `StationMerge.cs`)
 - [x] Поддержать возврат: анонимный тип, tuple, `StationDataOk<>`, `StationDataFail`, `CargoManifest`
 - [x] Тесты: `DataOrientedStationTests` без `[TrainTuple]`
 
@@ -334,9 +321,9 @@ public static class PaymentRoute
 ### Фаза 4 — Ошибки и красные сигналы без `RailwaySignals` в handler ✅
 
 **Задачи:**
-- [x] `Data.Fail(code, message)` в возврате → adapter → `RailwaySignals.Red`
-- [x] Опционально: `Data.Skip()` / pass-through (без изменений)
-- [x] Документировать взаимодействие с `AttachRedSignalStation` (остаётся manifest-level)
+- [x] `RailwaySignals.Red(code, message)` в возврате → adapter → `RedSignal`
+- [x] `RailwaySignals.Pass` / pass-through (без изменений)
+- [x] Документировать взаимодействие с `ServiceStation` (остаётся manifest-level)
 
 **Критерий:** станция валидации без импорта `RailwaySignals` в файле handler'а. **Выполнено.**
 
@@ -347,7 +334,7 @@ public static class PaymentRoute
 **Задачи:**
 - [x] `ref` параметры: те же правила, что сейчас (`StationLocals`, omit → write ref value)
 - [x] Опциональный `CargoManifest manifest` первым параметром — без отдельного `[TrainTuple]`
-- [x] Опциональные вагоны: `decimal? amount` → `HasCar` + default (см. §3.7; реализация фаза 5)
+- [x] Опциональные вагоны: `decimal? amount` → `HasWagon` + default (см. §3.7; реализация фаза 5)
 
 **Критерий:** портировать `RefAmountWagonTupleTests` на новый API. **Выполнено** (`DataOrientedRefAmountTests`).
 
@@ -402,9 +389,9 @@ internal static class StationMerge
 ```
 
 Правила merge (сохранить текущее поведение):
-- returned → `LoadCar`
-- regular input not returned → `UnloadCar` (если `removeOmittedRegularInputs`)
-- ref input not returned → `LoadCar` from locals
+- returned → `LoadWagon`
+- regular input not returned → `UnloadWagon` (если `removeOmittedRegularInputs`)
+- ref input not returned → `LoadWagon` from locals
 
 ### 6.2. `WagonStationReturn`
 
@@ -422,7 +409,7 @@ internal static class StationMerge
 ```
 src/TrainOP/
   Railway.cs              # без изменений ядра
-  StationDataResult.cs    # NEW: Data.Ok / Data.Fail
+  StationDataResult.cs    # GreenPayload / RedFailure / GreenPass
   StationMerge.cs         # NEW: shared merge logic
   WagonStationReturn.cs   # existing
 
@@ -461,13 +448,13 @@ tests/
 
 // ✅ Хорошо — ошибка как данные
 .Station("X", (string id, decimal amount) =>
-    amount > 0 ? Data.Ok(new { id, amount }) : Data.Fail("ERR", "..."))
+    amount > 0 ? RailwaySignals.Green(new { id, amount }) : RailwaySignals.Red("ERR", "..."))
 
 // ⚠️ Допустимо — доступ к полному манифесту
-.Station("X", (CargoManifest m, string id) => new { id = id + m.PullCar<string>("traceId") })
+.Station("X", (CargoManifest m, string id) => new { id = id + m.PullWagon<string>("traceId") })
 
 // ❌ Избегать в бизнес-handler'ах
-.Station("X", (string id) => new CargoManifest().LoadCar("id", id))
+.Station("X", (string id) => new CargoManifest().LoadWagon("id", id))
 
 // ❌ Избегать в бизнес-handler'ах
 .Station("X", manifest => RailwaySignals.Red(manifest, ...))
@@ -492,16 +479,16 @@ tests/
 | Взрыв комбинаторики overload'ов | Один generic `Station` + source-generated wrapper per call site, не per signature union |
 | Кортежи в возврате | Предпочитать анонимные типы; analyzer TOP006 |
 | Два генератора конфликтуют | Разные extension-классы; data-route не генерит `Deconstruct` для legacy |
-| Производительность рефлексии | Merge только на возврате; PullCar типизирован в compile-time |
+| Производительность рефлексии | Merge только на возврате; PullWagon типизирован в compile-time |
 
 ---
 
 ## 10. Критерии завершения проекта
 
-- [x] Пример payment flow без `LoadCar`/`PullCar` в handler'ах (кроме manifest escape / recovery)
+- [x] Пример payment flow без `LoadWagon`/`PullWagon` в handler'ах (кроме manifest escape / recovery)
 - [x] Analyzer ловит missing wagon в цепочке (TOP002)
 - [x] `Travel()` с typed deconstruct по цепочке
-- [x] `Data.Fail` без `RailwaySignals` в handler
+- [x] `RailwaySignals.Red` в handler без ручного `SignalIssue`
 - [x] Документация обновлена (`getting-started`, README)
 - [x] Legacy API удалён
 - [x] Этот план: все фазы §4 отмечены выполненными
@@ -517,6 +504,7 @@ tests/
 | `src/TrainOP.Generators/TrainRouteStationGenerator.cs` | Data-oriented адаптеры `.Station` |
 | `src/TrainOP.Generators/TrainRouteTravelGenerator.cs` | Typed `Travel()` deconstruct |
 | `tests/TrainOP.Tests/DataOrientedPaymentRouteEndToEndTests.cs` | Сквозной data-oriented payment flow |
+| `tests/TrainOP.Tests/TrainRuntimeTests.cs` | Runtime: async, cancellation, exceptions, AttachStation smoke |
 | `docs/core-api.md` | Базовый API |
 
 ---
@@ -530,3 +518,4 @@ tests/
 | 2026-07-02 | Пересмотр п.1: без `[TrainRouteChain]`; chainId и схема только из analyzer |
 | 2026-07-02 | Отказ от `WithSeed`: seed = первая `Station` без входных вагонов; внешний seed = `Travel(manifest)` |
 | 2026-07-02 | **Фаза 6:** удаление legacy `[TrainTuple]` API, README/docs, `DataOrientedPaymentRouteEndToEndTests` |
+| 2026-07-03 | Очистка manifest-примеров и тестов; `DepotRouteTests` → `TrainRuntimeTests`; docs на `RailwaySignals` |

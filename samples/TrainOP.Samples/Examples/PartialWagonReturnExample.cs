@@ -16,7 +16,7 @@ internal sealed class PartialWagonReturnExample : IExample
         var route = new TrainRoute()
             .Station("Seed", () => new { paymentId = "pay-partial", amount = 3m, traceId = "keep" })
             .Station("PartialUpdate", (CargoManifest manifest, string paymentId, decimal amount) =>
-                new { paymentId = paymentId + "-" + manifest.PullCar<string>("traceId") });
+                new { paymentId = paymentId + "-" + manifest.PullWagon<string>("traceId") });
 
         var report = route.DispatchTrain().Travel();
 

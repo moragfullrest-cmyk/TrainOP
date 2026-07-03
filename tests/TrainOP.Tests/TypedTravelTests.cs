@@ -11,7 +11,7 @@ namespace TrainOP.Tests.DataOriented
         {
             var route = PaymentRoute.Build();
 
-            var (paymentId, amount) = route.DispatchTrain().Travel();
+            (string paymentId, decimal amount) = route.DispatchTrain().Travel();
 
             Assert.Equal("pay-1", paymentId);
             Assert.Equal(90m, amount);
@@ -23,7 +23,7 @@ namespace TrainOP.Tests.DataOriented
             var route = PaymentRoute.Build();
 
             var report = route.DispatchTrain().Travel();
-            var (paymentId, amount) = report;
+            (string paymentId, decimal amount) = report;
 
             Assert.Equal("pay-1", paymentId);
             Assert.Equal(90m, amount);
@@ -42,7 +42,7 @@ namespace TrainOP.Tests.DataOriented
                     return new { paymentId = paymentId + "-async", amount = amount * 2m };
                 });
 
-            var (paymentId, amount) = await route.DispatchTrain().TravelAsync();
+            (string paymentId, decimal amount) = await route.DispatchTrain().TravelAsync();
 
             Assert.Equal("pay-async-async", paymentId);
             Assert.Equal(10m, amount);
@@ -58,9 +58,9 @@ namespace TrainOP.Tests.DataOriented
 
             var report = route.DispatchTrain().Travel();
 
-            Assert.Equal("pay-partial-merged", report.TerminalSignal.Manifest.PullCar<string>("paymentId"));
-            Assert.Equal("keep", report.TerminalSignal.Manifest.PullCar<string>("traceId"));
-            Assert.False(report.TerminalSignal.Manifest.HasCar("amount"));
+            Assert.Equal("pay-partial-merged", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal("keep", report.TerminalSignal.Manifest.PullWagon<string>("traceId"));
+            Assert.False(report.TerminalSignal.Manifest.HasWagon("amount"));
         }
 
         private static class PaymentRoute
@@ -71,8 +71,8 @@ namespace TrainOP.Tests.DataOriented
                     new { paymentId, amount = amount * 0.9m })
                 .Station("Validate", (string paymentId, decimal amount) =>
                     amount > 0
-                        ? Data.Ok(new { paymentId, amount })
-                        : Data.Fail("INVALID_TOTAL", "amount must be positive"));
+                        ? RailwaySignals.Green(new { paymentId, amount })
+                        : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"));
         }
     }
 }

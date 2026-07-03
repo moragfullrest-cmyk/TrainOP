@@ -38,8 +38,8 @@ namespace TrainOP.Generators
 
         public static readonly DiagnosticDescriptor TupleReturnOrder = new DiagnosticDescriptor(
             id: "TOP006",
-            title: "Tuple return order must match handler parameters",
-            messageFormat: "Station '{0}' returns a tuple; element order must match handler parameter order ({1}). Prefer anonymous types or records.",
+            title: "Station returns an unnamed tuple",
+            messageFormat: "Station '{0}' returns an unnamed tuple; element order must match handler parameter order ({1}). Prefer anonymous types, records, or named tuples.",
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
@@ -58,6 +58,14 @@ namespace TrainOP.Generators
             messageFormat: "Wagon '{0}' produced at seed station '{1}' is never consumed by later stations.",
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Info,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor ConflictingWagonNames = new DiagnosticDescriptor(
+            id: "TOP009",
+            title: "Conflicting wagon names for the same handler type signature",
+            messageFormat: "Handler wagon names ({0}) do not match the canonical names ({1}) for this parameter type sequence. Use the same manifest keys everywhere handlers share the same parameter types.",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
     }
 }

@@ -14,13 +14,11 @@ internal sealed class AsyncRouteExample : IExample
         ExampleOutput.WriteHeader(Title);
 
         var route = new TrainRoute()
-            .AttachStation("Seed", manifest =>
-                manifest.LoadCar("counter", 10))
-            .AttachStation("Multiply", async (manifest, token) =>
+            .Station("Seed", () => new { counter = 10 })
+            .Station("Multiply", async (int counter, CancellationToken token) =>
             {
                 await Task.Delay(50, token);
-                var counter = manifest.PullCar<int>("counter");
-                return manifest.LoadCar("counter", counter * 2);
+                return new { counter = counter * 2 };
             });
 
         var report = route.DispatchTrain().TravelAsync().GetAwaiter().GetResult();

@@ -2,8 +2,26 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <Nullable>disable</Nullable>
     <RootNamespace>TrainOP</RootNamespace>
+
+    <PackageId>TrainOP</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Criperum</Authors>
+    <Description>Railway Oriented Programming для .NET</Description>
+    <PackageTags>railway;rop;functional;source-generator</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/moragfullrest-cmyk/TrainOP.git</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/moragfullrest-cmyk/TrainOP</PackageProjectUrl>
+    <RepositoryType>git</RepositoryType>
+
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <GeneratePackageOnBuild Condition="'$(Configuration)' == 'Release'">true</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild Condition="'$(Configuration)' != 'Release'">false</GeneratePackageOnBuild>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 </Project>

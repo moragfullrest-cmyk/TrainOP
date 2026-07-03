@@ -7,7 +7,7 @@ namespace TrainOP.Samples;
 /// </summary>
 internal sealed class DataOrientedStationExample : IExample
 {
-    public string Title => "8. Data-oriented Station";
+    public string Title => "1. Data-oriented маршрут";
 
     public void Run()
     {
@@ -19,8 +19,8 @@ internal sealed class DataOrientedStationExample : IExample
                 new { paymentId, amount = amount * 0.9m })
             .Station("Validate", (string paymentId, decimal amount) =>
                 amount > 0
-                    ? Data.Ok(new { paymentId, amount })
-                    : Data.Fail("INVALID_TOTAL", "amount must be positive"));
+                    ? RailwaySignals.Green(new { paymentId, amount })
+                    : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"));
 
         var report = route.DispatchTrain().Travel();
         var (paymentId, amount) = report;

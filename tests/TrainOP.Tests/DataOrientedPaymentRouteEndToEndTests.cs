@@ -14,13 +14,13 @@ namespace TrainOP.Tests.DataOriented
         public void PaymentRoute_HappyPath_DeconstructsTerminalWagons()
         {
             var report = PaymentRoute.BuildHappyPath().DispatchTrain().Travel();
-            var (paymentId, amount) = report;
+            (string paymentId, decimal amount) = report;
 
             Assert.True(report.ReachedDestination);
             Assert.Equal(4, report.Visits.Count);
             Assert.Equal("pay-e2e-trace-e2e", paymentId);
             Assert.Equal(89m, amount);
-            Assert.Equal("USD", report.TerminalSignal.Manifest.PullCar<string>("currency"));
+            Assert.Equal("USD", report.TerminalSignal.Manifest.PullWagon<string>("currency"));
         }
 
         [Fact]
@@ -42,13 +42,13 @@ namespace TrainOP.Tests.DataOriented
 
             Assert.True(report.ReachedDestination);
             Assert.Equal(4, report.Visits.Count);
-            Assert.Equal(2m, report.TerminalSignal.Manifest.PullCar<decimal>("amount"));
+            Assert.Equal(2m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
         }
 
         [Fact]
         public async Task PaymentRoute_AsyncHandler_CompletesWithTravelAsync()
         {
-            var (paymentId, amount) = await PaymentRoute.BuildAsync().DispatchTrain().TravelAsync();
+            (string paymentId, decimal amount) = await PaymentRoute.BuildAsync().DispatchTrain().TravelAsync();
 
             Assert.Equal("pay-async-e2e", paymentId);
             Assert.Equal(200m, amount);
@@ -71,13 +71,13 @@ namespace TrainOP.Tests.DataOriented
                     .Station("Enrich", (CargoManifest manifest, string paymentId, decimal amount) =>
                         new
                         {
-                            paymentId = paymentId + "-" + manifest.PullCar<string>("traceId"),
+                            paymentId = paymentId + "-" + manifest.PullWagon<string>("traceId"),
                             amount = amount - 1m,
                         })
                     .Station("Validate", (string paymentId, decimal amount) =>
                         amount > 0
-                            ? Data.Ok(new { paymentId, amount })
-                            : Data.Fail("INVALID_TOTAL", "amount must be positive"));
+                            ? RailwaySignals.Green(new { paymentId, amount })
+                            : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"));
             }
 
             public static TrainRoute BuildInvalidAmount()
@@ -86,8 +86,8 @@ namespace TrainOP.Tests.DataOriented
                     .Station("Seed", () => new { paymentId = "pay-fail", amount = -5m })
                     .Station("Validate", (string paymentId, decimal amount) =>
                         amount > 0
-                            ? Data.Ok(new { paymentId, amount })
-                            : Data.Fail("INVALID_TOTAL", "amount must be positive"))
+                            ? RailwaySignals.Green(new { paymentId, amount })
+                            : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"))
                     .Station("MustNotRun", (string paymentId, decimal amount) =>
                         new { paymentId = "nope", amount });
             }
@@ -98,10 +98,10 @@ namespace TrainOP.Tests.DataOriented
                     .Station("Seed", () => new { paymentId = "pay-recover", amount = 0m })
                     .Station("Validate", (string paymentId, decimal amount) =>
                         amount > 0
-                            ? Data.Ok(new { paymentId, amount })
-                            : Data.Fail("INVALID_TOTAL", "amount must be positive"))
-                    .AttachRedSignalStation("Recovery", red =>
-                        RailwaySignals.Green(red.Manifest.LoadCar("amount", 1m)))
+                            ? RailwaySignals.Green(new { paymentId, amount })
+                            : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"))
+                    .ServiceStation("Recovery", (decimal amount) =>
+                        RailwaySignals.Green(new { paymentId = "pay-recover", amount = 1m }))
                     .Station("Double", (string paymentId, decimal amount) =>
                         new { paymentId, amount = amount * 2m });
             }

@@ -28,7 +28,7 @@ internal static class ExampleOutput
     public static void WriteManifest(string label, CargoManifest manifest)
     {
         Console.WriteLine($"{label}:");
-        foreach (var pair in manifest.InspectCars().OrderBy(p => p.Key, StringComparer.Ordinal))
+        foreach (var pair in manifest.InspectWagons().OrderBy(p => p.Key, StringComparer.Ordinal))
         {
             Console.WriteLine($"  {pair.Key} = {pair.Value}");
         }

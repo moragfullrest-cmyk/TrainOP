@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using TrainOP;
 using Xunit;
 
@@ -6,24 +5,6 @@ namespace TrainOP.Tests
 {
     public sealed class WagonStationReturnTests
     {
-        [Fact]
-        public void TryGetTupleElementMatchingManifestWagon_FindsReorderedNamedTupleElements()
-        {
-            var manifest = new CargoManifest()
-                .LoadCar("paymentId", "pay-1")
-                .LoadCar("amount", 2m);
-            var tuple = (amount: 45m, paymentId: "pay-1");
-            var used = new HashSet<int>();
-
-            Assert.True(WagonStationReturn.TryGetTupleElementMatchingManifestWagon(
-                tuple, manifest, "paymentId", used, out var paymentId));
-            Assert.True(WagonStationReturn.TryGetTupleElementMatchingManifestWagon(
-                tuple, manifest, "amount", used, out var amount));
-
-            Assert.Equal("pay-1", paymentId);
-            Assert.Equal(45m, amount);
-        }
-
         [Fact]
         public void TryGetTupleElement_ReadsByOrdinal()
         {

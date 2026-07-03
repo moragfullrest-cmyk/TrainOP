@@ -34,6 +34,24 @@ public static class PaymentRoute
         }
 
         [Fact]
+        public async Task Analyzer_AllowsFirstStation_WhenWagonsComeFromExternalTravelManifest()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class ExternalSeedRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Double"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 2m });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP002");
+        }
+
+        [Fact]
         public async Task Analyzer_ReportsTop002_WhenWagonMissing()
         {
             const string source = @"
@@ -110,7 +128,7 @@ public static class BrokenRoute
         }
 
         [Fact]
-        public async Task Analyzer_AllowsStation_AfterAttachRedSignalStation()
+        public async Task Analyzer_AllowsStation_AfterServiceStation()
         {
             const string source = @"
 using TrainOP;
@@ -120,14 +138,91 @@ public static class RecoveryRoute
     public static TrainRoute Build() => new TrainRoute()
         .Station(""Seed"", () => new { value = 0 })
         .Station(""Validate"", (int value) =>
-            value > 0 ? Data.Ok(new { value }) : Data.Fail(""ERR"", ""bad""))
-        .AttachRedSignalStation(""Recovery"", red => RailwaySignals.Green(red.Manifest))
+            value > 0 ? RailwaySignals.Green(new { value }) : RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", (int value) => RailwaySignals.Green(new { value }))
         .Station(""After"", (int value) => new { value = value + 1 });
 }";
 
             var diagnostics = await RunAnalyzerAsync(source);
 
             Assert.DoesNotContain(diagnostics, d => d.Id == "TOP007");
+        }
+
+        [Fact]
+        public async Task Analyzer_RedReturn_DoesNotRemoveWagonsForUnreachableStation()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class FailRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { value = 0 })
+        .Station(""Validate"", (int value) =>
+            RailwaySignals.Red(""ERR"", ""bad""))
+        .Station(""MustNotRun"", (int value) => new { value });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        [Fact]
+        public async Task Analyzer_ReportsTop006_WhenHandlerReturnsUnnamedTuple()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class TupleRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""ByTuple"", (string paymentId, decimal amount) =>
+            (paymentId + ""-tuple"", amount + 1m));
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP006");
+        }
+
+        [Fact]
+        public async Task Analyzer_DoesNotReportTop006_WhenHandlerReturnsNamedTuple()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class TupleRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""ByTuple"", (string paymentId, decimal amount) =>
+            (paymentId: paymentId + ""-tuple"", amount: amount + 1m));
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+        }
+
+        [Fact]
+        public async Task Analyzer_DoesNotReportTop006_WhenTupleElementNamesAreInferredFromIdentifiers()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class TupleRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""ByTuple"", (string paymentId, decimal amount) =>
+            (paymentId, amount));
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
         }
 
         private static async Task<ImmutableArray<Diagnostic>> RunAnalyzerAsync(string source)

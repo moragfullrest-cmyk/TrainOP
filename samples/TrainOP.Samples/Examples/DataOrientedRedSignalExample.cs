@@ -3,11 +3,11 @@ using TrainOP;
 namespace TrainOP.Samples;
 
 /// <summary>
-/// Data.Fail in a handler (no RailwaySignals) plus AttachRedSignalStation recovery.
+/// RailwaySignals.Red in a handler plus ServiceStation recovery.
 /// </summary>
 internal sealed class DataOrientedRedSignalExample : IExample
 {
-    public string Title => "9. Data.Fail + восстановление (без RailwaySignals в handler)";
+    public string Title => "6. Green/Red + восстановление";
 
     public void Run()
     {
@@ -17,17 +17,14 @@ internal sealed class DataOrientedRedSignalExample : IExample
             .Station("Seed", () => new { paymentId = "pay-recover", amount = -10m })
             .Station("Validate", (string paymentId, decimal amount) =>
                 amount > 0
-                    ? Data.Ok(new { paymentId, amount })
-                    : Data.Fail("INVALID_TOTAL", "amount must be positive"))
-            .AttachRedSignalStation("Recovery", red =>
-                RailwaySignals.Green(red.Manifest.LoadCar("amount", 50m)))
+                    ? RailwaySignals.Green(new { paymentId, amount })
+                    : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"))
+            .ServiceStation("Recovery", (string paymentId, decimal amount) =>
+                RailwaySignals.Green(new { paymentId, amount = 50m }))
             .Station("ApplyDiscount", (string paymentId, decimal amount) =>
-                (amount: amount * 0.9m, paymentId));
+                new { paymentId, amount = amount * 0.9m });
 
         var report = route.DispatchTrain().Travel();
-        var (paymentId, amount) = report;
-
-        Console.WriteLine($"Recovered: paymentId={paymentId}, amount={amount}");
         ExampleOutput.WriteReport(report);
     }
 }

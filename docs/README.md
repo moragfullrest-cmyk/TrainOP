@@ -2,14 +2,14 @@
 
 TrainOP — библиотека Railway Oriented Programming (ROP) для .NET Standard 2.0. Маршрут состоит из **станций**; данные передаются через неизменяемый **манифест груза** (`CargoManifest`). Станция возвращает обновлённый манифест или **сигнал** (зелёный — продолжить, красный — остановка).
 
-**Рекомендуемый стиль:** data-oriented `.Station` handlers — чистые функции над данными, без `RailwaySignals` в бизнес-коде.
+**Рекомендуемый стиль:** data-oriented `.Station` handlers — чистые функции над данными; `CargoManifest` скрыт в сгенерированном адаптере.
 
 ## Содержание
 
 | Раздел | Описание |
 |--------|----------|
 | [Начало работы](getting-started.md) | Подключение проекта, data-oriented пример |
-| [Основной API](core-api.md) | `CargoManifest`, `TrainRoute`, сигналы, `Data.Fail`, async |
+| [Основной API](core-api.md) | `CargoManifest`, `TrainRoute`, сигналы, `RailwaySignals.Green`/`Red`, async |
 | [План: data-oriented handlers](plan-data-oriented-handlers.md) | Roadmap — **фазы 0–6 ✅** |
 
 ## Структура решения
@@ -29,12 +29,12 @@ TrainOP.sln
 | Тип | Назначение |
 |-----|------------|
 | `CargoManifest` | Неизменяемое хранилище вагонов (ключ → значение) |
-| `TrainRoute` | Построитель маршрута (`.Station`, `.AttachStation`) |
+| `TrainRoute` | Построитель маршрута (`.Station` — основной путь; `.AttachStation` — низкоуровневый) |
 | `Train` | Исполнитель маршрута (`DispatchTrain()`) |
 | `RouteReport` | Отчёт о прохождении маршрута |
 | `GreenSignal` / `RedSignal` | Сигналы продолжения и остановки |
 | `SignalIssue` | Код, сообщение и имя станции для красного сигнала |
-| `Data` | `Ok` / `Fail` / `Skip` для data-oriented handler'ов |
+| `RailwaySignals` | `Green` / `Red` / `Pass` для data-oriented handler'ов |
 
 ## Запуск тестов
 

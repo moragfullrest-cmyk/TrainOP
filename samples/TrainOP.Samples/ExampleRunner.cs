@@ -6,15 +6,13 @@ internal static class ExampleRunner
     {
         var examples = new IExample[]
         {
-            new BasicManifestRouteExample(),
+            new DataOrientedStationExample(),
             new RedSignalStopExample(),
             new ManifestMutationsExample(),
             new AsyncRouteExample(),
             new PartialWagonReturnExample(),
-            new RedSignalRecoveryExample(),
-            new StationApiExample(),
-            new DataOrientedStationExample(),
             new DataOrientedRedSignalExample(),
+            new LongRouteServiceStationExample(),
         };
 
         for (var i = 0; i < examples.Length; i++)

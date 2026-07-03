@@ -14,12 +14,12 @@ internal sealed class RedSignalStopExample : IExample
         ExampleOutput.WriteHeader(Title);
 
         var route = new TrainRoute()
-            .AttachStation("Validation", manifest =>
-                RailwaySignals.Red(
-                    manifest,
-                    new SignalIssue("REQ_MISSING", "request-id is required", "Validation")))
-            .AttachStation("MustNotRun", manifest =>
-                manifest.LoadCar("forbidden", true));
+            .Station("Seed", () => new { requestId = "" })
+            .Station("Validation", (string requestId) =>
+                !string.IsNullOrEmpty(requestId)
+                    ? RailwaySignals.Green(new { requestId })
+                    : RailwaySignals.Red("REQ_MISSING", "request-id is required"))
+            .Station("MustNotRun", (string requestId) => new { forbidden = true });
 
         var report = route.DispatchTrain().Travel();
 

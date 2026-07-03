@@ -11,6 +11,16 @@ namespace TrainOP.Generators
     {
         public static bool IsCandidateStationInvocation(SyntaxNode node)
         {
+            return IsCandidateRouteHandlerInvocation(node, "Station");
+        }
+
+        public static bool IsCandidateServiceStationInvocation(SyntaxNode node)
+        {
+            return IsCandidateRouteHandlerInvocation(node, "ServiceStation");
+        }
+
+        private static bool IsCandidateRouteHandlerInvocation(SyntaxNode node, string methodName)
+        {
             if (!(node is InvocationExpressionSyntax invocation))
             {
                 return false;
@@ -21,7 +31,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            return string.Equals(memberAccess.Name.Identifier.ValueText, "Station", StringComparison.Ordinal);
+            return string.Equals(memberAccess.Name.Identifier.ValueText, methodName, StringComparison.Ordinal);
         }
 
         public static bool IsTrainRoute(ITypeSymbol typeSymbol)
@@ -54,7 +64,8 @@ namespace TrainOP.Generators
                 && invocation.Expression is MemberAccessExpressionSyntax memberAccess)
             {
                 if (string.Equals(memberAccess.Name.Identifier.ValueText, "Station", StringComparison.Ordinal)
-                    || string.Equals(memberAccess.Name.Identifier.ValueText, "AttachStation", StringComparison.Ordinal))
+                    || string.Equals(memberAccess.Name.Identifier.ValueText, "AttachStation", StringComparison.Ordinal)
+                    || string.Equals(memberAccess.Name.Identifier.ValueText, "ServiceStation", StringComparison.Ordinal))
                 {
                     return IsTrainRouteReceiver(
                         memberAccess.Expression,
@@ -79,6 +90,42 @@ namespace TrainOP.Generators
             out Location handlerLocation,
             out StationHandlerBinding handlerBinding)
         {
+            return TryGetDataRouteHandlerInvocation(
+                invocation,
+                semanticModel,
+                "Station",
+                forServiceStation: false,
+                out stationName,
+                out handlerLocation,
+                out handlerBinding);
+        }
+
+        public static bool TryGetDataServiceStationInvocation(
+            InvocationExpressionSyntax invocation,
+            SemanticModel semanticModel,
+            out string stationName,
+            out Location handlerLocation,
+            out StationHandlerBinding handlerBinding)
+        {
+            return TryGetDataRouteHandlerInvocation(
+                invocation,
+                semanticModel,
+                "ServiceStation",
+                forServiceStation: true,
+                out stationName,
+                out handlerLocation,
+                out handlerBinding);
+        }
+
+        private static bool TryGetDataRouteHandlerInvocation(
+            InvocationExpressionSyntax invocation,
+            SemanticModel semanticModel,
+            string methodName,
+            bool forServiceStation,
+            out string stationName,
+            out Location handlerLocation,
+            out StationHandlerBinding handlerBinding)
+        {
             stationName = null;
             handlerLocation = null;
             handlerBinding = null;
@@ -93,7 +140,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (!string.Equals(memberAccess.Name.Identifier.ValueText, "Station", StringComparison.Ordinal))
+            if (!string.Equals(memberAccess.Name.Identifier.ValueText, methodName, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -109,7 +156,7 @@ namespace TrainOP.Generators
                 && methodSymbol.MethodKind == MethodKind.Ordinary
                 && methodSymbol.ContainingType != null
                 && string.Equals(methodSymbol.ContainingType.ToDisplayString(), "TrainOP.TrainRoute", StringComparison.Ordinal)
-                && string.Equals(methodSymbol.Name, "Station", StringComparison.Ordinal))
+                && string.Equals(methodSymbol.Name, methodName, StringComparison.Ordinal))
             {
                 return false;
             }
@@ -119,7 +166,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            handlerBinding = TryBuildHandlerBinding(lambdaSyntax, lambdaSymbol, semanticModel);
+            handlerBinding = TryBuildHandlerBinding(lambdaSyntax, lambdaSymbol, semanticModel, forServiceStation);
             if (handlerBinding == null)
             {
                 return false;
@@ -163,17 +210,25 @@ namespace TrainOP.Generators
         public static StationHandlerBinding TryBuildHandlerBinding(
             LambdaExpressionSyntax lambdaSyntax,
             IMethodSymbol lambdaSymbol,
-            SemanticModel semanticModel)
+            SemanticModel semanticModel,
+            bool forServiceStation = false)
         {
             var parameters = lambdaSymbol.Parameters;
             var wagons = ImmutableArray.CreateBuilder<WagonBinding>();
             var includeManifest = false;
+            var includeRedSignal = false;
+            var includeSignalIssue = false;
             var hasCancellationToken = false;
 
             for (var i = 0; i < parameters.Length; i++)
             {
                 var parameter = parameters[i];
                 var parameterType = parameter.Type;
+                if (parameter.IsDiscard)
+                {
+                    continue;
+                }
+
                 if (parameterType == null)
                 {
                     return null;
@@ -182,6 +237,18 @@ namespace TrainOP.Generators
                 if (IsCargoManifest(parameterType))
                 {
                     includeManifest = true;
+                    continue;
+                }
+
+                if (forServiceStation && IsRedSignal(parameterType))
+                {
+                    includeRedSignal = true;
+                    continue;
+                }
+
+                if (forServiceStation && IsSignalIssue(parameterType))
+                {
+                    includeSignalIssue = true;
                     continue;
                 }
 
@@ -213,7 +280,16 @@ namespace TrainOP.Generators
                     pullTypeDisplay));
             }
 
-            if (includeManifest && wagons.Count == 0)
+            if (forServiceStation
+                && wagons.Count == 0
+                && !includeManifest
+                && !includeSignalIssue
+                && includeRedSignal)
+            {
+                return null;
+            }
+
+            if (!forServiceStation && includeManifest && wagons.Count == 0)
             {
                 return null;
             }
@@ -224,7 +300,10 @@ namespace TrainOP.Generators
                 includeManifest,
                 IsAsyncLambda(lambdaSyntax, lambdaSymbol),
                 hasCancellationToken,
-                returnShape);
+                returnShape,
+                forServiceStation,
+                includeRedSignal,
+                includeSignalIssue);
         }
 
         private static bool IsAsyncLambda(LambdaExpressionSyntax lambdaSyntax, IMethodSymbol lambdaSymbol)
@@ -248,6 +327,16 @@ namespace TrainOP.Generators
         private static bool IsCancellationToken(ITypeSymbol typeSymbol)
         {
             return string.Equals(typeSymbol.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal);
+        }
+
+        private static bool IsRedSignal(ITypeSymbol typeSymbol)
+        {
+            return string.Equals(typeSymbol.ToDisplayString(), "TrainOP.RedSignal", StringComparison.Ordinal);
+        }
+
+        private static bool IsSignalIssue(ITypeSymbol typeSymbol)
+        {
+            return string.Equals(typeSymbol.ToDisplayString(), "TrainOP.SignalIssue", StringComparison.Ordinal);
         }
 
         private static Location GetParameterLocation(LambdaExpressionSyntax lambdaSyntax, string parameterName)
@@ -276,6 +365,11 @@ namespace TrainOP.Generators
         private static bool IsValidWagonParameterName(string wagonName)
         {
             if (string.IsNullOrWhiteSpace(wagonName))
+            {
+                return false;
+            }
+
+            if (string.Equals(wagonName, "_", StringComparison.Ordinal))
             {
                 return false;
             }

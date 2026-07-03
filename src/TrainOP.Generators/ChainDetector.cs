@@ -28,23 +28,8 @@ namespace TrainOP.Generators
                 var stations = ImmutableArray.CreateBuilder<StationChainLink>();
                 var current = (ExpressionSyntax)objectCreation;
 
-                while (TryGetNextStationInvocation(current, out var stationInvocation))
+                while (TryAdvanceChain(current, semanticModel, stations, out current, null))
                 {
-                    if (StationSyntaxHelper.TryGetDataStationInvocation(
-                        stationInvocation,
-                        semanticModel,
-                        out var stationName,
-                        out var handlerLocation,
-                        out var handlerBinding))
-                    {
-                        stations.Add(new StationChainLink(
-                            stationName,
-                            stationInvocation.ArgumentList.Arguments[0].GetLocation(),
-                            handlerLocation,
-                            handlerBinding));
-                    }
-
-                    current = stationInvocation;
                 }
 
                 if (stations.Count > 0)
@@ -75,10 +60,9 @@ namespace TrainOP.Generators
                 }
 
                 var current = (ExpressionSyntax)objectCreation;
-                while (TryGetNextStationInvocation(current, out var stationInvocation))
+
+                while (TryAdvanceChain(current, semanticModel, null, out current, chained))
                 {
-                    chained.Add(stationInvocation);
-                    current = stationInvocation;
                 }
             }
 
@@ -99,7 +83,8 @@ namespace TrainOP.Generators
                     continue;
                 }
 
-                if (!StationSyntaxHelper.IsCandidateStationInvocation(invocation))
+                if (!StationSyntaxHelper.IsCandidateStationInvocation(invocation)
+                    && !StationSyntaxHelper.IsCandidateServiceStationInvocation(invocation))
                 {
                     continue;
                 }
@@ -110,17 +95,114 @@ namespace TrainOP.Generators
                 }
 
                 if (StationSyntaxHelper.TryGetDataStationInvocation(
-                    invocation,
-                    semanticModel,
-                    out _,
-                    out _,
-                    out _))
+                        invocation,
+                        semanticModel,
+                        out _,
+                        out _,
+                        out _)
+                    || StationSyntaxHelper.TryGetDataServiceStationInvocation(
+                        invocation,
+                        semanticModel,
+                        out _,
+                        out _,
+                        out _))
                 {
                     orphans.Add(invocation);
                 }
             }
 
             return orphans.ToImmutable();
+        }
+
+        private static bool TryAdvanceChain(
+            ExpressionSyntax current,
+            SemanticModel semanticModel,
+            ImmutableArray<StationChainLink>.Builder stations,
+            out ExpressionSyntax next,
+            ImmutableArray<InvocationExpressionSyntax>.Builder chainedInvocations)
+        {
+            next = current;
+
+            if (TryGetDirectServiceStationInvocation(current, out var serviceInvocation)
+                && StationSyntaxHelper.TryGetDataServiceStationInvocation(
+                    serviceInvocation,
+                    semanticModel,
+                    out var serviceStationName,
+                    out var serviceHandlerLocation,
+                    out var serviceHandlerBinding))
+            {
+                stations?.Add(new StationChainLink(
+                    serviceStationName,
+                    serviceInvocation.ArgumentList.Arguments[0].GetLocation(),
+                    serviceHandlerLocation,
+                    serviceHandlerBinding));
+                chainedInvocations?.Add(serviceInvocation);
+                next = serviceInvocation;
+                return true;
+            }
+
+            if (!TryGetNextStationInvocation(current, out var stationInvocation))
+            {
+                return false;
+            }
+
+            if (StationSyntaxHelper.TryGetDataStationInvocation(
+                stationInvocation,
+                semanticModel,
+                out var stationName,
+                out var handlerLocation,
+                out var handlerBinding))
+            {
+                stations?.Add(new StationChainLink(
+                    stationName,
+                    stationInvocation.ArgumentList.Arguments[0].GetLocation(),
+                    handlerLocation,
+                    handlerBinding));
+            }
+
+            chainedInvocations?.Add(stationInvocation);
+            next = stationInvocation;
+            return true;
+        }
+
+        private static bool TryGetDirectServiceStationInvocation(
+            ExpressionSyntax current,
+            out InvocationExpressionSyntax serviceStationInvocation)
+        {
+            serviceStationInvocation = null;
+
+            if (!(current.Parent is MemberAccessExpressionSyntax memberAccess))
+            {
+                return false;
+            }
+
+            if (!string.Equals(memberAccess.Name.Identifier.ValueText, "ServiceStation", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (!ReferenceEquals(memberAccess.Expression, current))
+            {
+                return false;
+            }
+
+            if (!(memberAccess.Parent is InvocationExpressionSyntax invocation))
+            {
+                return false;
+            }
+
+            if (!ReferenceEquals(invocation.Expression, memberAccess))
+            {
+                return false;
+            }
+
+            if (invocation.ArgumentList.Arguments.Count != 2)
+            {
+                return false;
+            }
+
+            serviceStationInvocation = invocation;
+            return true;
         }
 
         private static bool TryGetNextStationInvocation(
@@ -204,7 +286,7 @@ namespace TrainOP.Generators
 
         private static bool IsTransparentRouteMethod(string methodName)
         {
-            return string.Equals(methodName, "AttachRedSignalStation", StringComparison.Ordinal);
+            return string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
         }
     }
 }

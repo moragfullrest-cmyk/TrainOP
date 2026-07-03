@@ -27,8 +27,8 @@ internal sealed class DataOrientedStationExample
             new { paymentId, amount = amount * 0.9m })
         .Station(""Validate"", (string paymentId, decimal amount) =>
             amount > 0
-                ? Data.Ok(new { paymentId, amount })
-                : Data.Fail(""INVALID_TOTAL"", ""amount must be positive""));
+                ? RailwaySignals.Green(new { paymentId, amount })
+                : RailwaySignals.Red(""INVALID_TOTAL"", ""amount must be positive""));
 }";
 
             var generated = RunGenerators(source);
@@ -59,7 +59,7 @@ public static class PaymentRoute
             Assert.Contains("this RouteReport report,", generated);
             Assert.Contains("out global::System.String paymentId", generated);
             Assert.Contains("out global::System.Decimal amount", generated);
-            Assert.Contains("manifest.PullCar<global::System.String>(\"paymentId\")", generated);
+            Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
         }
 
         [Fact]

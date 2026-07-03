@@ -33,10 +33,10 @@ namespace TrainOP.Generators
         {
             if (isOptional && underlyingType != null)
             {
-                return underlyingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                return ManifestWagonTypes.ToManifestTypeDisplay(underlyingType);
             }
 
-            return parameterType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            return ManifestWagonTypes.ToManifestTypeDisplay(parameterType);
         }
 
         public static ITypeSymbol GetEffectiveTypeSymbol(ITypeSymbol parameterType, ITypeSymbol underlyingType, bool isOptional)

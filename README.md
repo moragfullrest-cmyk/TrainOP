@@ -1,5 +1,7 @@
 # TrainOP
 
+[![CI](https://github.com/moragfullrest-cmyk/TrainOP/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/moragfullrest-cmyk/TrainOP/actions/workflows/ci.yml)
+
 Библиотека **Railway Oriented Programming** для `.NET Standard 2.0`: маршруты из станций, неизменяемый манифест данных и сигналы зелёный/красный. Source generator добавляет **data-oriented** `.Station` handlers и typed `Travel()`.
 
 ## Документация
@@ -23,8 +25,8 @@ var route = new TrainRoute()
         new { paymentId, amount = amount * 0.9m })
     .Station("Validate", (string paymentId, decimal amount) =>
         amount > 0
-            ? Data.Ok(new { paymentId, amount })
-            : Data.Fail("INVALID_TOTAL", "amount must be positive"));
+            ? RailwaySignals.Green(new { paymentId, amount })
+            : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"));
 
 var (paymentId, amount, report) = route.DispatchTrain().Travel();
 
@@ -35,18 +37,37 @@ if (!report.ReachedDestination)
 }
 ```
 
-Manifest-style станции (`AttachStation` с `CargoManifest`) — для инфраструктурных шагов и recovery после красного сигнала. Подробнее — [docs/getting-started.md](docs/getting-started.md).
+Manifest-style станции (`AttachStation` с прямым доступом к `CargoManifest`) — для инфраструктурных шагов, когда data-oriented `.Station` не подходит. Подробнее — [docs/getting-started.md](docs/getting-started.md#низкоуровневый-api-attachstation).
 
-## Подключение
+## Установка
+
+### NuGet
 
 ```xml
-<ProjectReference Include="path/to/TrainOP.csproj" />
-<ProjectReference Include="path/to/TrainOP.Generators.csproj"
+<PackageReference Include="TrainOP" Version="0.1.0" />
+<PackageReference Include="TrainOP.Generators" Version="0.1.0" />
+```
+
+### Из исходников (разработка)
+
+```xml
+<ProjectReference Include="path/to/src/TrainOP/TrainOP.csproj" />
+<ProjectReference Include="path/to/src/TrainOP.Generators/TrainOP.Generators.csproj"
                   OutputItemType="Analyzer"
                   ReferenceOutputAssembly="false" />
 ```
 
 Генератор нужен для `.Station` data-oriented handlers и typed `Travel()`; базовый `AttachStation` API работает и без него.
+
+Лицензия: [MIT](LICENSE).
+
+### Локальная сборка пакетов
+
+```bash
+dotnet pack -c Release
+```
+
+`.nupkg` появятся в `src/TrainOP/bin/Release/` и `src/TrainOP.Generators/bin/Release/`.
 
 ## Структура решения
 

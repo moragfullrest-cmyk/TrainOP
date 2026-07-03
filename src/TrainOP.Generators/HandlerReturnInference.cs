@@ -33,19 +33,19 @@ namespace TrainOP.Generators
                 return new ReturnShape(ImmutableArray<WagonBinding>.Empty, isCargoManifest: true, isValueTuple: false);
             }
 
-            if (IsStationDataFail(returnType))
+            if (IsRedFailure(returnType))
             {
                 return ReturnShape.Unknown;
             }
 
-            if (IsStationDataSkip(returnType))
+            if (IsGreenPass(returnType))
             {
                 return ReturnShape.Unknown;
             }
 
-            if (IsStationDataOk(returnType, out var okPayload))
+            if (IsGreenPayload(returnType, out var greenPayload))
             {
-                return InferFromOkPayload(okPayload, inputWagons, semanticModel, lambdaSyntax.GetLocation());
+                return InferFromGreenPayload(greenPayload, inputWagons, semanticModel, lambdaSyntax.GetLocation());
             }
 
             var shape = InferFromType(returnType, inputWagons, semanticModel, lambdaSyntax.GetLocation());
@@ -57,13 +57,13 @@ namespace TrainOP.Generators
             return shape;
         }
 
-        private static ReturnShape InferFromOkPayload(
-            ITypeSymbol okPayload,
+        private static ReturnShape InferFromGreenPayload(
+            ITypeSymbol greenPayload,
             ImmutableArray<WagonBinding> inputWagons,
             SemanticModel semanticModel,
             Location fallbackLocation)
         {
-            var shape = InferFromType(okPayload, inputWagons, semanticModel, fallbackLocation);
+            var shape = InferFromType(greenPayload, inputWagons, semanticModel, fallbackLocation);
             if (!shape.IsCargoManifest && shape.Members.IsDefaultOrEmpty)
             {
                 return ReturnShape.Unknown;
@@ -133,18 +133,14 @@ namespace TrainOP.Generators
             if (expression is InvocationExpressionSyntax invocation)
             {
                 var invocationType = semanticModel.GetTypeInfo(invocation).Type;
-                if (IsStationDataOk(invocationType, out var okPayload))
+                if (IsGreenPayload(invocationType, out var greenPayload))
                 {
-                    return okPayload;
+                    return greenPayload;
                 }
 
-                if (invocation.ArgumentList.Arguments.Count > 0)
+                if (invocationType != null && invocationType.SpecialType != SpecialType.System_Object)
                 {
-                    var argumentType = semanticModel.GetTypeInfo(invocation.ArgumentList.Arguments[0].Expression).Type;
-                    if (argumentType != null && argumentType.SpecialType != SpecialType.System_Object)
-                    {
-                        return argumentType;
-                    }
+                    return invocationType;
                 }
             }
 
@@ -171,18 +167,22 @@ namespace TrainOP.Generators
             if (IsValueTuple(returnType))
             {
                 var members = ImmutableArray.CreateBuilder<WagonBinding>();
+                var isUnnamedValueTuple = false;
                 if (returnType is INamedTypeSymbol namedTuple)
                 {
+                    isUnnamedValueTuple = IsUnnamedValueTuple(namedTuple);
                     var typeArguments = namedTuple.TypeArguments;
                     var elementNames = namedTuple.TupleElements;
                     for (var i = 0; i < typeArguments.Length; i++)
                     {
                         string name;
-                        if (elementNames != null && i < elementNames.Length)
+                        if (elementNames != null
+                            && i < elementNames.Length
+                            && !IsDefaultTupleElementName(elementNames[i].Name, i))
                         {
                             name = elementNames[i].Name;
                         }
-                        else if (i < inputWagons.Length)
+                        else if (isUnnamedValueTuple && i < inputWagons.Length)
                         {
                             name = inputWagons[i].Name;
                         }
@@ -199,7 +199,11 @@ namespace TrainOP.Generators
                     }
                 }
 
-                return new ReturnShape(members.ToImmutable(), isCargoManifest: false, isValueTuple: true);
+                return new ReturnShape(
+                    members.ToImmutable(),
+                    isCargoManifest: false,
+                    isValueTuple: true,
+                    isUnnamedValueTuple: isUnnamedValueTuple);
             }
 
             var bindings = ImmutableArray.CreateBuilder<WagonBinding>();
@@ -252,22 +256,22 @@ namespace TrainOP.Generators
             return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.CargoManifest", StringComparison.Ordinal);
         }
 
-        private static bool IsStationDataFail(ITypeSymbol typeSymbol)
+        private static bool IsRedFailure(ITypeSymbol typeSymbol)
         {
-            return string.Equals(typeSymbol?.Name, "StationDataFail", StringComparison.Ordinal);
+            return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.RedFailure", StringComparison.Ordinal);
         }
 
-        private static bool IsStationDataSkip(ITypeSymbol typeSymbol)
+        private static bool IsGreenPass(ITypeSymbol typeSymbol)
         {
-            return string.Equals(typeSymbol?.Name, "StationDataSkip", StringComparison.Ordinal);
+            return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.GreenPass", StringComparison.Ordinal);
         }
 
-        private static bool IsStationDataOk(ITypeSymbol typeSymbol, out ITypeSymbol payloadType)
+        private static bool IsGreenPayload(ITypeSymbol typeSymbol, out ITypeSymbol payloadType)
         {
             payloadType = null;
             if (typeSymbol is INamedTypeSymbol named
                 && named.IsGenericType
-                && string.Equals(named.ConstructedFrom.Name, "StationDataOk", StringComparison.Ordinal))
+                && string.Equals(named.ConstructedFrom.Name, "GreenPayload", StringComparison.Ordinal))
             {
                 payloadType = named.TypeArguments[0];
                 return true;
@@ -286,6 +290,41 @@ namespace TrainOP.Generators
             var fullName = named.TupleUnderlyingType?.ToDisplayString() ?? named.ToDisplayString();
             return fullName.StartsWith("System.ValueTuple`", StringComparison.Ordinal)
                 || fullName.StartsWith("(", StringComparison.Ordinal);
+        }
+
+        private static bool IsUnnamedValueTuple(INamedTypeSymbol namedTuple)
+        {
+            var elementNames = namedTuple.TupleElements;
+            if (elementNames.IsDefaultOrEmpty)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < elementNames.Length; i++)
+            {
+                if (!IsDefaultTupleElementName(elementNames[i].Name, i))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsDefaultTupleElementName(string name, int index)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return true;
+            }
+
+            if (!name.StartsWith("Item", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return int.TryParse(name.Substring(4), out var parsed)
+                && parsed == index + 1;
         }
     }
 }

@@ -8,17 +8,20 @@ namespace TrainOP.Generators.Models
             ImmutableArray<WagonBinding>.Empty,
             isCargoManifest: false,
             isValueTuple: false,
+            isUnnamedValueTuple: false,
             isUnknown: true);
 
         public ReturnShape(
             ImmutableArray<WagonBinding> members,
             bool isCargoManifest,
             bool isValueTuple,
+            bool isUnnamedValueTuple = false,
             bool isUnknown = false)
         {
             Members = members;
             IsCargoManifest = isCargoManifest;
             IsValueTuple = isValueTuple;
+            IsUnnamedValueTuple = isUnnamedValueTuple;
             IsUnknown = isUnknown;
         }
 
@@ -27,6 +30,8 @@ namespace TrainOP.Generators.Models
         public bool IsCargoManifest { get; }
 
         public bool IsValueTuple { get; }
+
+        public bool IsUnnamedValueTuple { get; }
 
         public bool IsUnknown { get; }
     }

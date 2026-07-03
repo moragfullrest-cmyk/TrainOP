@@ -14,7 +14,7 @@ namespace TrainOP
             string[] wagonNames,
             bool removeOmittedRegularInputs)
         {
-            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, null, null, null);
+            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, null, null, null, null);
         }
 
         public static CargoManifest Apply(
@@ -24,7 +24,18 @@ namespace TrainOP
             bool removeOmittedRegularInputs,
             int[] tupleElementOrdinals)
         {
-            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, tupleElementOrdinals, null, null);
+            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, tupleElementOrdinals, null, null, null);
+        }
+
+        public static CargoManifest Apply(
+            CargoManifest manifest,
+            object stationReturn,
+            string[] wagonNames,
+            bool removeOmittedRegularInputs,
+            int[] tupleElementOrdinals,
+            string[] returnMemberNames)
+        {
+            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, tupleElementOrdinals, returnMemberNames, null, null);
         }
 
         public static CargoManifest Apply(
@@ -35,7 +46,7 @@ namespace TrainOP
             bool[] byReferenceWagons,
             object[] refLocalValues)
         {
-            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, null, byReferenceWagons, refLocalValues);
+            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, null, null, byReferenceWagons, refLocalValues);
         }
 
         public static CargoManifest Apply(
@@ -44,6 +55,7 @@ namespace TrainOP
             string[] wagonNames,
             bool removeOmittedRegularInputs,
             int[] tupleElementOrdinals,
+            string[] returnMemberNames,
             bool[] byReferenceWagons,
             object[] refLocalValues)
         {
@@ -57,7 +69,7 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(wagonNames));
             }
 
-            if (TryUnwrapOk(stationReturn, out var payload))
+            if (TryUnwrapGreenPayload(stationReturn, out var payload))
             {
                 stationReturn = payload;
             }
@@ -67,19 +79,19 @@ namespace TrainOP
                 return replacement;
             }
 
-            if (stationReturn is StationDataFail)
+            if (stationReturn is RedFailure)
             {
-                throw new InvalidOperationException("StationDataFail must be handled by StationMerge.ToSignal.");
+                throw new InvalidOperationException("RedFailure must be handled by StationMerge.ToSignal.");
             }
 
-            if (stationReturn is StationDataSkip)
+            if (stationReturn is GreenPass)
             {
                 return manifest;
             }
 
             if (wagonNames.Length == 0)
             {
-                return MergeAllReturnMembers(manifest, stationReturn);
+                return MergeAllReturnMembers(manifest, stationReturn, returnMemberNames);
             }
 
             if (byReferenceWagons != null && refLocalValues != null
@@ -88,30 +100,58 @@ namespace TrainOP
                 throw new ArgumentException("Ref wagon metadata arrays must match wagonNames length.");
             }
 
-            var usedTupleOrdinals = new HashSet<int>();
+            var effectiveTupleOrdinals = ResolveTupleOrdinals(stationReturn, tupleElementOrdinals);
             for (var i = 0; i < wagonNames.Length; i++)
             {
                 var wagonName = wagonNames[i];
                 object wagonValue;
                 var found = TryResolveWagonValue(
-                    manifest,
                     stationReturn,
                     wagonName,
                     i,
-                    tupleElementOrdinals,
-                    usedTupleOrdinals,
+                    effectiveTupleOrdinals,
                     out wagonValue);
+                if (!found
+                    && WagonStationReturn.IsValueTuple(stationReturn)
+                    && manifest.HasWagon(wagonName))
+                {
+                    var existingWagons = manifest.InspectWagons();
+                    if (existingWagons.TryGetValue(wagonName, out var existingValue)
+                        && existingValue != null)
+                    {
+                        found = WagonStationReturn.TryGetUniqueTupleElementByType(
+                            stationReturn,
+                            existingValue.GetType(),
+                            out wagonValue);
+                    }
+                }
+                else if (found
+                    && WagonStationReturn.IsValueTuple(stationReturn)
+                    && manifest.HasWagon(wagonName)
+                    && wagonValue != null)
+                {
+                    var existingWagons = manifest.InspectWagons();
+                    if (existingWagons.TryGetValue(wagonName, out var existingValue)
+                        && existingValue != null
+                        && !WagonStationReturn.TypesCompatible(existingValue.GetType(), wagonValue.GetType()))
+                    {
+                        found = WagonStationReturn.TryGetUniqueTupleElementByType(
+                            stationReturn,
+                            existingValue.GetType(),
+                            out wagonValue);
+                    }
+                }
                 if (found)
                 {
-                    manifest = manifest.LoadCar(wagonName, wagonValue);
+                    manifest = manifest.LoadWagon(wagonName, wagonValue);
                 }
                 else if (byReferenceWagons != null && byReferenceWagons[i])
                 {
-                    manifest = manifest.LoadCar(wagonName, refLocalValues[i]);
+                    manifest = manifest.LoadWagon(wagonName, refLocalValues[i]);
                 }
                 else if (removeOmittedRegularInputs)
                 {
-                    manifest = manifest.UnloadCar(wagonName);
+                    manifest = manifest.UnloadWagon(wagonName);
                 }
             }
 
@@ -134,7 +174,7 @@ namespace TrainOP
             string[] wagonNames,
             bool removeOmittedRegularInputs)
         {
-            return StationAdapter.ToSignal(manifest, stationReturn, stationName, wagonNames, removeOmittedRegularInputs);
+            return StationAdapter.ToSignal(manifest, stationReturn, stationName, wagonNames, removeOmittedRegularInputs, null, null, null, null);
         }
 
         public static Signal ToSignal(
@@ -151,7 +191,31 @@ namespace TrainOP
                 stationName,
                 wagonNames,
                 removeOmittedRegularInputs,
-                tupleElementOrdinals);
+                tupleElementOrdinals,
+                null,
+                null,
+                null);
+        }
+
+        public static Signal ToSignal(
+            CargoManifest manifest,
+            object stationReturn,
+            string stationName,
+            string[] wagonNames,
+            bool removeOmittedRegularInputs,
+            int[] tupleElementOrdinals,
+            string[] returnMemberNames)
+        {
+            return StationAdapter.ToSignal(
+                manifest,
+                stationReturn,
+                stationName,
+                wagonNames,
+                removeOmittedRegularInputs,
+                tupleElementOrdinals,
+                returnMemberNames,
+                null,
+                null);
         }
 
         public static Signal ToSignal(
@@ -169,6 +233,8 @@ namespace TrainOP
                 stationName,
                 wagonNames,
                 removeOmittedRegularInputs,
+                null,
+                null,
                 byReferenceWagons,
                 refLocalValues);
         }
@@ -180,6 +246,7 @@ namespace TrainOP
             string[] wagonNames,
             bool removeOmittedRegularInputs,
             int[] tupleElementOrdinals,
+            string[] returnMemberNames,
             bool[] byReferenceWagons,
             object[] refLocalValues)
         {
@@ -190,17 +257,26 @@ namespace TrainOP
                 wagonNames,
                 removeOmittedRegularInputs,
                 tupleElementOrdinals,
+                returnMemberNames,
                 byReferenceWagons,
                 refLocalValues);
         }
 
+        private static int[] ResolveTupleOrdinals(object stationReturn, int[] tupleElementOrdinals)
+        {
+            if (tupleElementOrdinals == null || !WagonStationReturn.IsValueTuple(stationReturn))
+            {
+                return null;
+            }
+
+            return tupleElementOrdinals;
+        }
+
         private static bool TryResolveWagonValue(
-            CargoManifest manifest,
             object stationReturn,
             string wagonName,
             int wagonIndex,
             int[] tupleElementOrdinals,
-            HashSet<int> usedTupleOrdinals,
             out object wagonValue)
         {
             wagonValue = null;
@@ -209,43 +285,30 @@ namespace TrainOP
                 return false;
             }
 
-            if (tupleElementOrdinals != null
-                && wagonIndex < tupleElementOrdinals.Length
-                && tupleElementOrdinals[wagonIndex] >= 0
-                && WagonStationReturn.TryGetTupleElement(stationReturn, tupleElementOrdinals[wagonIndex], out wagonValue))
+            if (WagonStationReturn.TryGetMemberValue(stationReturn, wagonName, out wagonValue))
             {
                 return true;
             }
 
-            if (WagonStationReturn.TryGetMemberValue(stationReturn.GetType(), stationReturn, wagonName, out wagonValue))
+            if (tupleElementOrdinals != null && wagonIndex < tupleElementOrdinals.Length)
             {
-                return true;
+                var ordinal = tupleElementOrdinals[wagonIndex];
+                if (ordinal < 0)
+                {
+                    return false;
+                }
+
+                return WagonStationReturn.TryGetTupleElement(stationReturn, ordinal, out wagonValue);
             }
 
-            if (WagonStationReturn.TryGetTupleElementMatchingManifestWagon(
-                stationReturn,
-                manifest,
-                wagonName,
-                usedTupleOrdinals,
-                out wagonValue))
-            {
-                return true;
-            }
-
-            if (tupleElementOrdinals == null
-                && WagonStationReturn.TryGetTupleElement(stationReturn, wagonIndex, out wagonValue))
-            {
-                return true;
-            }
-
-            return false;
+            return WagonStationReturn.TryGetTupleElement(stationReturn, wagonIndex, out wagonValue);
         }
 
-        private static bool TryUnwrapOk(object stationReturn, out object payload)
+        private static bool TryUnwrapGreenPayload(object stationReturn, out object payload)
         {
-            if (stationReturn is IStationDataOk ok)
+            if (stationReturn is IGreenPayload greenPayload)
             {
-                payload = ok.GetValue();
+                payload = greenPayload.GetValue();
                 return true;
             }
 
@@ -253,29 +316,22 @@ namespace TrainOP
             return false;
         }
 
-        private static CargoManifest MergeAllReturnMembers(CargoManifest manifest, object stationReturn)
+        private static CargoManifest MergeAllReturnMembers(
+            CargoManifest manifest,
+            object stationReturn,
+            string[] returnMemberNames)
         {
-            if (stationReturn == null)
+            if (stationReturn == null || returnMemberNames == null || returnMemberNames.Length == 0)
             {
                 return manifest;
             }
 
-            var type = stationReturn.GetType();
-            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public;
-
-            foreach (var property in type.GetProperties(flags))
+            foreach (var memberName in returnMemberNames)
             {
-                if (property.GetIndexParameters().Length != 0)
+                if (WagonStationReturn.TryGetMemberValue(stationReturn, memberName, out var value))
                 {
-                    continue;
+                    manifest = manifest.LoadWagon(memberName, value);
                 }
-
-                manifest = manifest.LoadCar(property.Name, property.GetValue(stationReturn));
-            }
-
-            foreach (var field in type.GetFields(flags))
-            {
-                manifest = manifest.LoadCar(field.Name, field.GetValue(stationReturn));
             }
 
             return manifest;
@@ -291,7 +347,7 @@ namespace TrainOP
             string[] wagonNames,
             bool removeOmittedRegularInputs)
         {
-            return ToSignal(manifest, stationReturn, stationName, wagonNames, removeOmittedRegularInputs, null, null, null);
+            return ToSignal(manifest, stationReturn, stationName, wagonNames, removeOmittedRegularInputs, null, null, null, null);
         }
 
         public static Signal ToSignal(
@@ -309,6 +365,28 @@ namespace TrainOP
                 wagonNames,
                 removeOmittedRegularInputs,
                 tupleElementOrdinals,
+                null,
+                null,
+                null);
+        }
+
+        public static Signal ToSignal(
+            CargoManifest manifest,
+            object stationReturn,
+            string stationName,
+            string[] wagonNames,
+            bool removeOmittedRegularInputs,
+            int[] tupleElementOrdinals,
+            string[] returnMemberNames)
+        {
+            return ToSignal(
+                manifest,
+                stationReturn,
+                stationName,
+                wagonNames,
+                removeOmittedRegularInputs,
+                tupleElementOrdinals,
+                returnMemberNames,
                 null,
                 null);
         }
@@ -329,6 +407,7 @@ namespace TrainOP
                 wagonNames,
                 removeOmittedRegularInputs,
                 null,
+                null,
                 byReferenceWagons,
                 refLocalValues);
         }
@@ -340,6 +419,7 @@ namespace TrainOP
             string[] wagonNames,
             bool removeOmittedRegularInputs,
             int[] tupleElementOrdinals,
+            string[] returnMemberNames,
             bool[] byReferenceWagons,
             object[] refLocalValues)
         {
@@ -348,19 +428,24 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(manifest));
             }
 
-            if (stationReturn is StationDataFail fail)
+            if (stationReturn is Signal signal)
+            {
+                return signal;
+            }
+
+            if (stationReturn is RedFailure fail)
             {
                 return RailwaySignals.Red(
                     manifest,
                     new SignalIssue(fail.Code, fail.Message, stationName));
             }
 
-            if (stationReturn is StationDataSkip)
+            if (stationReturn is GreenPass)
             {
                 return RailwaySignals.Green(manifest);
             }
 
-            if (TryUnwrapOk(stationReturn, out var payload))
+            if (TryUnwrapGreenPayload(stationReturn, out var payload))
             {
                 stationReturn = payload;
             }
@@ -376,16 +461,17 @@ namespace TrainOP
                 wagonNames,
                 removeOmittedRegularInputs,
                 tupleElementOrdinals,
+                returnMemberNames,
                 byReferenceWagons,
                 refLocalValues);
             return RailwaySignals.Green(merged);
         }
 
-        private static bool TryUnwrapOk(object stationReturn, out object payload)
+        private static bool TryUnwrapGreenPayload(object stationReturn, out object payload)
         {
-            if (stationReturn is IStationDataOk ok)
+            if (stationReturn is IGreenPayload greenPayload)
             {
-                payload = ok.GetValue();
+                payload = greenPayload.GetValue();
                 return true;
             }
 

@@ -6,33 +6,36 @@
 
 | Метод | Описание |
 |-------|----------|
-| `HasCar(string carName)` | Проверка наличия вагона |
-| `PullCar<T>(string carName)` | Чтение типизированного значения (бросает, если вагон отсутствует или тип не совпадает) |
-| `LoadCar(string carName, object cargo)` | Добавить или заменить вагон |
-| `UnloadCar(string carName)` | Удалить вагон |
-| `InspectCars()` | Снимок всех вагонов (`IReadOnlyDictionary<string, object>`) |
+| `HasWagon(string wagonName)` | Проверка наличия вагона |
+| `PullWagon<T>(string wagonName)` | Чтение типизированного значения (бросает, если вагон отсутствует или тип не совпадает) |
+| `LoadWagon(string wagonName, object cargo)` | Добавить или заменить вагон |
+| `UnloadWagon(string wagonName)` | Удалить вагон |
+| `InspectWagons()` | Снимок всех вагонов (`IReadOnlyDictionary<string, object>`) |
 
 ```csharp
 var manifest = new CargoManifest()
-    .LoadCar("id", "pay-1")
-    .LoadCar("amount", 100m);
+    .LoadWagon("id", "pay-1")
+    .LoadWagon("amount", 100m);
 
 var next = manifest
-    .LoadCar("amount", 90m)   // замена
-    .UnloadCar("temporary");  // удаление
+    .LoadWagon("amount", 90m)   // замена
+    .UnloadWagon("temporary");  // удаление
 ```
 
 Имена вагонов чувствительны к регистру (сравнение ordinal).
 
 ## TrainRoute и Train
 
-### Построение маршрута
+### Построение маршрута (data-oriented)
 
 ```csharp
 var route = new TrainRoute()
-    .AttachStation("A", manifest => manifest.LoadCar("a", 1))
-    .AttachStation("B", manifest => manifest.LoadCar("b", 2));
+    .Station("Seed", () => new { paymentId = "pay-1", amount = 100m })
+    .Station("Discount", (string paymentId, decimal amount) =>
+        new { paymentId, amount = amount * 0.9m });
 ```
+
+Имена параметров handler'а = ключи вагонов. Первая станция без параметров — seed. Генератор создаёт адаптеры и typed `Travel()`.
 
 ### Запуск
 
@@ -43,7 +46,7 @@ var train = route.DispatchTrain();
 var report = train.Travel();
 
 // С начальным манифестом
-var report2 = train.Travel(new CargoManifest().LoadCar("id", 1));
+var report2 = train.Travel(new CargoManifest().LoadWagon("id", 1));
 
 // С отменой
 var report3 = train.Travel(cancellationToken);
@@ -55,10 +58,11 @@ var report3 = train.Travel(cancellationToken);
 
 ```csharp
 var route = new TrainRoute()
-    .AttachStation("Fetch", async (manifest, token) =>
+    .Station("Seed", () => new { counter = 10 })
+    .Station("Fetch", async (int counter, CancellationToken token) =>
     {
         await Task.Delay(50, token);
-        return manifest.LoadCar("loaded", true);
+        return new { counter = counter * 2 };
     });
 
 var report = await route.DispatchTrain().TravelAsync();
@@ -66,9 +70,17 @@ var report = await route.DispatchTrain().TravelAsync();
 
 > **Важно:** вызов `Travel()` на маршруте с async-станциями бросает `InvalidOperationException` с текстом «Use TravelAsync».
 
-### Перегрузки AttachStation
+### Низкоуровневый API (AttachStation)
 
-Станция может принимать разные сигнатуры обработчика:
+Прямой доступ к `CargoManifest` и `Signal` без codegen-адаптера:
+
+```csharp
+var route = new TrainRoute()
+    .AttachStation("A", manifest => manifest.LoadWagon("a", 1))
+    .AttachStation("B", manifest => manifest.LoadWagon("b", 2));
+```
+
+Перегрузки обработчика:
 
 | Возврат | Синхронно | С `CancellationToken` |
 |---------|-----------|------------------------|
@@ -94,7 +106,14 @@ return RailwaySignals.Green(manifest);
 
 Маршрут останавливается на этой станции (последующие станции **не** выполняются).
 
-**Manifest-стиль:**
+```csharp
+.Station("Validate", (string paymentId, decimal amount) =>
+    amount > 0
+        ? RailwaySignals.Green(new { paymentId, amount })
+        : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"))
+```
+
+В низкоуровневом `AttachStation` передайте манифест явно:
 
 ```csharp
 return RailwaySignals.Red(
@@ -102,25 +121,17 @@ return RailwaySignals.Red(
     new SignalIssue("REQ_MISSING", "request-id is required", "Validation"));
 ```
 
-**Data-oriented стиль** (handler без `RailwaySignals`):
-
-```csharp
-.Station("Validate", (string paymentId, decimal amount) =>
-    amount > 0
-        ? Data.Ok(new { paymentId, amount })
-        : Data.Fail("INVALID_TOTAL", "amount must be positive"))
-```
-
-Адаптер преобразует `Data.Fail` в `RailwaySignals.Red` с `SignalIssue(code, message, stationName)`.
+Адаптер преобразует `RailwaySignals.Red(code, message)` в `RedSignal` с `SignalIssue(code, message, stationName)`.
 
 Допустимые возвраты data-handler'а:
 
 | Возврат | Поведение |
 |---------|-----------|
 | анонимный тип / record | merge в манифест → зелёный сигнал |
-| `Data.Ok(payload)` | merge payload → зелёный сигнал |
-| `Data.Fail(code, msg)` | красный сигнал, маршрут останавливается |
-| `Data.Skip()` | манифест без изменений → зелёный сигнал |
+| `RailwaySignals.Green(payload)` | merge payload → зелёный сигнал |
+| `RailwaySignals.Red(code, msg)` | красный сигнал, маршрут останавливается |
+| `RailwaySignals.Pass` | манифест без изменений → зелёный сигнал |
+| `GreenSignal` / `RedSignal` | возврат как есть (если есть `CargoManifest` в handler) |
 
 `SignalIssue` содержит:
 
@@ -151,49 +162,48 @@ foreach (var visit in report.Visits)
 }
 ```
 
-## Обработка красного сигнала (AttachRedSignalStation)
+## Станция техобслуживания (ServiceStation)
 
-Один глобальный обработчик на маршрут. Вызывается при любом красном сигнале от обычной станции. Может вернуть зелёный сигнал и **продолжить** маршрут с оставшихся станций.
+Один глобальный обработчик на маршрут — «станция техобслуживания». Вызывается при любом красном сигнале от обычной станции. Может вернуть зелёный сигнал и **продолжить** маршрут с оставшихся станций.
 
-```csharp
-var route = new TrainRoute()
-    .AttachStation("Validation", manifest =>
-        RailwaySignals.Red(manifest, new SignalIssue("FAIL", "validation failed", "Validation")))
-    .AttachRedSignalStation("Recovery", red =>
-    {
-        var recovered = red.Manifest.LoadCar("recovered", true);
-        return RailwaySignals.Green(recovered);
-    })
-    .AttachStation("AfterRecovery", manifest =>
-        manifest.LoadCar("after", "ok"));
-
-var report = route.DispatchTrain().Travel();
-// Visits: Validation → SignalControl → AfterRecovery
-```
-
-Async-вариант:
-
-```csharp
-.AttachRedSignalStation("Recovery", async (red, token) =>
-{
-    await Task.Delay(10, token);
-    return RailwaySignals.Green(red.Manifest);
-});
-```
-
-Если обработчик красного сигнала не зарегистрирован, маршрут завершается с красным `TerminalSignal`.
-
-**Data-oriented handler + recovery:** станция валидации возвращает `Data.Fail`; recovery остаётся manifest-level:
+**Data-oriented** (рекомендуется):
 
 ```csharp
 var route = new TrainRoute()
     .Station("Seed", () => new { amount = -1m })
     .Station("Validate", (decimal amount) =>
-        amount > 0 ? Data.Ok(new { amount }) : Data.Fail("INVALID", "amount must be positive"))
-    .AttachRedSignalStation("Recovery", red =>
-        RailwaySignals.Green(red.Manifest.LoadCar("amount", 1m)))
+        amount > 0 ? RailwaySignals.Green(new { amount }) : RailwaySignals.Red("INVALID", "amount must be positive"))
+    .ServiceStation("Recovery", (decimal amount, SignalIssue issue) =>
+        issue.Code == "INVALID"
+            ? RailwaySignals.Green(new { amount = 1m })
+            : RailwaySignals.Red("CANNOT_RECOVER", "unsupported failure"))
     .Station("Double", (decimal amount) => new { amount = amount * 2m });
 ```
+
+Параметры handler'а станции техобслуживания:
+
+| Параметр | Источник |
+|----------|----------|
+| вагоны (`amount`, …) | `red.Manifest` |
+| `CargoManifest manifest` | `red.Manifest` |
+| `SignalIssue issue` | `red.Issue` (код, сообщение, станция-источник) |
+| `RedSignal red` | полный красный сигнал (escape hatch) |
+
+Возврат — тот же контракт, что у обычных data-станций: `RailwaySignals.Green` / `Red` / `Pass`, анонимный тип, record, tuple.
+
+Handler с сигнатурой `Func<RedSignal, Signal>` (и async-вариант) — escape hatch без codegen-адаптера; читайте `red.Manifest` и `red.Issue` напрямую.
+
+Async-вариант data-handler'а:
+
+```csharp
+.ServiceStation("Recovery", async (decimal amount, SignalIssue issue, CancellationToken token) =>
+{
+    await Task.Delay(10, token);
+    return RailwaySignals.Green(new { amount = 1m });
+});
+```
+
+Если станция техобслуживания не зарегистрирована, маршрут завершается с красным `TerminalSignal`.
 
 ## Отмена (CancellationToken)
 
@@ -224,7 +234,7 @@ await route.DispatchTrain().TravelAsync(cts.Token);
 | `Issue.Message` | `Unhandled station exception: {сообщение}` |
 | `Issue.StationName` | имя станции |
 
-Аналогично для `AttachRedSignalStation` — код `RED_SIGNAL_STATION_EXCEPTION`.
+Аналогично для `ServiceStation` — код `SERVICE_STATION_EXCEPTION`.
 
 ## Схема выполнения
 
@@ -233,7 +243,7 @@ flowchart TD
     Start([Стартовый манифест]) --> Station[Станция N]
     Station -->|CargoManifest| Green[GreenSignal]
     Station -->|GreenSignal| Green
-    Station -->|RedSignal| Red{AttachRedSignalStation?}
+    Station -->|RedSignal| Red{ServiceStation?}
     Green --> Next{Есть ещё станции?}
     Next -->|да| Station
     Next -->|нет| Done([RouteReport — успех])

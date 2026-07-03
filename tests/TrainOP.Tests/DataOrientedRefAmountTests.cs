@@ -19,8 +19,8 @@ namespace TrainOP.Tests.DataOriented
             var report = route.DispatchTrain().Travel();
             var manifest = report.TerminalSignal.Manifest;
 
-            Assert.Equal("pay-ref-ref", manifest.PullCar<string>("paymentId"));
-            Assert.Equal(10m, manifest.PullCar<decimal>("amount"));
+            Assert.Equal("pay-ref-ref", manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(10m, manifest.PullWagon<decimal>("amount"));
         }
 
         [Fact]
@@ -30,15 +30,15 @@ namespace TrainOP.Tests.DataOriented
                 .Station("Seed", () => new { paymentId = "pay-ref-manifest", amount = 2m, note = "from-manifest" })
                 .Station("UpdateRefWithManifest", (CargoManifest manifest, string paymentId, ref decimal amount, string note) =>
                 {
-                    amount = amount + manifest.PullCar<decimal>("amount");
+                    amount = amount + manifest.PullWagon<decimal>("amount");
                     return new { paymentId = paymentId + "-" + note };
                 });
 
             var report = route.DispatchTrain().Travel();
             var manifest = report.TerminalSignal.Manifest;
 
-            Assert.Equal("pay-ref-manifest-from-manifest", manifest.PullCar<string>("paymentId"));
-            Assert.Equal(4m, manifest.PullCar<decimal>("amount"));
+            Assert.Equal("pay-ref-manifest-from-manifest", manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(4m, manifest.PullWagon<decimal>("amount"));
         }
 
         [Fact]
@@ -51,8 +51,8 @@ namespace TrainOP.Tests.DataOriented
 
             var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
 
-            Assert.Equal("pay-optional", manifest.PullCar<string>("paymentId"));
-            Assert.Equal(7m, manifest.PullCar<decimal>("amount"));
+            Assert.Equal("pay-optional", manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(7m, manifest.PullWagon<decimal>("amount"));
         }
 
         [Fact]
@@ -65,8 +65,8 @@ namespace TrainOP.Tests.DataOriented
 
             var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
 
-            Assert.Equal("pay-optional", manifest.PullCar<string>("paymentId"));
-            Assert.Equal(3m, manifest.PullCar<decimal>("amount"));
+            Assert.Equal("pay-optional", manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(3m, manifest.PullWagon<decimal>("amount"));
         }
     }
 }

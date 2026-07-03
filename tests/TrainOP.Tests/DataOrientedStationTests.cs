@@ -16,8 +16,8 @@ namespace TrainOP.Tests.DataOriented
             var report = route.DispatchTrain().Travel();
 
             Assert.True(report.ReachedDestination);
-            Assert.Equal("pay-seed", report.TerminalSignal.Manifest.PullCar<string>("paymentId"));
-            Assert.Equal(10m, report.TerminalSignal.Manifest.PullCar<decimal>("amount"));
+            Assert.Equal("pay-seed", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(10m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
         }
 
         [Fact]
@@ -30,8 +30,8 @@ namespace TrainOP.Tests.DataOriented
 
             var report = route.DispatchTrain().Travel();
 
-            Assert.Equal("pay-1", report.TerminalSignal.Manifest.PullCar<string>("paymentId"));
-            Assert.Equal(90m, report.TerminalSignal.Manifest.PullCar<decimal>("amount"));
+            Assert.Equal("pay-1", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(90m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
         }
 
         [Fact]
@@ -44,9 +44,9 @@ namespace TrainOP.Tests.DataOriented
 
             var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
 
-            Assert.Equal("pay-partial-merged", manifest.PullCar<string>("paymentId"));
-            Assert.False(manifest.HasCar("amount"));
-            Assert.Equal("keep", manifest.PullCar<string>("traceId"));
+            Assert.Equal("pay-partial-merged", manifest.PullWagon<string>("paymentId"));
+            Assert.False(manifest.HasWagon("amount"));
+            Assert.Equal("keep", manifest.PullWagon<string>("traceId"));
         }
 
         [Fact]
@@ -59,8 +59,8 @@ namespace TrainOP.Tests.DataOriented
 
             var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
 
-            Assert.Equal("pay-tuple-tuple", manifest.PullCar<string>("paymentId"));
-            Assert.Equal(6m, manifest.PullCar<decimal>("amount"));
+            Assert.Equal("pay-tuple-tuple", manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(6m, manifest.PullWagon<decimal>("amount"));
         }
 
         [Fact]
@@ -70,8 +70,8 @@ namespace TrainOP.Tests.DataOriented
                 .Station("Seed", () => new { paymentId = "pay-fail", amount = -1m })
                 .Station("Validate", (string paymentId, decimal amount) =>
                     amount > 0
-                        ? Data.Ok(new { paymentId, amount })
-                        : Data.Fail("INVALID_TOTAL", "amount must be positive"))
+                        ? RailwaySignals.Green(new { paymentId, amount })
+                        : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"))
                 .Station("MustNotRun", (string paymentId, decimal amount) =>
                     new { paymentId = "nope", amount });
 
@@ -93,8 +93,8 @@ namespace TrainOP.Tests.DataOriented
                 {
                     await Task.Delay(1, token);
                     return amount > 0
-                        ? (object)Data.Ok(new { paymentId, amount })
-                        : Data.Fail("INVALID_TOTAL", "amount must be positive");
+                        ? (object)RailwaySignals.Green(new { paymentId, amount })
+                        : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive");
                 });
 
             var report = await route.DispatchTrain().TravelAsync();
@@ -110,33 +110,53 @@ namespace TrainOP.Tests.DataOriented
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { paymentId = "pay-skip", amount = 12m })
-                .Station("NoOp", (string paymentId, decimal amount) => Data.Skip());
+                .Station("NoOp", (string paymentId, decimal amount) => RailwaySignals.Pass);
 
             var report = route.DispatchTrain().Travel();
 
             Assert.True(report.ReachedDestination);
-            Assert.Equal("pay-skip", report.TerminalSignal.Manifest.PullCar<string>("paymentId"));
-            Assert.Equal(12m, report.TerminalSignal.Manifest.PullCar<decimal>("amount"));
+            Assert.Equal("pay-skip", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(12m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
         }
 
         [Fact]
-        public void Station_DataFail_WithAttachRedSignalStation_ContinuesRoute()
+        public void Station_DataFail_WithServiceStation_ContinuesRoute()
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { value = 0 })
                 .Station("Validate", (int value) =>
                     value > 0
-                        ? Data.Ok(new { value })
-                        : Data.Fail("NON_POSITIVE", "value must be positive"))
-                .AttachRedSignalStation("Recovery", red =>
-                    RailwaySignals.Green(red.Manifest.LoadCar("value", 1)))
+                        ? RailwaySignals.Green(new { value })
+                        : RailwaySignals.Red("NON_POSITIVE", "value must be positive"))
+                .ServiceStation("Recovery", (int value) =>
+                    RailwaySignals.Green(new { value = 1 }))
                 .Station("Double", (int value) => new { value = value * 2 });
 
             var report = route.DispatchTrain().Travel();
 
             Assert.True(report.ReachedDestination);
             Assert.Equal(4, report.Visits.Count);
-            Assert.Equal(2, report.TerminalSignal.Manifest.PullCar<int>("value"));
+            Assert.Equal(2, report.TerminalSignal.Manifest.PullWagon<int>("value"));
+        }
+
+        [Fact]
+        public void ServiceStation_DataFail_StopsRouteAfterRecoveryAttempt()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { value = 0 })
+                .Station("Validate", (int value) =>
+                    RailwaySignals.Red("NON_POSITIVE", "value must be positive"))
+                .ServiceStation("Recovery", (SignalIssue issue) =>
+                    RailwaySignals.Red("CANNOT_RECOVER", "recovery declined: " + issue.Code))
+                .Station("MustNotRun", (int value) => new { value });
+
+            var report = route.DispatchTrain().Travel();
+
+            Assert.False(report.ReachedDestination);
+            Assert.Equal(3, report.Visits.Count);
+            var red = Assert.IsType<RedSignal>(report.TerminalSignal);
+            Assert.Equal("CANNOT_RECOVER", red.Issue.Code);
+            Assert.Equal("Recovery", red.Issue.StationName);
         }
 
         [Fact]
@@ -153,8 +173,8 @@ namespace TrainOP.Tests.DataOriented
             var report = await route.DispatchTrain().TravelAsync();
 
             Assert.True(report.ReachedDestination);
-            Assert.Equal("pay-async-async", report.TerminalSignal.Manifest.PullCar<string>("paymentId"));
-            Assert.Equal(10m, report.TerminalSignal.Manifest.PullCar<decimal>("amount"));
+            Assert.Equal("pay-async-async", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(10m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
         }
 
         [Fact]
@@ -165,27 +185,64 @@ namespace TrainOP.Tests.DataOriented
                 .Station("WithManifest", (CargoManifest manifest, string paymentId, decimal amount) =>
                     new
                     {
-                        paymentId = paymentId + "-" + manifest.PullCar<string>("traceId"),
+                        paymentId = paymentId + "-" + manifest.PullWagon<string>("traceId"),
                         amount = amount + 2m,
                     });
 
             var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
 
-            Assert.Equal("pay-manifest-trace-42", manifest.PullCar<string>("paymentId"));
-            Assert.Equal(10m, manifest.PullCar<decimal>("amount"));
-            Assert.Equal("trace-42", manifest.PullCar<string>("traceId"));
+            Assert.Equal("pay-manifest-trace-42", manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(10m, manifest.PullWagon<decimal>("amount"));
+            Assert.Equal("trace-42", manifest.PullWagon<string>("traceId"));
         }
 
         [Fact]
-        public void AttachStation_ManifestStyle_StillWorks()
+        public void Station_TravelWithManifest_UsesExternalSeed()
         {
             var route = new TrainRoute()
-                .AttachStation("Seed", manifest =>
-                    manifest.LoadCar("paymentId", "manifest-style"));
+                .Station("Double", (string paymentId, decimal amount) =>
+                    new { paymentId, amount = amount * 2m });
 
-            var report = route.DispatchTrain().Travel();
+            var start = new CargoManifest()
+                .LoadWagon("paymentId", "external")
+                .LoadWagon("amount", 5m);
 
-            Assert.Equal("manifest-style", report.TerminalSignal.Manifest.PullCar<string>("paymentId"));
+            var report = route.DispatchTrain().Travel(start);
+
+            Assert.Equal("external", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(10m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
+        }
+
+        [Fact]
+        public void Station_StaticBuildMethod_IsAnalysisAnchorPattern()
+        {
+            var report = PaymentRoute.Build().DispatchTrain().Travel();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal("anchored", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
+        }
+
+        [Fact]
+        public void Station_PartialReturn_RemovesTemporaryWagons()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { value = 1, temporary = "keep" })
+                .Station("Mutate", (int value, string temporary) => new { value = value + 41 });
+
+            var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
+
+            Assert.Equal(42, manifest.PullWagon<int>("value"));
+            Assert.False(manifest.HasWagon("temporary"));
+        }
+
+        private static class PaymentRoute
+        {
+            public static TrainRoute Build()
+            {
+                return new TrainRoute()
+                    .Station("Seed", () => new { paymentId = "anchored", amount = 1m })
+                    .Station("Pass", (string paymentId, decimal amount) => new { paymentId, amount });
+            }
         }
     }
 }

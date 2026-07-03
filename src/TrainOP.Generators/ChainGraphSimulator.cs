@@ -69,6 +69,12 @@ namespace TrainOP.Generators
                             continue;
                         }
 
+                        if (i == 0)
+                        {
+                            // Wagons may be supplied by Travel(manifest) before the first station runs.
+                            continue;
+                        }
+
                         diagnostics.Add(Diagnostic.Create(
                             TrainRouteDiagnostics.MissingWagon,
                             input.Location,
@@ -108,9 +114,8 @@ namespace TrainOP.Generators
                     continue;
                 }
 
-                if (handler.ReturnShape.IsValueTuple
-                    && handler.InputWagons.Length > 0
-                    && UsesPositionalTupleElementNames(handler.ReturnShape))
+                if (handler.ReturnShape.IsUnnamedValueTuple
+                    && handler.InputWagons.Length > 0)
                 {
                     var expected = string.Join(", ", handler.InputWagons.Select(w => w.Name));
                     diagnostics.Add(Diagnostic.Create(
@@ -248,29 +253,6 @@ namespace TrainOP.Generators
             return false;
         }
 
-        private static bool UsesPositionalTupleElementNames(ReturnShape returnShape)
-        {
-            if (returnShape.Members.IsDefaultOrEmpty)
-            {
-                return true;
-            }
-
-            for (var i = 0; i < returnShape.Members.Length; i++)
-            {
-                var name = returnShape.Members[i].Name ?? string.Empty;
-                if (!name.StartsWith("Item", StringComparison.Ordinal))
-                {
-                    return false;
-                }
-
-                if (!int.TryParse(name.Substring(4), out _))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
     }
 
     internal sealed class ChainSimulationResult

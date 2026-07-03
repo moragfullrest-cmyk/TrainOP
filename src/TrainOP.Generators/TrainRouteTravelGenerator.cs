@@ -140,7 +140,7 @@ namespace TrainOP.Generators
             for (var i = 0; i < schema.Wagons.Length; i++)
             {
                 var wagon = schema.Wagons[i];
-                source.Append(wagon.Name).Append(": manifest.PullCar<")
+                source.Append(wagon.Name).Append(": manifest.PullWagon<")
                     .Append(ManifestWagonTypes.ToManifestTypeDisplay(wagon.TypeSymbol))
                     .Append(">(\"")
                     .Append(Escape(wagon.Name))
@@ -189,7 +189,7 @@ namespace TrainOP.Generators
                 var wagon = schema.Wagons[0];
                 source.Append("            ")
                     .Append(wagon.Name)
-                    .Append(" = report.TerminalSignal.Manifest.PullCar<")
+                    .Append(" = report.TerminalSignal.Manifest.PullWagon<")
                     .Append(ManifestWagonTypes.ToManifestTypeDisplay(wagon.TypeSymbol))
                     .Append(">(\"")
                     .Append(Escape(wagon.Name))
@@ -226,13 +226,30 @@ namespace TrainOP.Generators
             var score = 0;
             foreach (var wagon in schema.Wagons)
             {
-                if (ManifestWagonTypes.ToManifestTypeDisplay(wagon.TypeSymbol) != "global::System.String")
-                {
-                    score++;
-                }
+                score += GetDeconstructTypeSpecificity(ManifestWagonTypes.ToManifestTypeDisplay(wagon.TypeSymbol));
             }
 
             return score;
+        }
+
+        private static int GetDeconstructTypeSpecificity(string typeDisplay)
+        {
+            if (typeDisplay == "global::System.String")
+            {
+                return 0;
+            }
+
+            if (typeDisplay == "global::System.Decimal")
+            {
+                return 2;
+            }
+
+            if (typeDisplay == "global::System.Int32")
+            {
+                return 1;
+            }
+
+            return 3;
         }
 
         private static bool AreVarDeconstructAmbiguous(TerminalWagonSchema left, TerminalWagonSchema right)

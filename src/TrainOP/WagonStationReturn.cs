@@ -1,12 +1,10 @@
 using System;
-using System.Collections.Generic;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 
 namespace TrainOP
 {
     /// <summary>
-    /// Reads wagon values from station handler return values (anonymous types, tuples, and plain objects).
+    /// Reads wagon values from station handler return values using generator-provided names and ordinals.
     /// </summary>
     public static class WagonStationReturn
     {
@@ -18,7 +16,7 @@ namespace TrainOP
                 return false;
             }
 
-            return TryGetMemberValue(typeof(T), source, memberName, out value);
+            return TryGetMemberValue(source.GetType(), source, memberName, out value);
         }
 
         public static bool TryGetMemberValue(Type type, object source, string memberName, out object value)
@@ -45,12 +43,57 @@ namespace TrainOP
                 return true;
             }
 
-            return TryGetValueTupleMemberValue(source, type, memberName, flags, out value);
+            if (IsValueTupleType(type) && TryGetValueTupleElementByName(type, source, memberName, flags, out value))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryGetValueTupleElementByName(
+            Type type,
+            object source,
+            string memberName,
+            BindingFlags flags,
+            out object value)
+        {
+            value = null;
+            foreach (var field in type.GetFields(flags))
+            {
+                if (string.Equals(field.Name, memberName, StringComparison.Ordinal))
+                {
+                    value = field.GetValue(source);
+                    return true;
+                }
+
+                var elementName = GetTupleElementName(field);
+                if (elementName != null && string.Equals(elementName, memberName, StringComparison.Ordinal))
+                {
+                    value = field.GetValue(source);
+                    return true;
+                }
+            }
+
+            foreach (var property in type.GetProperties(flags))
+            {
+                if (property.GetIndexParameters().Length != 0)
+                {
+                    continue;
+                }
+
+                if (string.Equals(property.Name, memberName, StringComparison.Ordinal))
+                {
+                    value = property.GetValue(source);
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
-        /// Reads a value tuple element by position (Item1, Item2, ...).
-        /// Tuple element names are compile-time only; use this when names are unavailable at runtime.
+        /// Reads a value tuple element by generator-provided position (Item1, Item2, ...).
         /// </summary>
         public static bool TryGetTupleElement<T>(T source, int ordinal, out object value)
         {
@@ -71,12 +114,6 @@ namespace TrainOP
                 return false;
             }
 
-            var type = source.GetType();
-            if (!IsValueTupleType(type))
-            {
-                return false;
-            }
-
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_0_OR_GREATER
             if (source is ITuple tuple)
             {
@@ -90,6 +127,12 @@ namespace TrainOP
             }
 #endif
 
+            var type = source.GetType();
+            if (!IsValueTupleType(type))
+            {
+                return false;
+            }
+
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public;
             var itemField = type.GetField("Item" + (ordinal + 1), flags);
             if (itemField == null)
@@ -101,131 +144,107 @@ namespace TrainOP
             return true;
         }
 
-        public static bool TryGetTupleElementMatchingManifestWagon(
-            object source,
-            CargoManifest manifest,
-            string wagonName,
-            ISet<int> usedOrdinals,
-            out object value)
+        public static bool IsValueTuple(object source)
         {
-            value = null;
-            if (source == null || manifest == null || string.IsNullOrWhiteSpace(wagonName) || !manifest.HasCar(wagonName))
-            {
-                return false;
-            }
-
-            if (!IsValueTupleType(source.GetType()))
-            {
-                return false;
-            }
-
-            var expectedType = manifest.InspectCars()[wagonName].GetType();
-            if (!TryGetTupleLength(source, out var length))
-            {
-                return false;
-            }
-
-            var matches = new List<int>();
-            for (var ordinal = 0; ordinal < length; ordinal++)
-            {
-                if (usedOrdinals != null && usedOrdinals.Contains(ordinal))
-                {
-                    continue;
-                }
-
-                if (!TryGetTupleElement(source, ordinal, out var candidate) || candidate == null)
-                {
-                    continue;
-                }
-
-                if (expectedType.IsInstanceOfType(candidate))
-                {
-                    matches.Add(ordinal);
-                }
-            }
-
-            if (matches.Count != 1)
-            {
-                return false;
-            }
-
-            var selected = matches[0];
-            if (!TryGetTupleElement(source, selected, out value))
-            {
-                return false;
-            }
-
-            usedOrdinals?.Add(selected);
-            return true;
+            return source != null && IsValueTupleType(source.GetType());
         }
 
-        private static bool TryGetTupleLength(object source, out int length)
+        /// <summary>
+        /// When tuple element names are unavailable at runtime, maps a wagon to the sole tuple
+        /// element whose type matches the existing manifest value.
+        /// </summary>
+        public static bool TryGetUniqueTupleElementByType(object source, Type expectedType, out object value)
         {
-            length = 0;
-            if (source == null)
+            value = null;
+            if (source == null || expectedType == null || !IsValueTuple(source))
             {
                 return false;
             }
+
+            object match = null;
+            var matchCount = 0;
 
 #if NETSTANDARD2_1_OR_GREATER || NETCOREAPP2_0_OR_GREATER
             if (source is ITuple tuple)
             {
-                length = tuple.Length;
-                return true;
-            }
-#endif
-
-            var type = source.GetType();
-            if (!IsValueTupleType(type))
-            {
-                return false;
-            }
-
-            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public;
-            for (var i = 1; i <= 16; i++)
-            {
-                if (type.GetField("Item" + i, flags) == null)
+                for (var i = 0; i < tuple.Length; i++)
                 {
-                    length = i - 1;
-                    return length > 0;
+                    if (!IsCompatibleType(expectedType, tuple[i]))
+                    {
+                        continue;
+                    }
+
+                    match = tuple[i];
+                    matchCount++;
+                }
+            }
+            else
+#endif
+            {
+                for (var i = 0; ; i++)
+                {
+                    if (!TryGetTupleElement(source, i, out var element))
+                    {
+                        break;
+                    }
+
+                    if (!IsCompatibleType(expectedType, element))
+                    {
+                        continue;
+                    }
+
+                    match = element;
+                    matchCount++;
                 }
             }
 
-            return false;
-        }
-
-        private static bool TryGetValueTupleMemberValue(
-            object source,
-            Type type,
-            string memberName,
-            BindingFlags flags,
-            out object value)
-        {
-            value = null;
-            var names = GetTupleElementNames(type);
-            if (names == null)
+            if (matchCount != 1)
             {
                 return false;
             }
 
-            for (var i = 0; i < names.Count; i++)
+            value = match;
+            return true;
+        }
+
+        private static bool IsCompatibleType(Type expectedType, object element)
+        {
+            if (element == null)
             {
-                if (!string.Equals(names[i], memberName, StringComparison.Ordinal))
+                return false;
+            }
+
+            return TypesCompatible(expectedType, element.GetType());
+        }
+
+        internal static bool TypesCompatible(Type expectedType, Type actualType)
+        {
+            if (expectedType == null || actualType == null)
+            {
+                return false;
+            }
+
+            return expectedType.IsAssignableFrom(actualType);
+        }
+
+        private static string GetTupleElementName(FieldInfo field)
+        {
+            foreach (var attribute in field.GetCustomAttributes(inherit: false))
+            {
+                var attributeType = attribute.GetType();
+                if (!string.Equals(
+                    attributeType.FullName,
+                    "System.Runtime.CompilerServices.TupleElementNameAttribute",
+                    StringComparison.Ordinal))
                 {
                     continue;
                 }
 
-                var itemField = type.GetField("Item" + (i + 1), flags);
-                if (itemField == null)
-                {
-                    return false;
-                }
-
-                value = itemField.GetValue(source);
-                return true;
+                var transformNameProperty = attributeType.GetProperty("TransformName", BindingFlags.Instance | BindingFlags.Public);
+                return transformNameProperty?.GetValue(attribute) as string;
             }
 
-            return false;
+            return null;
         }
 
         private static bool IsValueTupleType(Type type)
@@ -238,11 +257,6 @@ namespace TrainOP
             var fullName = type.FullName;
             return fullName != null
                 && fullName.StartsWith("System.ValueTuple`", StringComparison.Ordinal);
-        }
-
-        private static IList<string> GetTupleElementNames(Type type)
-        {
-            return type.GetCustomAttribute<TupleElementNamesAttribute>()?.TransformNames;
         }
     }
 }

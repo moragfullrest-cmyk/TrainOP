@@ -64,7 +64,9 @@ namespace TrainOP.Generators
                 }
 
                 var typeName = namedTypeSymbol.Name ?? string.Empty;
-                if (typeName.StartsWith("StationData", StringComparison.Ordinal))
+                if (string.Equals(typeName, "GreenPayload", StringComparison.Ordinal)
+                    || string.Equals(typeName, "RedFailure", StringComparison.Ordinal)
+                    || string.Equals(typeName, "GreenPass", StringComparison.Ordinal))
                 {
                     return false;
                 }
@@ -96,6 +98,16 @@ namespace TrainOP.Generators
                 default:
                     return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             }
+        }
+
+        public static string ToWagonParameterTypeDisplay(ITypeSymbol parameterType, ITypeSymbol underlyingType, bool isOptional)
+        {
+            if (isOptional && underlyingType != null)
+            {
+                return ToManifestTypeDisplay(underlyingType) + "?";
+            }
+
+            return ToManifestTypeDisplay(parameterType);
         }
     }
 }

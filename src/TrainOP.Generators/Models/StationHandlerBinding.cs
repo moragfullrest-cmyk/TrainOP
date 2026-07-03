@@ -9,13 +9,19 @@ namespace TrainOP.Generators.Models
             bool includeManifest,
             bool isAsync,
             bool hasCancellationToken,
-            ReturnShape returnShape)
+            ReturnShape returnShape,
+            bool isServiceStation = false,
+            bool includeRedSignal = false,
+            bool includeSignalIssue = false)
         {
             InputWagons = inputWagons;
             IncludeManifest = includeManifest;
             IsAsync = isAsync;
             HasCancellationToken = hasCancellationToken;
             ReturnShape = returnShape;
+            IsServiceStation = isServiceStation;
+            IncludeRedSignal = includeRedSignal;
+            IncludeSignalIssue = includeSignalIssue;
         }
 
         public ImmutableArray<WagonBinding> InputWagons { get; }
@@ -28,6 +34,12 @@ namespace TrainOP.Generators.Models
 
         public ReturnShape ReturnShape { get; }
 
-        public bool IsSeed => InputWagons.Length == 0 && !IncludeManifest;
+        public bool IsServiceStation { get; }
+
+        public bool IncludeRedSignal { get; }
+
+        public bool IncludeSignalIssue { get; }
+
+        public bool IsSeed => InputWagons.Length == 0 && !IncludeManifest && !IsServiceStation;
     }
 }
