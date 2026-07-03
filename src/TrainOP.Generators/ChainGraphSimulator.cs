@@ -1,16 +1,25 @@
+using Microsoft.CodeAnalysis;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
-using Microsoft.CodeAnalysis;
 using TrainOP.Generators.Models;
 
 namespace TrainOP.Generators
 {
+    /// <summary>
+    /// Simulates wagon flow through a route chain to detect missing, conflicting, or removed wagons.
+    /// </summary>
     internal static class ChainGraphSimulator
     {
+        /// <summary>
+        /// Tracks a wagon currently present in the manifest during simulation.
+        /// </summary>
         private sealed class LiveWagon
         {
+            /// <summary>
+            /// Creates a live wagon record for the given binding and producing station.
+            /// </summary>
             public LiveWagon(WagonBinding binding, string producedAtStation)
             {
                 Binding = binding;
@@ -22,8 +31,14 @@ namespace TrainOP.Generators
             public string ProducedAtStation { get; }
         }
 
+        /// <summary>
+        /// Records a wagon that was removed from the manifest at a specific station.
+        /// </summary>
         private sealed class RemovedWagon
         {
+            /// <summary>
+            /// Creates a removed-wagon record for the station where removal occurred.
+            /// </summary>
             public RemovedWagon(string removedAtStation)
             {
                 RemovedAtStation = removedAtStation;
@@ -32,6 +47,9 @@ namespace TrainOP.Generators
             public string RemovedAtStation { get; }
         }
 
+        /// <summary>
+        /// Walks the chain station by station, updating live wagons and collecting diagnostics.
+        /// </summary>
         public static ChainSimulationResult Simulate(RouteChain chain)
         {
             var diagnostics = new List<Diagnostic>();
@@ -156,6 +174,9 @@ namespace TrainOP.Generators
                 diagnostics.ToImmutableArray());
         }
 
+        /// <summary>
+        /// Applies a station handler return shape to the live and removed wagon state.
+        /// </summary>
         private static void ApplyReturn(
             StationChainLink station,
             StationHandlerBinding handler,
@@ -211,6 +232,9 @@ namespace TrainOP.Generators
             }
         }
 
+        /// <summary>
+        /// Checks whether an existing wagon type is compatible with a required input type.
+        /// </summary>
         private static bool TypesCompatible(ITypeSymbol existing, ITypeSymbol required)
         {
             if (existing == null || required == null)
@@ -238,6 +262,9 @@ namespace TrainOP.Generators
             return false;
         }
 
+        /// <summary>
+        /// Extracts the underlying type from a nullable value type, if applicable.
+        /// </summary>
         private static bool TryGetNullableUnderlying(ITypeSymbol typeSymbol, out ITypeSymbol underlying)
         {
             underlying = null;
@@ -255,8 +282,14 @@ namespace TrainOP.Generators
 
     }
 
+    /// <summary>
+    /// Outcome of simulating wagon flow through a route chain.
+    /// </summary>
     internal sealed class ChainSimulationResult
     {
+        /// <summary>
+        /// Creates a simulation result with terminal wagons, unknown-return flag, and diagnostics.
+        /// </summary>
         public ChainSimulationResult(
             ImmutableArray<WagonBinding> terminalWagons,
             bool hasUnknownReturn,

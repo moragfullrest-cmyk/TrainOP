@@ -1,15 +1,15 @@
-using TrainOP;
-
 namespace TrainOP.Samples;
 
 /// <summary>
-/// Длинный маршрут: при красном сигнале срабатывает ServiceStation в конце цепочки,
-/// пишет детали ошибки в консоль и восстанавливает поезд.
+/// Demonstrates a long route where a terminal ServiceStation logs red-signal details and attempts recovery.
 /// </summary>
 internal sealed class LongRouteServiceStationExample : IExample
 {
     public string Title => "7. Длинный маршрут + ServiceStation";
 
+    /// <summary>
+    /// Runs a multi-station order pipeline that may stop on red signals and recover via a terminal service station.
+    /// </summary>
     public void Run()
     {
         ExampleOutput.WriteHeader(Title);

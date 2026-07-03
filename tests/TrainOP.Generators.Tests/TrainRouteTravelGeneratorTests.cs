@@ -1,16 +1,21 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using TrainOP.Generators;
 using Xunit;
 
 namespace TrainOP.Generators.Tests
 {
+    /// <summary>
+    /// Tests source generation for typed Travel and RouteReport deconstruction extensions.
+    /// </summary>
     public sealed class TrainRouteTravelGeneratorTests
     {
+        /// <summary>
+        /// Verifies that the generator emits deconstruct extensions for a sample-style route with data-fail validation.
+        /// </summary>
         [Fact]
         public void Generator_Emits_ForSampleStyleRouteWithDataFail()
         {
@@ -38,6 +43,9 @@ internal sealed class DataOrientedStationExample
             Assert.Contains("out global::System.Decimal amount", generated);
         }
 
+        /// <summary>
+        /// Verifies that the generator emits RouteReport Deconstruct for a data-oriented route chain.
+        /// </summary>
         [Fact]
         public void Generator_EmitsRouteReportDeconstruct_ForDataOrientedChain()
         {
@@ -62,6 +70,9 @@ public static class PaymentRoute
             Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
         }
 
+        /// <summary>
+        /// Verifies that ambiguous deconstruct overloads are skipped when schemas share arity across routes.
+        /// </summary>
         [Fact]
         public void Generator_SkipsVarAmbiguousDeconstruct_WhenSchemasShareArity()
         {
@@ -89,6 +100,9 @@ public static class OtherRoute
             Assert.DoesNotContain("out global::System.String traceId", generated);
         }
 
+        /// <summary>
+        /// Verifies that terminal wagon deconstruct omits wagons removed by a partial return.
+        /// </summary>
         [Fact]
         public void Generator_EmitsTerminalWagons_AfterPartialReturn()
         {

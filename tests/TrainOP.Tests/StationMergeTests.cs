@@ -1,10 +1,15 @@
-using TrainOP;
 using Xunit;
 
 namespace TrainOP.Tests
 {
+    /// <summary>
+    /// Tests manifest merging behavior in <see cref="StationMerge.Apply"/>.
+    /// </summary>
     public sealed class StationMergeTests
     {
+        /// <summary>
+        /// Verifies that tuple element ordinals map reordered named tuple values to manifest wagons.
+        /// </summary>
         [Fact]
         public void Apply_UsesTupleElementOrdinals_ForReorderedNamedTuple()
         {
@@ -25,6 +30,9 @@ namespace TrainOP.Tests
             Assert.Equal(45m, merged.PullWagon<decimal>("amount"));
         }
 
+        /// <summary>
+        /// Verifies that return member names are used when merging seed handler anonymous type returns.
+        /// </summary>
         [Fact]
         public void Apply_UsesReturnMemberNames_ForSeedHandler()
         {
@@ -43,6 +51,9 @@ namespace TrainOP.Tests
             Assert.Equal(10m, merged.PullWagon<decimal>("amount"));
         }
 
+        /// <summary>
+        /// Verifies that tuple ordinals apply only to value tuple returns, not anonymous types.
+        /// </summary>
         [Fact]
         public void Apply_UsesTupleOrdinalsOnlyForValueTupleReturns()
         {

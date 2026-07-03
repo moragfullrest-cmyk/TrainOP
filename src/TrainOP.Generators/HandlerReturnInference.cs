@@ -1,15 +1,21 @@
-using System;
-using System.Collections.Immutable;
-using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System;
+using System.Collections.Immutable;
+using System.Linq;
 using TrainOP.Generators.Models;
 
 namespace TrainOP.Generators
 {
+    /// <summary>
+    /// Infers the wagon return shape of a data-oriented station handler lambda.
+    /// </summary>
     internal static class HandlerReturnInference
     {
+        /// <summary>
+        /// Infers the return shape from a handler lambda symbol, body, and input wagons.
+        /// </summary>
         public static ReturnShape Infer(
             LambdaExpressionSyntax lambdaSyntax,
             IMethodSymbol lambdaSymbol,
@@ -57,6 +63,9 @@ namespace TrainOP.Generators
             return shape;
         }
 
+        /// <summary>
+        /// Infers a return shape from a GreenPayload-wrapped return type.
+        /// </summary>
         private static ReturnShape InferFromGreenPayload(
             ITypeSymbol greenPayload,
             ImmutableArray<WagonBinding> inputWagons,
@@ -72,6 +81,9 @@ namespace TrainOP.Generators
             return shape;
         }
 
+        /// <summary>
+        /// Extracts the body syntax node from a simple or parenthesized lambda.
+        /// </summary>
         private static CSharpSyntaxNode GetLambdaBody(LambdaExpressionSyntax lambdaSyntax)
         {
             if (lambdaSyntax is SimpleLambdaExpressionSyntax simpleLambda)
@@ -87,6 +99,9 @@ namespace TrainOP.Generators
             return null;
         }
 
+        /// <summary>
+        /// Infers the return type from a lambda body expression or block.
+        /// </summary>
         private static ITypeSymbol InferBodyReturnType(CSharpSyntaxNode body, SemanticModel semanticModel)
         {
             if (body == null)
@@ -113,6 +128,9 @@ namespace TrainOP.Generators
             return null;
         }
 
+        /// <summary>
+        /// Infers the return type from a single expression, including conditional branches.
+        /// </summary>
         private static ITypeSymbol InferExpressionReturnType(ExpressionSyntax expression, SemanticModel semanticModel)
         {
             if (expression is ConditionalExpressionSyntax conditional)
@@ -148,11 +166,17 @@ namespace TrainOP.Generators
             return typeInfo.Type ?? typeInfo.ConvertedType;
         }
 
+        /// <summary>
+        /// Determines whether an inferred type is specific enough to use for return-shape analysis.
+        /// </summary>
         private static bool IsUsefulInferredType(ITypeSymbol typeSymbol)
         {
             return typeSymbol != null && typeSymbol.SpecialType != SpecialType.System_Object;
         }
 
+        /// <summary>
+        /// Builds a return shape from a concrete return type symbol.
+        /// </summary>
         private static ReturnShape InferFromType(
             ITypeSymbol returnType,
             ImmutableArray<WagonBinding> inputWagons,
@@ -234,6 +258,9 @@ namespace TrainOP.Generators
             return new ReturnShape(bindings.ToImmutable(), isCargoManifest: false, isValueTuple: false);
         }
 
+        /// <summary>
+        /// Unwraps Task-wrapped return types to their payload type.
+        /// </summary>
         private static ITypeSymbol UnwrapReturnType(ITypeSymbol returnType)
         {
             if (returnType == null)
@@ -251,21 +278,33 @@ namespace TrainOP.Generators
             return returnType;
         }
 
+        /// <summary>
+        /// Determines whether the type is CargoManifest.
+        /// </summary>
         private static bool IsCargoManifest(ITypeSymbol typeSymbol)
         {
             return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.CargoManifest", StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Determines whether the type is RedFailure.
+        /// </summary>
         private static bool IsRedFailure(ITypeSymbol typeSymbol)
         {
             return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.RedFailure", StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Determines whether the type is GreenPass.
+        /// </summary>
         private static bool IsGreenPass(ITypeSymbol typeSymbol)
         {
             return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.GreenPass", StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Determines whether the type is GreenPayload and extracts its payload type.
+        /// </summary>
         private static bool IsGreenPayload(ITypeSymbol typeSymbol, out ITypeSymbol payloadType)
         {
             payloadType = null;
@@ -280,6 +319,9 @@ namespace TrainOP.Generators
             return false;
         }
 
+        /// <summary>
+        /// Determines whether the type is a System.ValueTuple type.
+        /// </summary>
         private static bool IsValueTuple(ITypeSymbol typeSymbol)
         {
             if (!(typeSymbol is INamedTypeSymbol named) || !named.IsTupleType)
@@ -292,6 +334,9 @@ namespace TrainOP.Generators
                 || fullName.StartsWith("(", StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Determines whether a tuple type uses only default ItemN element names.
+        /// </summary>
         private static bool IsUnnamedValueTuple(INamedTypeSymbol namedTuple)
         {
             var elementNames = namedTuple.TupleElements;
@@ -311,6 +356,9 @@ namespace TrainOP.Generators
             return true;
         }
 
+        /// <summary>
+        /// Determines whether a tuple element name is the default ItemN name for its index.
+        /// </summary>
         private static bool IsDefaultTupleElementName(string name, int index)
         {
             if (string.IsNullOrEmpty(name))

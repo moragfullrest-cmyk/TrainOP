@@ -1,10 +1,15 @@
-using TrainOP;
 using Xunit;
 
 namespace TrainOP.Tests.DataOriented
 {
+    /// <summary>
+    /// Tests merging of reordered named tuple returns from data-oriented stations.
+    /// </summary>
     public sealed class DataOrientedNamedTupleReturnTests
     {
+        /// <summary>
+        /// Verifies that a station returning a reordered named tuple merges wagon values by name.
+        /// </summary>
         [Fact]
         public void Station_ReturnsReorderedNamedTuple_MergesByName()
         {

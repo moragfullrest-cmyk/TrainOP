@@ -1,24 +1,36 @@
-using System;
-using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System;
+using System.Collections.Immutable;
 using TrainOP.Generators.Models;
 
 namespace TrainOP.Generators
 {
+    /// <summary>
+    /// Parses and classifies TrainRoute station and service-station invocation syntax.
+    /// </summary>
     internal static class StationSyntaxHelper
     {
+        /// <summary>
+        /// Determines whether a syntax node looks like a Station method invocation.
+        /// </summary>
         public static bool IsCandidateStationInvocation(SyntaxNode node)
         {
             return IsCandidateRouteHandlerInvocation(node, "Station");
         }
 
+        /// <summary>
+        /// Determines whether a syntax node looks like a ServiceStation method invocation.
+        /// </summary>
         public static bool IsCandidateServiceStationInvocation(SyntaxNode node)
         {
             return IsCandidateRouteHandlerInvocation(node, "ServiceStation");
         }
 
+        /// <summary>
+        /// Determines whether a syntax node is an invocation of the given route handler method name.
+        /// </summary>
         private static bool IsCandidateRouteHandlerInvocation(SyntaxNode node, string methodName)
         {
             if (!(node is InvocationExpressionSyntax invocation))
@@ -34,6 +46,9 @@ namespace TrainOP.Generators
             return string.Equals(memberAccess.Name.Identifier.ValueText, methodName, StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Determines whether a type symbol is TrainRoute.
+        /// </summary>
         public static bool IsTrainRoute(ITypeSymbol typeSymbol)
         {
             if (typeSymbol == null)
@@ -44,6 +59,9 @@ namespace TrainOP.Generators
             return string.Equals(typeSymbol.ToDisplayString(), "TrainOP.TrainRoute", StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Determines whether an expression is or derives from a TrainRoute receiver.
+        /// </summary>
         public static bool IsTrainRouteReceiver(
             ExpressionSyntax receiverExpression,
             ITypeSymbol receiverType,
@@ -77,12 +95,18 @@ namespace TrainOP.Generators
             return false;
         }
 
+        /// <summary>
+        /// Determines whether an object creation expression constructs a TrainRoute.
+        /// </summary>
         public static bool IsTrainRouteCreation(ObjectCreationExpressionSyntax objectCreation, SemanticModel semanticModel)
         {
             var typeInfo = semanticModel.GetTypeInfo(objectCreation);
             return IsTrainRoute(typeInfo.Type) || IsTrainRoute(typeInfo.ConvertedType);
         }
 
+        /// <summary>
+        /// Attempts to parse a data-oriented Station invocation into handler binding metadata.
+        /// </summary>
         public static bool TryGetDataStationInvocation(
             InvocationExpressionSyntax invocation,
             SemanticModel semanticModel,
@@ -100,6 +124,9 @@ namespace TrainOP.Generators
                 out handlerBinding);
         }
 
+        /// <summary>
+        /// Attempts to parse a data-oriented ServiceStation invocation into handler binding metadata.
+        /// </summary>
         public static bool TryGetDataServiceStationInvocation(
             InvocationExpressionSyntax invocation,
             SemanticModel semanticModel,
@@ -117,6 +144,9 @@ namespace TrainOP.Generators
                 out handlerBinding);
         }
 
+        /// <summary>
+        /// Attempts to parse a data-oriented route handler invocation of the given method name.
+        /// </summary>
         private static bool TryGetDataRouteHandlerInvocation(
             InvocationExpressionSyntax invocation,
             SemanticModel semanticModel,
@@ -135,7 +165,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (!(invocation.Expression is MemberAccessExpressionSyntax memberAccess))
+            if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
             {
                 return false;
             }
@@ -182,6 +212,9 @@ namespace TrainOP.Generators
             return true;
         }
 
+        /// <summary>
+        /// Resolves a lambda expression and its method symbol from a handler argument.
+        /// </summary>
         public static bool TryGetLambda(
             ExpressionSyntax expression,
             SemanticModel semanticModel,
@@ -207,6 +240,9 @@ namespace TrainOP.Generators
             return lambdaSymbol != null;
         }
 
+        /// <summary>
+        /// Builds a station handler binding from a lambda and its semantic model symbols.
+        /// </summary>
         public static StationHandlerBinding TryBuildHandlerBinding(
             LambdaExpressionSyntax lambdaSyntax,
             IMethodSymbol lambdaSymbol,
@@ -306,6 +342,9 @@ namespace TrainOP.Generators
                 includeSignalIssue);
         }
 
+        /// <summary>
+        /// Determines whether a lambda is async based on syntax or return type.
+        /// </summary>
         private static bool IsAsyncLambda(LambdaExpressionSyntax lambdaSyntax, IMethodSymbol lambdaSymbol)
         {
             if (lambdaSyntax.AsyncKeyword != default)
@@ -319,26 +358,41 @@ namespace TrainOP.Generators
                 && string.Equals(returnType.ConstructedFrom.ToDisplayString(), "System.Threading.Tasks.Task", StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Determines whether the type is CargoManifest.
+        /// </summary>
         private static bool IsCargoManifest(ITypeSymbol typeSymbol)
         {
             return string.Equals(typeSymbol.ToDisplayString(), "TrainOP.CargoManifest", StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Determines whether the type is CancellationToken.
+        /// </summary>
         private static bool IsCancellationToken(ITypeSymbol typeSymbol)
         {
             return string.Equals(typeSymbol.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Determines whether the type is RedSignal.
+        /// </summary>
         private static bool IsRedSignal(ITypeSymbol typeSymbol)
         {
             return string.Equals(typeSymbol.ToDisplayString(), "TrainOP.RedSignal", StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Determines whether the type is SignalIssue.
+        /// </summary>
         private static bool IsSignalIssue(ITypeSymbol typeSymbol)
         {
             return string.Equals(typeSymbol.ToDisplayString(), "TrainOP.SignalIssue", StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Locates the source position of a lambda parameter by name.
+        /// </summary>
         private static Location GetParameterLocation(LambdaExpressionSyntax lambdaSyntax, string parameterName)
         {
             if (lambdaSyntax is SimpleLambdaExpressionSyntax simpleLambda)
@@ -362,6 +416,9 @@ namespace TrainOP.Generators
             return null;
         }
 
+        /// <summary>
+        /// Determines whether a name is a valid wagon parameter identifier.
+        /// </summary>
         private static bool IsValidWagonParameterName(string wagonName)
         {
             if (string.IsNullOrWhiteSpace(wagonName))

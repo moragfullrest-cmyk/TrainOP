@@ -2,8 +2,14 @@ using Microsoft.CodeAnalysis;
 
 namespace TrainOP.Generators.Models
 {
+    /// <summary>
+    /// Binds a named wagon to its type, source location, and pull semantics.
+    /// </summary>
     internal sealed class WagonBinding
     {
+        /// <summary>
+        /// Creates a wagon binding with type, location, and optional ref/nullable metadata.
+        /// </summary>
         public WagonBinding(
             string name,
             string typeDisplay,

@@ -1,23 +1,32 @@
-using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
+using System.Collections.Immutable;
 
 namespace TrainOP.Generators
 {
+    /// <summary>
+    /// Roslyn analyzer that reports route-chain validation diagnostics at compile time.
+    /// </summary>
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public sealed class ChainValidationAnalyzer : DiagnosticAnalyzer
     {
+        /// <summary>
+        /// Diagnostics produced by route-chain simulation and orphan handler detection.
+        /// </summary>
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
-            ImmutableArray.Create(
+            [
                 TrainRouteDiagnostics.MissingWagon,
                 TrainRouteDiagnostics.WagonTypeConflict,
                 TrainRouteDiagnostics.WagonRemovedButRequired,
                 TrainRouteDiagnostics.CargoManifestReplacement,
                 TrainRouteDiagnostics.TupleReturnOrder,
                 TrainRouteDiagnostics.OrphanDataHandler,
-                TrainRouteDiagnostics.UnusedSeedWagon);
+                TrainRouteDiagnostics.UnusedSeedWagon,
+            ];
 
+        /// <summary>
+        /// Registers semantic-model analysis for route chains in each compilation.
+        /// </summary>
         public override void Initialize(AnalysisContext context)
         {
             context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
@@ -25,6 +34,9 @@ namespace TrainOP.Generators
             context.RegisterCompilationStartAction(AnalyzeCompilation);
         }
 
+        /// <summary>
+        /// Analyzes each syntax tree for route chains, wagon-flow issues, and orphan handlers.
+        /// </summary>
         private static void AnalyzeCompilation(CompilationStartAnalysisContext context)
         {
             context.RegisterSemanticModelAction(modelContext =>

@@ -1,19 +1,24 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
 using System;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.Diagnostics;
-using TrainOP.Generators;
 using Xunit;
 
 namespace TrainOP.Generators.Tests
 {
+    /// <summary>
+    /// Tests diagnostic output from <see cref="ChainValidationAnalyzer"/> on route chains.
+    /// </summary>
     public sealed class ChainValidationAnalyzerTests
     {
+        /// <summary>
+        /// Verifies that a valid route chain produces no analyzer errors.
+        /// </summary>
         [Fact]
         public async Task Analyzer_ValidChain_ProducesNoErrors()
         {
@@ -33,6 +38,9 @@ public static class PaymentRoute
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
+        /// <summary>
+        /// Verifies that the first station is allowed when wagons come from an external Travel manifest.
+        /// </summary>
         [Fact]
         public async Task Analyzer_AllowsFirstStation_WhenWagonsComeFromExternalTravelManifest()
         {
@@ -51,6 +59,9 @@ public static class ExternalSeedRoute
             Assert.DoesNotContain(diagnostics, d => d.Id == "TOP002");
         }
 
+        /// <summary>
+        /// Verifies that TOP002 is reported when a required wagon is missing from the chain.
+        /// </summary>
         [Fact]
         public async Task Analyzer_ReportsTop002_WhenWagonMissing()
         {
@@ -70,6 +81,9 @@ public static class BrokenRoute
             Assert.Contains(diagnostics, d => d.Id == "TOP002");
         }
 
+        /// <summary>
+        /// Verifies that TOP003 is reported when a wagon type conflicts with a prior station.
+        /// </summary>
         [Fact]
         public async Task Analyzer_ReportsTop003_WhenWagonTypeConflicts()
         {
@@ -88,6 +102,9 @@ public static class BrokenRoute
             Assert.Contains(diagnostics, d => d.Id == "TOP003");
         }
 
+        /// <summary>
+        /// Verifies that TOP004 is reported when a removed wagon is required by a later station.
+        /// </summary>
         [Fact]
         public async Task Analyzer_ReportsTop004_WhenRemovedWagonRequiredLater()
         {
@@ -107,6 +124,9 @@ public static class BrokenRoute
             Assert.Contains(diagnostics, d => d.Id == "TOP004");
         }
 
+        /// <summary>
+        /// Verifies that TOP007 is reported when a handler is defined outside a fluent chain.
+        /// </summary>
         [Fact]
         public async Task Analyzer_ReportsTop007_WhenHandlerOutsideChain()
         {
@@ -127,6 +147,9 @@ public static class BrokenRoute
             Assert.Contains(diagnostics, d => d.Id == "TOP007");
         }
 
+        /// <summary>
+        /// Verifies that a station after a service station is allowed in the chain.
+        /// </summary>
         [Fact]
         public async Task Analyzer_AllowsStation_AfterServiceStation()
         {
@@ -148,6 +171,9 @@ public static class RecoveryRoute
             Assert.DoesNotContain(diagnostics, d => d.Id == "TOP007");
         }
 
+        /// <summary>
+        /// Verifies that a red return does not flag unreachable stations for removed wagon diagnostics.
+        /// </summary>
         [Fact]
         public async Task Analyzer_RedReturn_DoesNotRemoveWagonsForUnreachableStation()
         {
@@ -168,6 +194,9 @@ public static class FailRoute
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
+        /// <summary>
+        /// Verifies that TOP006 is reported when a handler returns an unnamed tuple.
+        /// </summary>
         [Fact]
         public async Task Analyzer_ReportsTop006_WhenHandlerReturnsUnnamedTuple()
         {
@@ -187,6 +216,9 @@ public static class TupleRoute
             Assert.Contains(diagnostics, d => d.Id == "TOP006");
         }
 
+        /// <summary>
+        /// Verifies that TOP006 is not reported when a handler returns a named tuple.
+        /// </summary>
         [Fact]
         public async Task Analyzer_DoesNotReportTop006_WhenHandlerReturnsNamedTuple()
         {
@@ -206,6 +238,9 @@ public static class TupleRoute
             Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
         }
 
+        /// <summary>
+        /// Verifies that TOP006 is not reported when tuple element names are inferred from identifiers.
+        /// </summary>
         [Fact]
         public async Task Analyzer_DoesNotReportTop006_WhenTupleElementNamesAreInferredFromIdentifiers()
         {

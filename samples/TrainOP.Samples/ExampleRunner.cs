@@ -1,7 +1,13 @@
 namespace TrainOP.Samples;
 
+/// <summary>
+/// Runs all registered sample examples in sequence.
+/// </summary>
 internal static class ExampleRunner
 {
+    /// <summary>
+    /// Executes every sample example and writes a blank line between runs.
+    /// </summary>
     public static void RunAll()
     {
         var examples = new IExample[]
@@ -27,9 +33,18 @@ internal static class ExampleRunner
     }
 }
 
+/// <summary>
+/// Contract for a runnable TrainOP sample with a display title.
+/// </summary>
 internal interface IExample
 {
+    /// <summary>
+    /// Short label shown in the console header for this sample.
+    /// </summary>
     string Title { get; }
 
+    /// <summary>
+    /// Builds the route, travels it, and prints the result.
+    /// </summary>
     void Run();
 }

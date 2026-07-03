@@ -1,12 +1,18 @@
+using Microsoft.CodeAnalysis;
 using System;
 using System.Collections.Generic;
-using Microsoft.CodeAnalysis;
 using TrainOP.Generators.Models;
 
 namespace TrainOP.Generators
 {
+    /// <summary>
+    /// Validates terminal wagon schemas discovered during route analysis.
+    /// </summary>
     internal static class TerminalWagonSchemaValidator
     {
+        /// <summary>
+        /// Determines whether a terminal wagon schema has unique names and supported types.
+        /// </summary>
         public static bool IsValid(TerminalWagonSchema schema)
         {
             if (schema == null || schema.Wagons.IsDefaultOrEmpty)
@@ -32,8 +38,14 @@ namespace TrainOP.Generators
         }
     }
 
+    /// <summary>
+    /// Maps wagon type symbols to manifest-safe display strings and support checks.
+    /// </summary>
     internal static class ManifestWagonTypes
     {
+        /// <summary>
+        /// Determines whether a type symbol is supported as a manifest wagon type.
+        /// </summary>
         public static bool IsSupported(ITypeSymbol typeSymbol)
         {
             if (typeSymbol == null)
@@ -81,6 +93,9 @@ namespace TrainOP.Generators
             return true;
         }
 
+        /// <summary>
+        /// Converts a type symbol to a fully qualified display string for generated manifest code.
+        /// </summary>
         public static string ToManifestTypeDisplay(ITypeSymbol typeSymbol)
         {
             switch (typeSymbol.SpecialType)
@@ -100,6 +115,9 @@ namespace TrainOP.Generators
             }
         }
 
+        /// <summary>
+        /// Converts a handler parameter type to a display string for generated delegate signatures.
+        /// </summary>
         public static string ToWagonParameterTypeDisplay(ITypeSymbol parameterType, ITypeSymbol underlyingType, bool isOptional)
         {
             if (isOptional && underlyingType != null)

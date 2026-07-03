@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using TrainOP;
 using Xunit;
 
 namespace TrainOP.Tests
@@ -11,6 +10,9 @@ namespace TrainOP.Tests
     /// </summary>
     public sealed class TrainRuntimeTests
     {
+        /// <summary>
+        /// Verifies that AttachStation with a manifest handler executes the route and propagates wagon values.
+        /// </summary>
         [Fact]
         public void AttachStation_ManifestHandler_ExecutesRoute()
         {
@@ -23,6 +25,9 @@ namespace TrainOP.Tests
             Assert.Equal("ok", report.TerminalSignal.Manifest.PullWagon<string>("id"));
         }
 
+        /// <summary>
+        /// Verifies that TravelAsync executes async stations and propagates updated wagon values.
+        /// </summary>
         [Fact]
         public async Task Train_TravelAsync_HandlesAsyncStations()
         {
@@ -41,6 +46,9 @@ namespace TrainOP.Tests
             Assert.Equal(20, report.TerminalSignal.Manifest.PullWagon<int>("counter"));
         }
 
+        /// <summary>
+        /// Verifies that Travel throws when the route contains an async-only station.
+        /// </summary>
         [Fact]
         public void Train_Travel_ThrowsWhenRouteContainsAsyncStation()
         {
@@ -54,6 +62,9 @@ namespace TrainOP.Tests
             Assert.Contains("Use TravelAsync", exception.Message);
         }
 
+        /// <summary>
+        /// Verifies that TravelAsync honors cancellation tokens on async stations.
+        /// </summary>
         [Fact]
         public async Task Train_TravelAsync_RespectsCancellation()
         {
@@ -71,6 +82,9 @@ namespace TrainOP.Tests
                 route.DispatchTrain().TravelAsync(cts.Token));
         }
 
+        /// <summary>
+        /// Verifies that synchronous Travel honors cancellation tokens on cancelable sync stations.
+        /// </summary>
         [Fact]
         public void Train_Travel_RespectsCancellation()
         {
@@ -88,6 +102,9 @@ namespace TrainOP.Tests
                 route.DispatchTrain().Travel(cts.Token));
         }
 
+        /// <summary>
+        /// Verifies that synchronous station exceptions become red signals and halt further stations.
+        /// </summary>
         [Fact]
         public void Train_Travel_ConvertsStationExceptionToRedSignal()
         {
@@ -111,6 +128,9 @@ namespace TrainOP.Tests
             Assert.False(red.Manifest.HasWagon("after-boom"));
         }
 
+        /// <summary>
+        /// Verifies that async station exceptions become red signals and halt further stations.
+        /// </summary>
         [Fact]
         public async Task Train_TravelAsync_ConvertsStationExceptionToRedSignal()
         {
@@ -135,6 +155,9 @@ namespace TrainOP.Tests
             Assert.False(red.Manifest.HasWagon("after-boom"));
         }
 
+        /// <summary>
+        /// Verifies that async service stations recover from async station exceptions and continue the route.
+        /// </summary>
         [Fact]
         public async Task Train_ServiceStation_HandlesAsyncRedSignals()
         {

@@ -1,14 +1,15 @@
-using TrainOP;
-
 namespace TrainOP.Samples;
 
 /// <summary>
-/// Станция может вернуть только часть вагонов — остальные сохраняются в манифесте.
+/// Demonstrates partial wagon returns where unreturned wagons remain in the manifest.
 /// </summary>
 internal sealed class PartialWagonReturnExample : IExample
 {
     public string Title => "5. Частичный возврат вагонов (merge в манифест)";
 
+    /// <summary>
+    /// Runs a route where a station updates some wagons while others are preserved via manifest merge.
+    /// </summary>
     public void Run()
     {
         ExampleOutput.WriteHeader(Title);

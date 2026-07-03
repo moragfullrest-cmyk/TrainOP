@@ -1,14 +1,20 @@
+using Microsoft.CodeAnalysis;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.CodeAnalysis;
 
 namespace TrainOP.Generators.Models
 {
+    /// <summary>
+    /// Describes the terminal wagon set remaining after a route chain completes.
+    /// </summary>
     internal sealed class TerminalWagonSchema
     {
+        /// <summary>
+        /// Creates a terminal schema from wagon bindings and computes a stable schema identifier.
+        /// </summary>
         public TerminalWagonSchema(ImmutableArray<WagonBinding> wagons)
         {
             Wagons = wagons;
@@ -19,6 +25,9 @@ namespace TrainOP.Generators.Models
 
         public string SchemaId { get; }
 
+        /// <summary>
+        /// Builds a short hash-based identifier from wagon names and type displays.
+        /// </summary>
         private static string BuildSchemaId(ImmutableArray<WagonBinding> wagons)
         {
             var builder = new StringBuilder();
@@ -42,10 +51,16 @@ namespace TrainOP.Generators.Models
         }
     }
 
+    /// <summary>
+    /// Compares terminal wagon schemas by wagon name and type symbol equality.
+    /// </summary>
     internal sealed class TerminalWagonSchemaComparer : IEqualityComparer<TerminalWagonSchema>
     {
         public static TerminalWagonSchemaComparer Instance { get; } = new TerminalWagonSchemaComparer();
 
+        /// <summary>
+        /// Determines whether two terminal schemas have the same wagons in the same order.
+        /// </summary>
         public bool Equals(TerminalWagonSchema x, TerminalWagonSchema y)
         {
             if (ReferenceEquals(x, y))
@@ -75,6 +90,9 @@ namespace TrainOP.Generators.Models
             return true;
         }
 
+        /// <summary>
+        /// Computes a hash code from wagon names and type symbols.
+        /// </summary>
         public int GetHashCode(TerminalWagonSchema obj)
         {
             if (obj == null)

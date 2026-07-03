@@ -1,6 +1,5 @@
 using System.Threading;
 using System.Threading.Tasks;
-using TrainOP;
 using Xunit;
 
 namespace TrainOP.Tests.DataOriented
@@ -10,6 +9,9 @@ namespace TrainOP.Tests.DataOriented
     /// </summary>
     public sealed class DataOrientedPaymentRouteEndToEndTests
     {
+        /// <summary>
+        /// Verifies that a happy-path payment route completes and deconstructs terminal wagons correctly.
+        /// </summary>
         [Fact]
         public void PaymentRoute_HappyPath_DeconstructsTerminalWagons()
         {
@@ -23,6 +25,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal("USD", report.TerminalSignal.Manifest.PullWagon<string>("currency"));
         }
 
+        /// <summary>
+        /// Verifies that validation failure stops the route at the Validate station with a red signal.
+        /// </summary>
         [Fact]
         public void PaymentRoute_ValidationFailure_StopsAtValidateStation()
         {
@@ -35,6 +40,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal("Validate", red.Issue.StationName);
         }
 
+        /// <summary>
+        /// Verifies that a service station recovers from validation failure and the route completes.
+        /// </summary>
         [Fact]
         public void PaymentRoute_ValidationFailure_RecoversAndCompletes()
         {
@@ -45,6 +53,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal(2m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
         }
 
+        /// <summary>
+        /// Verifies that an async payment route completes successfully with TravelAsync.
+        /// </summary>
         [Fact]
         public async Task PaymentRoute_AsyncHandler_CompletesWithTravelAsync()
         {

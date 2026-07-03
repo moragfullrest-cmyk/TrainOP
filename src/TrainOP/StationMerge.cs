@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 
 namespace TrainOP
 {
@@ -8,6 +7,9 @@ namespace TrainOP
     /// </summary>
     public static class StationMerge
     {
+        /// <summary>
+        /// Merges a station return value into the manifest using wagon name mappings.
+        /// </summary>
         public static CargoManifest Apply(
             CargoManifest manifest,
             object stationReturn,
@@ -17,6 +19,9 @@ namespace TrainOP
             return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, null, null, null, null);
         }
 
+        /// <summary>
+        /// Merges a station return value into the manifest with tuple element ordinal mappings.
+        /// </summary>
         public static CargoManifest Apply(
             CargoManifest manifest,
             object stationReturn,
@@ -27,6 +32,9 @@ namespace TrainOP
             return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, tupleElementOrdinals, null, null, null);
         }
 
+        /// <summary>
+        /// Merges a station return value into the manifest with tuple ordinals and return member names.
+        /// </summary>
         public static CargoManifest Apply(
             CargoManifest manifest,
             object stationReturn,
@@ -38,6 +46,9 @@ namespace TrainOP
             return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, tupleElementOrdinals, returnMemberNames, null, null);
         }
 
+        /// <summary>
+        /// Merges a station return value into the manifest with by-reference wagon metadata.
+        /// </summary>
         public static CargoManifest Apply(
             CargoManifest manifest,
             object stationReturn,
@@ -49,6 +60,9 @@ namespace TrainOP
             return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, null, null, byReferenceWagons, refLocalValues);
         }
 
+        /// <summary>
+        /// Merges a station return value into the manifest with full wagon and tuple metadata.
+        /// </summary>
         public static CargoManifest Apply(
             CargoManifest manifest,
             object stationReturn,
@@ -158,6 +172,9 @@ namespace TrainOP
             return manifest;
         }
 
+        /// <summary>
+        /// Merges a typed station return value into the manifest using wagon name mappings.
+        /// </summary>
         public static CargoManifest Apply<T>(
             CargoManifest manifest,
             T stationReturn,
@@ -167,6 +184,9 @@ namespace TrainOP
             return Apply(manifest, (object)stationReturn, wagonNames, removeOmittedRegularInputs);
         }
 
+        /// <summary>
+        /// Converts a station return value to a signal after merging into the manifest.
+        /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
             object stationReturn,
@@ -177,6 +197,9 @@ namespace TrainOP
             return StationAdapter.ToSignal(manifest, stationReturn, stationName, wagonNames, removeOmittedRegularInputs, null, null, null, null);
         }
 
+        /// <summary>
+        /// Converts a station return value to a signal with tuple element ordinal mappings.
+        /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
             object stationReturn,
@@ -197,6 +220,9 @@ namespace TrainOP
                 null);
         }
 
+        /// <summary>
+        /// Converts a station return value to a signal with tuple ordinals and return member names.
+        /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
             object stationReturn,
@@ -218,6 +244,9 @@ namespace TrainOP
                 null);
         }
 
+        /// <summary>
+        /// Converts a station return value to a signal with by-reference wagon metadata.
+        /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
             object stationReturn,
@@ -239,6 +268,9 @@ namespace TrainOP
                 refLocalValues);
         }
 
+        /// <summary>
+        /// Converts a station return value to a signal with full wagon and tuple metadata.
+        /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
             object stationReturn,
@@ -262,6 +294,9 @@ namespace TrainOP
                 refLocalValues);
         }
 
+        /// <summary>
+        /// Returns tuple element ordinals when the station return is a value tuple.
+        /// </summary>
         private static int[] ResolveTupleOrdinals(object stationReturn, int[] tupleElementOrdinals)
         {
             if (tupleElementOrdinals == null || !WagonStationReturn.IsValueTuple(stationReturn))
@@ -272,6 +307,9 @@ namespace TrainOP
             return tupleElementOrdinals;
         }
 
+        /// <summary>
+        /// Resolves a wagon value from a station return by name, index, or tuple ordinal.
+        /// </summary>
         private static bool TryResolveWagonValue(
             object stationReturn,
             string wagonName,
@@ -304,6 +342,9 @@ namespace TrainOP
             return WagonStationReturn.TryGetTupleElement(stationReturn, wagonIndex, out wagonValue);
         }
 
+        /// <summary>
+        /// Unwraps a green payload wrapper to its inner value.
+        /// </summary>
         private static bool TryUnwrapGreenPayload(object stationReturn, out object payload)
         {
             if (stationReturn is IGreenPayload greenPayload)
@@ -316,6 +357,9 @@ namespace TrainOP
             return false;
         }
 
+        /// <summary>
+        /// Loads all named return members into the manifest when no wagon mappings are configured.
+        /// </summary>
         private static CargoManifest MergeAllReturnMembers(
             CargoManifest manifest,
             object stationReturn,
@@ -338,8 +382,14 @@ namespace TrainOP
         }
     }
 
+    /// <summary>
+    /// Converts station handler return values into route signals for generated adapters.
+    /// </summary>
     internal static class StationAdapter
     {
+        /// <summary>
+        /// Converts a station return value to a signal after merging into the manifest.
+        /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
             object stationReturn,
@@ -350,6 +400,9 @@ namespace TrainOP
             return ToSignal(manifest, stationReturn, stationName, wagonNames, removeOmittedRegularInputs, null, null, null, null);
         }
 
+        /// <summary>
+        /// Converts a station return value to a signal with tuple element ordinal mappings.
+        /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
             object stationReturn,
@@ -370,6 +423,9 @@ namespace TrainOP
                 null);
         }
 
+        /// <summary>
+        /// Converts a station return value to a signal with tuple ordinals and return member names.
+        /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
             object stationReturn,
@@ -391,6 +447,9 @@ namespace TrainOP
                 null);
         }
 
+        /// <summary>
+        /// Converts a station return value to a signal with by-reference wagon metadata.
+        /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
             object stationReturn,
@@ -412,6 +471,9 @@ namespace TrainOP
                 refLocalValues);
         }
 
+        /// <summary>
+        /// Converts a station return value to a signal with full wagon and tuple metadata.
+        /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
             object stationReturn,
@@ -467,6 +529,9 @@ namespace TrainOP
             return RailwaySignals.Green(merged);
         }
 
+        /// <summary>
+        /// Unwraps a green payload wrapper to its inner value.
+        /// </summary>
         private static bool TryUnwrapGreenPayload(object stationReturn, out object payload)
         {
             if (stationReturn is IGreenPayload greenPayload)

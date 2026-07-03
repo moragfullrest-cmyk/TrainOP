@@ -1,14 +1,15 @@
-using TrainOP;
-
 namespace TrainOP.Samples;
 
 /// <summary>
-/// Красный сигнал останавливает поезд; следующие станции не выполняются.
+/// Demonstrates that a red signal stops the train and skips downstream stations.
 /// </summary>
 internal sealed class RedSignalStopExample : IExample
 {
     public string Title => "2. Остановка на красном сигнале";
 
+    /// <summary>
+    /// Runs a route where validation fails and a later station must not execute.
+    /// </summary>
     public void Run()
     {
         ExampleOutput.WriteHeader(Title);

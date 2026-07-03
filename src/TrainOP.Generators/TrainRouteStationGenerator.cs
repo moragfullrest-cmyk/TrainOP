@@ -1,20 +1,26 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
 using TrainOP.Generators.Models;
 
 namespace TrainOP.Generators
 {
+    /// <summary>
+    /// Source generator that emits typed Station and ServiceStation extension methods for data-oriented handlers.
+    /// </summary>
     [Generator]
     public sealed class TrainRouteStationGenerator : IIncrementalGenerator
     {
+        /// <summary>
+        /// Registers syntax-driven discovery of station handlers and emits grouped extension source code.
+        /// </summary>
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
             var stationCalls = context.SyntaxProvider.CreateSyntaxProvider(
@@ -57,16 +63,25 @@ namespace TrainOP.Generators
             });
         }
 
+        /// <summary>
+        /// Determines whether a syntax node looks like a Station method invocation.
+        /// </summary>
         private static bool IsCandidateStationInvocation(SyntaxNode node)
         {
             return IsCandidateRouteHandlerInvocation(node, "Station");
         }
 
+        /// <summary>
+        /// Determines whether a syntax node looks like a ServiceStation method invocation.
+        /// </summary>
         private static bool IsCandidateServiceStationInvocation(SyntaxNode node)
         {
             return IsCandidateRouteHandlerInvocation(node, "ServiceStation");
         }
 
+        /// <summary>
+        /// Determines whether a syntax node is an invocation of the given route handler method name.
+        /// </summary>
         private static bool IsCandidateRouteHandlerInvocation(SyntaxNode node, string methodName)
         {
             if (!(node is InvocationExpressionSyntax invocation))
@@ -82,6 +97,9 @@ namespace TrainOP.Generators
             return string.Equals(memberAccess.Name.Identifier.ValueText, methodName, StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Extracts handler schema metadata from a candidate station or service-station invocation.
+        /// </summary>
         private static StationCallInfo GetRouteHandlerCall(GeneratorSyntaxContext context)
         {
             var invocation = (InvocationExpressionSyntax)context.Node;
@@ -130,11 +148,17 @@ namespace TrainOP.Generators
             return new StationCallInfo(schema, lambdaSyntax.GetLocation());
         }
 
+        /// <summary>
+        /// Extracts handler schema metadata from a candidate Station invocation.
+        /// </summary>
         private static StationCallInfo GetStationCall(GeneratorSyntaxContext context)
         {
             return GetRouteHandlerCall(context);
         }
 
+        /// <summary>
+        /// Determines whether a type symbol is TrainRoute.
+        /// </summary>
         private static bool IsTrainRoute(ITypeSymbol typeSymbol)
         {
             if (typeSymbol == null)
@@ -145,6 +169,9 @@ namespace TrainOP.Generators
             return string.Equals(typeSymbol.ToDisplayString(), "TrainOP.TrainRoute", StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Determines whether an expression is or derives from a TrainRoute receiver.
+        /// </summary>
         private static bool IsTrainRouteReceiver(
             ExpressionSyntax receiverExpression,
             ITypeSymbol receiverType,
@@ -175,6 +202,9 @@ namespace TrainOP.Generators
             return false;
         }
 
+        /// <summary>
+        /// Resolves a lambda expression and its method symbol from a handler argument.
+        /// </summary>
         private static bool TryGetLambda(
             ExpressionSyntax expression,
             SemanticModel semanticModel,
@@ -200,6 +230,9 @@ namespace TrainOP.Generators
             return lambdaSymbol != null;
         }
 
+        /// <summary>
+        /// Builds a handler schema from a lambda and its semantic model symbols.
+        /// </summary>
         private static HandlerSchema TryBuildSchema(
             LambdaExpressionSyntax lambdaSyntax,
             IMethodSymbol lambdaSymbol,
@@ -312,6 +345,9 @@ namespace TrainOP.Generators
                 includeSignalIssue);
         }
 
+        /// <summary>
+        /// Determines whether a lambda is async based on syntax or return type.
+        /// </summary>
         private static bool IsAsyncLambda(LambdaExpressionSyntax lambdaSyntax, IMethodSymbol lambdaSymbol)
         {
             if (lambdaSyntax.AsyncKeyword != default)
@@ -325,6 +361,9 @@ namespace TrainOP.Generators
                 && string.Equals(returnType.ConstructedFrom.ToDisplayString(), "System.Threading.Tasks.Task", StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Determines whether an invocation resolves to a built-in TrainRoute handler method.
+        /// </summary>
         private static bool IsBuiltinTrainRouteHandler(
             InvocationExpressionSyntax invocation,
             SemanticModel semanticModel,
@@ -347,6 +386,9 @@ namespace TrainOP.Generators
             return false;
         }
 
+        /// <summary>
+        /// Determines whether a method symbol is a built-in TrainRoute handler of the given name.
+        /// </summary>
         private static bool IsBuiltinTrainRouteMethod(IMethodSymbol methodSymbol, string methodName)
         {
             return methodSymbol != null
@@ -356,6 +398,9 @@ namespace TrainOP.Generators
                 && string.Equals(methodSymbol.Name, methodName, StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Heuristically detects built-in RedSignal-only service station handlers.
+        /// </summary>
         private static bool IsLikelyBuiltinServiceStationHandler(
             LambdaExpressionSyntax lambdaSyntax,
             IMethodSymbol lambdaSymbol)
@@ -382,6 +427,9 @@ namespace TrainOP.Generators
             return false;
         }
 
+        /// <summary>
+        /// Determines whether a lambda body uses RedSignal.Manifest or RedSignal.Issue surfaces.
+        /// </summary>
         private static bool UsesRedSignalSurface(LambdaExpressionSyntax lambdaSyntax, string parameterName)
         {
             if (string.IsNullOrWhiteSpace(parameterName))
@@ -403,6 +451,9 @@ namespace TrainOP.Generators
             return false;
         }
 
+        /// <summary>
+        /// Determines whether a type symbol matches the given metadata name.
+        /// </summary>
         private static bool IsNamedType(ITypeSymbol typeSymbol, string metadataName)
         {
             if (typeSymbol == null)
@@ -417,26 +468,41 @@ namespace TrainOP.Generators
                     StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Determines whether the type is CargoManifest.
+        /// </summary>
         private static bool IsCargoManifest(ITypeSymbol typeSymbol)
         {
             return IsNamedType(typeSymbol, "TrainOP.CargoManifest");
         }
 
+        /// <summary>
+        /// Determines whether the type is CancellationToken.
+        /// </summary>
         private static bool IsCancellationToken(ITypeSymbol typeSymbol)
         {
             return IsNamedType(typeSymbol, "System.Threading.CancellationToken");
         }
 
+        /// <summary>
+        /// Determines whether the type is RedSignal.
+        /// </summary>
         private static bool IsRedSignal(ITypeSymbol typeSymbol)
         {
             return IsNamedType(typeSymbol, "TrainOP.RedSignal");
         }
 
+        /// <summary>
+        /// Determines whether the type is SignalIssue.
+        /// </summary>
         private static bool IsSignalIssue(ITypeSymbol typeSymbol)
         {
             return IsNamedType(typeSymbol, "TrainOP.SignalIssue");
         }
 
+        /// <summary>
+        /// Emits the TrainRouteStationExtensions source file for all merged handler schemas.
+        /// </summary>
         private static void EmitExtensions(SourceProductionContext context, ImmutableArray<MergedStationSchema> schemas)
         {
             var source = new StringBuilder();
@@ -465,6 +531,9 @@ namespace TrainOP.Generators
             context.AddSource("TrainRouteStation.Extensions.g.cs", SourceText.From(source.ToString(), Encoding.UTF8));
         }
 
+        /// <summary>
+        /// Emits delegate, metadata fields, and extension method members for one merged schema.
+        /// </summary>
         private static void EmitSchemaMembers(StringBuilder source, MergedStationSchema merged)
         {
             var schema = merged.Signature;
@@ -627,6 +696,9 @@ namespace TrainOP.Generators
             source.AppendLine("        }");
         }
 
+        /// <summary>
+        /// Emits the StationMerge.ToSignal call that merges handler output back into the manifest.
+        /// </summary>
         private static void EmitToSignalCall(
             StringBuilder source,
             string wagonNamesField,
@@ -659,6 +731,9 @@ namespace TrainOP.Generators
             }
         }
 
+        /// <summary>
+        /// Emits delegate parameter declarations for a handler schema.
+        /// </summary>
         private static void EmitDelegateParameters(StringBuilder source, HandlerSchema schema, bool useNeutralParameterNames)
         {
             var needsComma = false;
@@ -719,6 +794,9 @@ namespace TrainOP.Generators
             }
         }
 
+        /// <summary>
+        /// Emits manifest wagon pull statements for each handler input wagon.
+        /// </summary>
         private static void EmitPullWagons(StringBuilder source, HandlerSchema schema)
         {
             for (var i = 0; i < schema.Wagons.Length; i++)
@@ -747,6 +825,9 @@ namespace TrainOP.Generators
             }
         }
 
+        /// <summary>
+        /// Emits argument expressions for invoking the generated handler delegate.
+        /// </summary>
         private static void EmitHandlerCallArguments(
             StringBuilder source,
             HandlerSchema schema,
@@ -810,6 +891,9 @@ namespace TrainOP.Generators
             }
         }
 
+        /// <summary>
+        /// Locates the source position of a lambda parameter by name.
+        /// </summary>
         private static Location GetParameterLocation(LambdaExpressionSyntax lambdaSyntax, string parameterName)
         {
             if (lambdaSyntax is SimpleLambdaExpressionSyntax simpleLambda)
@@ -833,6 +917,9 @@ namespace TrainOP.Generators
             return null;
         }
 
+        /// <summary>
+        /// Determines whether a name is a valid wagon parameter identifier.
+        /// </summary>
         private static bool IsValidWagonParameterName(string wagonName)
         {
             if (string.IsNullOrWhiteSpace(wagonName))
@@ -853,13 +940,22 @@ namespace TrainOP.Generators
             return !SyntaxFacts.IsKeywordKind(SyntaxFacts.GetKeywordKind(wagonName));
         }
 
+        /// <summary>
+        /// Escapes string literals for inclusion in generated source code.
+        /// </summary>
         private static string Escape(string value)
         {
             return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
         }
 
+        /// <summary>
+        /// Holds handler schema metadata discovered from a single station invocation site.
+        /// </summary>
         private sealed class StationCallInfo
         {
+            /// <summary>
+            /// Creates a station call record with schema and source location.
+            /// </summary>
             public StationCallInfo(HandlerSchema schema, Location location)
             {
                 Schema = schema;
@@ -871,6 +967,9 @@ namespace TrainOP.Generators
             public Location Location { get; }
         }
 
+        /// <summary>
+        /// Compares two wagon binding arrays for matching names in the same order.
+        /// </summary>
         private static bool WagonNamesMatch(ImmutableArray<WagonBinding> left, ImmutableArray<WagonBinding> right)
         {
             if (left.Length != right.Length)
@@ -889,6 +988,9 @@ namespace TrainOP.Generators
             return true;
         }
 
+        /// <summary>
+        /// Formats wagon names as a comma-separated diagnostic string.
+        /// </summary>
         private static string FormatWagonNames(ImmutableArray<WagonBinding> wagons)
         {
             if (wagons.Length == 0)
@@ -910,17 +1012,26 @@ namespace TrainOP.Generators
             return builder.ToString();
         }
 
+        /// <summary>
+        /// Accumulates handler schemas that share the same delegate type signature.
+        /// </summary>
         private sealed class TypeSignatureGroup
         {
             private readonly DelegateTypeSignature _typeSignature;
             private readonly List<ReturnShape> _returnShapes = new List<ReturnShape>();
             private HandlerSchema _canonicalSchema;
 
+            /// <summary>
+            /// Creates a group keyed by delegate type signature.
+            /// </summary>
             public TypeSignatureGroup(DelegateTypeSignature typeSignature)
             {
                 _typeSignature = typeSignature;
             }
 
+            /// <summary>
+            /// Adds a handler schema to the group and reports conflicting wagon names.
+            /// </summary>
             public void Add(HandlerSchema schema, Location location, SourceProductionContext context)
             {
                 if (_canonicalSchema == null)
@@ -939,6 +1050,9 @@ namespace TrainOP.Generators
                 AddReturnShape(schema.ReturnShape);
             }
 
+            /// <summary>
+            /// Produces a merged schema with combined return-shape metadata for code generation.
+            /// </summary>
             public MergedStationSchema ToMerged()
             {
                 var merged = new MergedStationSchema(_canonicalSchema, _typeSignature.TypeId);
@@ -950,6 +1064,9 @@ namespace TrainOP.Generators
                 return merged;
             }
 
+            /// <summary>
+            /// Records a distinct return shape for later merge metadata generation.
+            /// </summary>
             private void AddReturnShape(ReturnShape returnShape)
             {
                 for (var i = 0; i < _returnShapes.Count; i++)
@@ -964,8 +1081,14 @@ namespace TrainOP.Generators
             }
         }
 
+        /// <summary>
+        /// Describes a handler delegate type signature used to group generated extension methods.
+        /// </summary>
         private sealed class DelegateTypeSignature
         {
+            /// <summary>
+            /// Creates a delegate type signature from handler flags and wagon type slots.
+            /// </summary>
             public DelegateTypeSignature(
                 bool isServiceStation,
                 bool includeRedSignal,
@@ -1001,6 +1124,9 @@ namespace TrainOP.Generators
 
             public string TypeId { get; }
 
+            /// <summary>
+            /// Builds a delegate type signature from a handler schema.
+            /// </summary>
             public static DelegateTypeSignature From(HandlerSchema schema)
             {
                 var wagonTypes = ImmutableArray.CreateBuilder<WagonTypeSlot>(schema.Wagons.Length);
@@ -1025,8 +1151,14 @@ namespace TrainOP.Generators
             }
         }
 
+        /// <summary>
+        /// Captures one wagon parameter's type and binding flags within a delegate signature.
+        /// </summary>
         private readonly struct WagonTypeSlot
         {
+            /// <summary>
+            /// Creates a wagon type slot from display strings and binding flags.
+            /// </summary>
             public WagonTypeSlot(
                 string typeDisplay,
                 bool isByReference,
@@ -1048,10 +1180,16 @@ namespace TrainOP.Generators
             public string PullTypeDisplay { get; }
         }
 
+        /// <summary>
+        /// Merges a canonical handler schema with combined return-shape metadata for emission.
+        /// </summary>
         private sealed class MergedStationSchema
         {
             private readonly List<ReturnShape> _returnShapes = new List<ReturnShape>();
 
+            /// <summary>
+            /// Creates a merged schema from a canonical handler signature and delegate type id.
+            /// </summary>
             public MergedStationSchema(HandlerSchema signature, string delegateTypeId)
             {
                 Signature = signature;
@@ -1068,6 +1206,9 @@ namespace TrainOP.Generators
             public string[] ReturnMembers =>
                 StationReturnMetadataBuilder.MergeReturnMemberNames(_returnShapes);
 
+            /// <summary>
+            /// Adds a distinct return shape to the merged metadata set.
+            /// </summary>
             public void AddReturnShape(ReturnShape returnShape)
             {
                 for (var i = 0; i < _returnShapes.Count; i++)
@@ -1081,6 +1222,9 @@ namespace TrainOP.Generators
                 _returnShapes.Add(returnShape);
             }
 
+            /// <summary>
+            /// Determines whether two return shapes are equivalent for merge purposes.
+            /// </summary>
             public static bool ReturnShapesEqual(ReturnShape left, ReturnShape right)
             {
                 if (left.IsUnknown != right.IsUnknown
@@ -1104,8 +1248,14 @@ namespace TrainOP.Generators
             }
         }
 
+        /// <summary>
+        /// Describes a data-oriented handler's inputs, flags, and inferred return shape for code generation.
+        /// </summary>
         private sealed class HandlerSchema
         {
+            /// <summary>
+            /// Creates a handler schema from wagon inputs, flags, and return shape metadata.
+            /// </summary>
             public HandlerSchema(
                 ImmutableArray<WagonBinding> wagons,
                 bool includeManifest,
@@ -1148,10 +1298,16 @@ namespace TrainOP.Generators
             public bool RemoveOmittedRegularInputs => Wagons.Length > 0;
         }
 
+        /// <summary>
+        /// Compares delegate type signatures for equality when grouping handler schemas.
+        /// </summary>
         private sealed class DelegateTypeSignatureComparer : IEqualityComparer<DelegateTypeSignature>
         {
             public static DelegateTypeSignatureComparer Instance { get; } = new DelegateTypeSignatureComparer();
 
+            /// <summary>
+            /// Determines whether two delegate type signatures are equal.
+            /// </summary>
             public bool Equals(DelegateTypeSignature x, DelegateTypeSignature y)
             {
                 if (ReferenceEquals(x, y))
@@ -1191,6 +1347,9 @@ namespace TrainOP.Generators
                 return true;
             }
 
+            /// <summary>
+            /// Computes a hash code for a delegate type signature.
+            /// </summary>
             public int GetHashCode(DelegateTypeSignature obj)
             {
                 if (obj == null)
@@ -1220,6 +1379,9 @@ namespace TrainOP.Generators
             }
         }
 
+        /// <summary>
+        /// Builds a short hash-based identifier from a delegate type signature.
+        /// </summary>
         private static string BuildTypeId(DelegateTypeSignature signature)
         {
             var builder = new StringBuilder();

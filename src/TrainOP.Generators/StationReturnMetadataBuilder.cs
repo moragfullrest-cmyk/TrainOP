@@ -5,8 +5,14 @@ using TrainOP.Generators.Models;
 
 namespace TrainOP.Generators
 {
+    /// <summary>
+    /// Builds return-shape metadata used when merging station handler code generation.
+    /// </summary>
     internal static class StationReturnMetadataBuilder
     {
+        /// <summary>
+        /// Maps input wagon names to tuple element ordinals for a single return shape.
+        /// </summary>
         public static int[] BuildTupleElementOrdinals(
             ImmutableArray<WagonBinding> inputWagons,
             ReturnShape returnShape)
@@ -28,6 +34,9 @@ namespace TrainOP.Generators
             return ordinals;
         }
 
+        /// <summary>
+        /// Merges tuple element ordinals across multiple return shapes when they agree.
+        /// </summary>
         public static int[] MergeTupleElementOrdinals(
             ImmutableArray<WagonBinding> inputWagons,
             IReadOnlyList<ReturnShape> returnShapes)
@@ -61,6 +70,9 @@ namespace TrainOP.Generators
             return merged;
         }
 
+        /// <summary>
+        /// Extracts return member names from a single return shape.
+        /// </summary>
         public static string[] BuildReturnMemberNames(ReturnShape returnShape)
         {
             if (returnShape.IsUnknown
@@ -79,6 +91,9 @@ namespace TrainOP.Generators
             return names;
         }
 
+        /// <summary>
+        /// Collects the union of return member names across multiple return shapes.
+        /// </summary>
         public static string[] MergeReturnMemberNames(IReadOnlyList<ReturnShape> returnShapes)
         {
             if (returnShapes == null || returnShapes.Count == 0)
@@ -107,6 +122,9 @@ namespace TrainOP.Generators
             return names.Count == 0 ? null : names.ToArray();
         }
 
+        /// <summary>
+        /// Compares two ordinal arrays for element-wise equality.
+        /// </summary>
         private static bool OrdinalArraysEqual(int[] left, int[] right)
         {
             if (left.Length != right.Length)
@@ -125,6 +143,9 @@ namespace TrainOP.Generators
             return true;
         }
 
+        /// <summary>
+        /// Finds the ordinal index of a wagon name within return shape members.
+        /// </summary>
         private static int FindMemberOrdinal(string wagonName, ImmutableArray<WagonBinding> members)
         {
             for (var i = 0; i < members.Length; i++)

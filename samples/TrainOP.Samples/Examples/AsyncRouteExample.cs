@@ -1,14 +1,15 @@
-using TrainOP;
-
 namespace TrainOP.Samples;
 
 /// <summary>
-/// Асинхронные станции требуют TravelAsync.
+/// Demonstrates asynchronous station handlers that require TravelAsync.
 /// </summary>
 internal sealed class AsyncRouteExample : IExample
 {
     public string Title => "4. Асинхронный маршрут (TravelAsync)";
 
+    /// <summary>
+    /// Runs a route with an async station and blocks on TravelAsync to obtain the report.
+    /// </summary>
     public void Run()
     {
         ExampleOutput.WriteHeader(Title);

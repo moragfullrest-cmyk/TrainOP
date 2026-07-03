@@ -8,6 +8,9 @@ namespace TrainOP
     /// </summary>
     public static class WagonStationReturn
     {
+        /// <summary>
+        /// Tries to read a member value from a typed source by name.
+        /// </summary>
         public static bool TryGetMemberValue<T>(T source, string memberName, out object value)
         {
             if (source == null)
@@ -19,6 +22,9 @@ namespace TrainOP
             return TryGetMemberValue(source.GetType(), source, memberName, out value);
         }
 
+        /// <summary>
+        /// Tries to read a member value from a source object by name using the specified type.
+        /// </summary>
         public static bool TryGetMemberValue(Type type, object source, string memberName, out object value)
         {
             value = null;
@@ -51,6 +57,9 @@ namespace TrainOP
             return false;
         }
 
+        /// <summary>
+        /// Tries to read a value tuple element by field or tuple element name.
+        /// </summary>
         private static bool TryGetValueTupleElementByName(
             Type type,
             object source,
@@ -106,6 +115,9 @@ namespace TrainOP
             return TryGetTupleElement((object)source, ordinal, out value);
         }
 
+        /// <summary>
+        /// Reads a value tuple element by generator-provided position from an untyped source.
+        /// </summary>
         public static bool TryGetTupleElement(object source, int ordinal, out object value)
         {
             value = null;
@@ -144,6 +156,9 @@ namespace TrainOP
             return true;
         }
 
+        /// <summary>
+        /// Checks whether the source object is a value tuple.
+        /// </summary>
         public static bool IsValueTuple(object source)
         {
             return source != null && IsValueTupleType(source.GetType());
@@ -207,6 +222,9 @@ namespace TrainOP
             return true;
         }
 
+        /// <summary>
+        /// Checks whether an element type is compatible with the expected wagon type.
+        /// </summary>
         private static bool IsCompatibleType(Type expectedType, object element)
         {
             if (element == null)
@@ -217,6 +235,9 @@ namespace TrainOP
             return TypesCompatible(expectedType, element.GetType());
         }
 
+        /// <summary>
+        /// Checks whether the actual type can be assigned to the expected type.
+        /// </summary>
         internal static bool TypesCompatible(Type expectedType, Type actualType)
         {
             if (expectedType == null || actualType == null)
@@ -227,6 +248,9 @@ namespace TrainOP
             return expectedType.IsAssignableFrom(actualType);
         }
 
+        /// <summary>
+        /// Reads the tuple element name from a TupleElementNameAttribute, if present.
+        /// </summary>
         private static string GetTupleElementName(FieldInfo field)
         {
             foreach (var attribute in field.GetCustomAttributes(inherit: false))
@@ -247,6 +271,9 @@ namespace TrainOP
             return null;
         }
 
+        /// <summary>
+        /// Checks whether the type is a System.ValueTuple struct.
+        /// </summary>
         private static bool IsValueTupleType(Type type)
         {
             if (!type.IsValueType)

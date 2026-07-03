@@ -1,12 +1,17 @@
 using System.Threading;
 using System.Threading.Tasks;
-using TrainOP;
 using Xunit;
 
 namespace TrainOP.Tests.DataOriented
 {
+    /// <summary>
+    /// Tests data-oriented Station and ServiceStation API behavior at runtime.
+    /// </summary>
     public sealed class DataOrientedStationTests
     {
+        /// <summary>
+        /// Verifies that a seed station produces the initial wagon values in the manifest.
+        /// </summary>
         [Fact]
         public void Station_Seed_ProducesInitialWagons()
         {
@@ -20,6 +25,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal(10m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
         }
 
+        /// <summary>
+        /// Verifies that named handler parameters merge return values into the manifest.
+        /// </summary>
         [Fact]
         public void Station_NamedParameters_MergeReturnIntoManifest()
         {
@@ -34,6 +42,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal(90m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
         }
 
+        /// <summary>
+        /// Verifies that a partial return removes omitted wagons from the manifest.
+        /// </summary>
         [Fact]
         public void Station_PartialReturn_RemovesOmittedWagons()
         {
@@ -49,6 +60,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal("keep", manifest.PullWagon<string>("traceId"));
         }
 
+        /// <summary>
+        /// Verifies that a tuple return maps values to manifest wagons by parameter order.
+        /// </summary>
         [Fact]
         public void Station_ReturnsTuple_MapsByParameterOrder()
         {
@@ -63,6 +77,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal(6m, manifest.PullWagon<decimal>("amount"));
         }
 
+        /// <summary>
+        /// Verifies that a data validation failure stops the route with a red signal.
+        /// </summary>
         [Fact]
         public void Station_DataFail_StopsRouteWithRedSignal()
         {
@@ -84,6 +101,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal("Validate", red.Issue.StationName);
         }
 
+        /// <summary>
+        /// Verifies that an async data validation failure stops the route with a red signal.
+        /// </summary>
         [Fact]
         public async Task Station_DataFail_Async_StopsRouteWithRedSignal()
         {
@@ -105,6 +125,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal("Validate", red.Issue.StationName);
         }
 
+        /// <summary>
+        /// Verifies that a Pass signal leaves the manifest unchanged.
+        /// </summary>
         [Fact]
         public void Station_DataSkip_LeavesManifestUnchanged()
         {
@@ -119,6 +142,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal(12m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
         }
 
+        /// <summary>
+        /// Verifies that a service station recovers from data failure and the route continues.
+        /// </summary>
         [Fact]
         public void Station_DataFail_WithServiceStation_ContinuesRoute()
         {
@@ -139,6 +165,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal(2, report.TerminalSignal.Manifest.PullWagon<int>("value"));
         }
 
+        /// <summary>
+        /// Verifies that a service station returning a red signal stops the route after recovery is attempted.
+        /// </summary>
         [Fact]
         public void ServiceStation_DataFail_StopsRouteAfterRecoveryAttempt()
         {
@@ -159,6 +188,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal("Recovery", red.Issue.StationName);
         }
 
+        /// <summary>
+        /// Verifies that an async station handler works correctly with TravelAsync.
+        /// </summary>
         [Fact]
         public async Task Station_AsyncHandler_WorksWithTravelAsync()
         {
@@ -177,6 +209,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal(10m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
         }
 
+        /// <summary>
+        /// Verifies that a handler with a manifest parameter can read extra wagons not in its signature.
+        /// </summary>
         [Fact]
         public void Station_WithManifestParameter_CanReadExtraWagons()
         {
@@ -196,6 +231,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal("trace-42", manifest.PullWagon<string>("traceId"));
         }
 
+        /// <summary>
+        /// Verifies that Travel with an external manifest seeds wagons for the first station.
+        /// </summary>
         [Fact]
         public void Station_TravelWithManifest_UsesExternalSeed()
         {
@@ -213,6 +251,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal(10m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
         }
 
+        /// <summary>
+        /// Verifies that a static Build method route pattern is recognized as an analysis anchor.
+        /// </summary>
         [Fact]
         public void Station_StaticBuildMethod_IsAnalysisAnchorPattern()
         {
@@ -222,6 +263,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal("anchored", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
         }
 
+        /// <summary>
+        /// Verifies that a partial return removes temporary wagons that are not returned.
+        /// </summary>
         [Fact]
         public void Station_PartialReturn_RemovesTemporaryWagons()
         {

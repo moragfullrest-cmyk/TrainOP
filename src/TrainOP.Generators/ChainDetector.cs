@@ -1,21 +1,27 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using TrainOP.Generators.Models;
 
 namespace TrainOP.Generators
 {
+    /// <summary>
+    /// Discovers TrainRoute station chains and related invocations from syntax trees.
+    /// </summary>
     internal static class ChainDetector
     {
+        /// <summary>
+        /// Finds all route chains starting from TrainRoute object creations in the given syntax tree.
+        /// </summary>
         public static ImmutableArray<RouteChain> DetectChains(SyntaxTree syntaxTree, SemanticModel semanticModel)
         {
             var chains = new List<RouteChain>();
 
             foreach (var node in syntaxTree.GetRoot().DescendantNodes())
             {
-                if (!(node is ObjectCreationExpressionSyntax objectCreation))
+                if (node is not ObjectCreationExpressionSyntax objectCreation)
                 {
                     continue;
                 }
@@ -28,9 +34,7 @@ namespace TrainOP.Generators
                 var stations = ImmutableArray.CreateBuilder<StationChainLink>();
                 var current = (ExpressionSyntax)objectCreation;
 
-                while (TryAdvanceChain(current, semanticModel, stations, out current, null))
-                {
-                }
+                while (TryAdvanceChain(current, semanticModel, stations, out current, null)) ;
 
                 if (stations.Count > 0)
                 {
@@ -38,9 +42,12 @@ namespace TrainOP.Generators
                 }
             }
 
-            return ImmutableArray.CreateRange(chains);
+            return [.. chains];
         }
 
+        /// <summary>
+        /// Collects every station or service-station invocation that belongs to a TrainRoute chain.
+        /// </summary>
         public static ImmutableArray<InvocationExpressionSyntax> CollectChainedStationInvocations(
             SyntaxTree syntaxTree,
             SemanticModel semanticModel)
@@ -49,7 +56,7 @@ namespace TrainOP.Generators
 
             foreach (var node in syntaxTree.GetRoot().DescendantNodes())
             {
-                if (!(node is ObjectCreationExpressionSyntax objectCreation))
+                if (node is not ObjectCreationExpressionSyntax objectCreation)
                 {
                     continue;
                 }
@@ -61,14 +68,15 @@ namespace TrainOP.Generators
 
                 var current = (ExpressionSyntax)objectCreation;
 
-                while (TryAdvanceChain(current, semanticModel, null, out current, chained))
-                {
-                }
+                while (TryAdvanceChain(current, semanticModel, null, out current, chained)) ;
             }
 
             return chained.ToImmutable();
         }
 
+        /// <summary>
+        /// Finds data-oriented station handlers that are not part of any TrainRoute chain.
+        /// </summary>
         public static ImmutableArray<InvocationExpressionSyntax> DetectOrphanStationInvocations(
             SyntaxTree syntaxTree,
             SemanticModel semanticModel,
@@ -78,7 +86,7 @@ namespace TrainOP.Generators
 
             foreach (var node in syntaxTree.GetRoot().DescendantNodes())
             {
-                if (!(node is InvocationExpressionSyntax invocation))
+                if (node is not InvocationExpressionSyntax invocation)
                 {
                     continue;
                 }
@@ -114,6 +122,9 @@ namespace TrainOP.Generators
             return orphans.ToImmutable();
         }
 
+        /// <summary>
+        /// Advances along a route chain by resolving the next station or service-station invocation.
+        /// </summary>
         private static bool TryAdvanceChain(
             ExpressionSyntax current,
             SemanticModel semanticModel,
@@ -165,13 +176,16 @@ namespace TrainOP.Generators
             return true;
         }
 
+        /// <summary>
+        /// Detects a direct ServiceStation invocation immediately following the current expression.
+        /// </summary>
         private static bool TryGetDirectServiceStationInvocation(
             ExpressionSyntax current,
             out InvocationExpressionSyntax serviceStationInvocation)
         {
             serviceStationInvocation = null;
 
-            if (!(current.Parent is MemberAccessExpressionSyntax memberAccess))
+            if (current.Parent is not MemberAccessExpressionSyntax memberAccess)
             {
                 return false;
             }
@@ -186,7 +200,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (!(memberAccess.Parent is InvocationExpressionSyntax invocation))
+            if (memberAccess.Parent is not InvocationExpressionSyntax invocation)
             {
                 return false;
             }
@@ -205,6 +219,9 @@ namespace TrainOP.Generators
             return true;
         }
 
+        /// <summary>
+        /// Resolves the next Station invocation, skipping through transparent route methods.
+        /// </summary>
         private static bool TryGetNextStationInvocation(
             ExpressionSyntax current,
             out InvocationExpressionSyntax stationInvocation)
@@ -216,7 +233,7 @@ namespace TrainOP.Generators
                 return true;
             }
 
-            if (!(current.Parent is MemberAccessExpressionSyntax memberAccess))
+            if (current.Parent is not MemberAccessExpressionSyntax memberAccess)
             {
                 return false;
             }
@@ -231,7 +248,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (!(memberAccess.Parent is InvocationExpressionSyntax transparentInvocation))
+            if (memberAccess.Parent is not InvocationExpressionSyntax transparentInvocation)
             {
                 return false;
             }
@@ -244,13 +261,16 @@ namespace TrainOP.Generators
             return TryGetNextStationInvocation(transparentInvocation, out stationInvocation);
         }
 
+        /// <summary>
+        /// Detects a direct Station invocation immediately following the current expression.
+        /// </summary>
         private static bool TryGetDirectStationInvocation(
             ExpressionSyntax current,
             out InvocationExpressionSyntax stationInvocation)
         {
             stationInvocation = null;
 
-            if (!(current.Parent is MemberAccessExpressionSyntax memberAccess))
+            if (current.Parent is not MemberAccessExpressionSyntax memberAccess)
             {
                 return false;
             }
@@ -265,7 +285,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (!(memberAccess.Parent is InvocationExpressionSyntax invocation))
+            if (memberAccess.Parent is not InvocationExpressionSyntax invocation)
             {
                 return false;
             }
@@ -284,6 +304,9 @@ namespace TrainOP.Generators
             return true;
         }
 
+        /// <summary>
+        /// Determines whether a route method name is transparent for chain traversal.
+        /// </summary>
         private static bool IsTransparentRouteMethod(string methodName)
         {
             return string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);

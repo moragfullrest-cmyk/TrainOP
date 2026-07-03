@@ -2,8 +2,14 @@ using System.Collections.Immutable;
 
 namespace TrainOP.Generators.Models
 {
+    /// <summary>
+    /// Describes a data-oriented station handler's inputs, flags, and inferred return shape.
+    /// </summary>
     internal sealed class StationHandlerBinding
     {
+        /// <summary>
+        /// Creates a handler binding from wagon inputs, flags, and return shape metadata.
+        /// </summary>
         public StationHandlerBinding(
             ImmutableArray<WagonBinding> inputWagons,
             bool includeManifest,

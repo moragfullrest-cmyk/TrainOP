@@ -2,8 +2,14 @@ using Microsoft.CodeAnalysis;
 
 namespace TrainOP.Generators
 {
+    /// <summary>
+    /// Diagnostic descriptors reported by TrainOP source generators and analyzers.
+    /// </summary>
     internal static class TrainRouteDiagnostics
     {
+        /// <summary>
+        /// Reported when a station requires a wagon that is not available from earlier stations in the chain.
+        /// </summary>
         public static readonly DiagnosticDescriptor MissingWagon = new DiagnosticDescriptor(
             id: "TOP002",
             title: "Required wagon is not available in the route chain",
@@ -12,6 +18,9 @@ namespace TrainOP.Generators
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
+        /// <summary>
+        /// Reported when the same wagon name carries incompatible types at different stations in the chain.
+        /// </summary>
         public static readonly DiagnosticDescriptor WagonTypeConflict = new DiagnosticDescriptor(
             id: "TOP003",
             title: "Wagon type conflict in route chain",
@@ -20,6 +29,9 @@ namespace TrainOP.Generators
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
+        /// <summary>
+        /// Reported when a wagon removed at one station is required again by a later station.
+        /// </summary>
         public static readonly DiagnosticDescriptor WagonRemovedButRequired = new DiagnosticDescriptor(
             id: "TOP004",
             title: "Removed wagon is required later in the route chain",
@@ -28,6 +40,9 @@ namespace TrainOP.Generators
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
+        /// <summary>
+        /// Warns that returning CargoManifest replaces the entire manifest and may drop unstated wagons.
+        /// </summary>
         public static readonly DiagnosticDescriptor CargoManifestReplacement = new DiagnosticDescriptor(
             id: "TOP005",
             title: "Station returns CargoManifest",
@@ -36,6 +51,9 @@ namespace TrainOP.Generators
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
 
+        /// <summary>
+        /// Warns that an unnamed tuple return must follow handler parameter order to map wagons correctly.
+        /// </summary>
         public static readonly DiagnosticDescriptor TupleReturnOrder = new DiagnosticDescriptor(
             id: "TOP006",
             title: "Station returns an unnamed tuple",
@@ -44,6 +62,9 @@ namespace TrainOP.Generators
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
 
+        /// <summary>
+        /// Reported when a data-oriented handler is not attached to a TrainRoute fluent chain.
+        /// </summary>
         public static readonly DiagnosticDescriptor OrphanDataHandler = new DiagnosticDescriptor(
             id: "TOP007",
             title: "Data-oriented handler is outside a TrainRoute chain",
@@ -52,6 +73,9 @@ namespace TrainOP.Generators
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
+        /// <summary>
+        /// Informs that a seed station produced a wagon never consumed by downstream stations.
+        /// </summary>
         public static readonly DiagnosticDescriptor UnusedSeedWagon = new DiagnosticDescriptor(
             id: "TOP008",
             title: "Seed wagon is never consumed",
@@ -60,6 +84,9 @@ namespace TrainOP.Generators
             defaultSeverity: DiagnosticSeverity.Info,
             isEnabledByDefault: true);
 
+        /// <summary>
+        /// Reported when handlers sharing the same parameter type signature use different wagon names.
+        /// </summary>
         public static readonly DiagnosticDescriptor ConflictingWagonNames = new DiagnosticDescriptor(
             id: "TOP009",
             title: "Conflicting wagon names for the same handler type signature",

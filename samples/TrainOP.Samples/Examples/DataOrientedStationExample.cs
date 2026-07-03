@@ -1,14 +1,15 @@
-using TrainOP;
-
 namespace TrainOP.Samples;
 
 /// <summary>
-/// Data-oriented handlers via TrainRoute.Station.
+/// Demonstrates data-oriented handlers wired through TrainRoute.Station.
 /// </summary>
 internal sealed class DataOrientedStationExample : IExample
 {
     public string Title => "1. Data-oriented маршрут";
 
+    /// <summary>
+    /// Runs a multi-station route with anonymous-type wagons and deconstructs the final report.
+    /// </summary>
     public void Run()
     {
         ExampleOutput.WriteHeader(Title);

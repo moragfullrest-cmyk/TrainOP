@@ -1,14 +1,15 @@
-using TrainOP;
-
 namespace TrainOP.Samples;
 
 /// <summary>
-/// RailwaySignals.Red in a handler plus ServiceStation recovery.
+/// Demonstrates RailwaySignals.Red in a handler followed by ServiceStation recovery.
 /// </summary>
 internal sealed class DataOrientedRedSignalExample : IExample
 {
     public string Title => "6. Green/Red + восстановление";
 
+    /// <summary>
+    /// Runs a route that fails validation, recovers in a service station, and completes downstream processing.
+    /// </summary>
     public void Run()
     {
         ExampleOutput.WriteHeader(Title);

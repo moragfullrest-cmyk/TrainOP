@@ -2,6 +2,9 @@ using System.Collections.Immutable;
 
 namespace TrainOP.Generators.Models
 {
+    /// <summary>
+    /// Describes the shape of wagons produced by a station handler return value.
+    /// </summary>
     internal sealed class ReturnShape
     {
         public static ReturnShape Unknown { get; } = new ReturnShape(
@@ -11,6 +14,9 @@ namespace TrainOP.Generators.Models
             isUnnamedValueTuple: false,
             isUnknown: true);
 
+        /// <summary>
+        /// Creates a return shape with member bindings and classification flags.
+        /// </summary>
         public ReturnShape(
             ImmutableArray<WagonBinding> members,
             bool isCargoManifest,

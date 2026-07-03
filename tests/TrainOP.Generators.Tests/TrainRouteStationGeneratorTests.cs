@@ -1,16 +1,21 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using TrainOP.Generators;
 using Xunit;
 
 namespace TrainOP.Generators.Tests
 {
+    /// <summary>
+    /// Tests source generation for data-oriented Station and ServiceStation extension methods.
+    /// </summary>
     public sealed class TrainRouteStationGeneratorTests
     {
+        /// <summary>
+        /// Verifies that the generator emits a Station extension for a handler with ref parameters.
+        /// </summary>
         [Fact]
         public void Generator_EmitsStationExtension_ForRefHandler()
         {
@@ -34,6 +39,9 @@ public static class RefRoute
             Assert.Contains("ReturnMembers_", generated);
         }
 
+        /// <summary>
+        /// Verifies that the generator emits HasWagon checks for optional wagon parameters.
+        /// </summary>
         [Fact]
         public void Generator_EmitsHasWagon_ForOptionalWagon()
         {
@@ -55,6 +63,9 @@ public static class OptionalRoute
             Assert.Contains("global::System.Decimal?", generated);
         }
 
+        /// <summary>
+        /// Verifies that the generator emits a ServiceStation extension for a data-oriented recovery handler.
+        /// </summary>
         [Fact]
         public void Generator_EmitsServiceStationExtension_ForDataHandler()
         {
@@ -81,6 +92,9 @@ public static class RecoveryRoute
             Assert.Contains("StationMerge.ToSignal", generated);
         }
 
+        /// <summary>
+        /// Verifies that the generator does not emit extensions for a built-in red-signal ServiceStation handler.
+        /// </summary>
         [Fact]
         public void Generator_DoesNotEmit_ForBuiltinRedSignalServiceStation()
         {
@@ -111,6 +125,9 @@ public static class LongRoute
             Assert.DoesNotContain("TrainServiceStationHandler_", generated);
         }
 
+        /// <summary>
+        /// Verifies that the generator emits a ServiceStation extension for a SignalIssue-only handler.
+        /// </summary>
         [Fact]
         public void Generator_EmitsServiceStationExtension_ForSignalIssueOnlyHandler()
         {
@@ -134,6 +151,9 @@ public static class IssueRoute
             Assert.DoesNotContain("new string[] { \"issue\" }", generated);
         }
 
+        /// <summary>
+        /// Verifies that the generator emits a Station extension for a data-oriented handler with tuple return.
+        /// </summary>
         [Fact]
         public void Generator_EmitsStationExtension_ForDataHandler()
         {
@@ -160,6 +180,9 @@ public static class PaymentRoute
             Assert.Contains("ReturnMembers_", generated);
         }
 
+        /// <summary>
+        /// Verifies that the generator does not emit extensions for manifest-only AttachStation calls.
+        /// </summary>
         [Fact]
         public void Generator_DoesNotEmit_ForManifestOnlyStation()
         {
@@ -176,6 +199,9 @@ public static class Flow
             Assert.DoesNotContain("TrainRouteStationExtensions", generated);
         }
 
+        /// <summary>
+        /// Verifies that a single Station overload is emitted when handlers share a type signature but differ in parameter names.
+        /// </summary>
         [Fact]
         public void Generator_EmitsSingleStationOverload_WhenHandlersShareTypeSignatureButDifferInParameterNames()
         {
@@ -206,6 +232,9 @@ public static class MixedNameRoute
             Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
         }
 
+        /// <summary>
+        /// Verifies that TOP009 is reported when handlers share a type signature but use different manifest keys.
+        /// </summary>
         [Fact]
         public void Generator_ReportsConflictingWagonNames_WhenHandlersShareTypeSignatureButUseDifferentManifestKeys()
         {
@@ -233,6 +262,9 @@ public static class ConflictingNameRoute
             Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "TOP009");
         }
 
+        /// <summary>
+        /// Verifies that a single Station overload is emitted when handlers share a signature but differ in return shape.
+        /// </summary>
         [Fact]
         public void Generator_EmitsSingleStationOverload_WhenHandlersShareSignatureButDifferInReturnShape()
         {

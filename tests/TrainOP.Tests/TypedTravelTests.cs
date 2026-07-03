@@ -1,11 +1,16 @@
 using System.Threading.Tasks;
-using TrainOP;
 using Xunit;
 
 namespace TrainOP.Tests.DataOriented
 {
+    /// <summary>
+    /// Tests typed deconstruction of terminal wagons from Travel and TravelAsync results.
+    /// </summary>
     public sealed class TypedTravelTests
     {
+        /// <summary>
+        /// Verifies that Travel deconstructs terminal wagons from a data-oriented route chain.
+        /// </summary>
         [Fact]
         public void Travel_DeconstructsTerminalWagons_FromDataOrientedChain()
         {
@@ -17,6 +22,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal(90m, amount);
         }
 
+        /// <summary>
+        /// Verifies that Travel deconstructs both terminal wagons and the route report from a data-oriented chain.
+        /// </summary>
         [Fact]
         public void Travel_DeconstructsTerminalWagonsAndReport_FromDataOrientedChain()
         {
@@ -31,6 +39,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal(3, report.Visits.Count);
         }
 
+        /// <summary>
+        /// Verifies that TravelAsync deconstructs terminal wagons from an async data-oriented route chain.
+        /// </summary>
         [Fact]
         public async Task TravelAsync_DeconstructsTerminalWagons_FromAsyncDataOrientedChain()
         {
@@ -48,6 +59,9 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal(10m, amount);
         }
 
+        /// <summary>
+        /// Verifies that Travel deconstructs remaining wagons after a partial station return omits some inputs.
+        /// </summary>
         [Fact]
         public void Travel_DeconstructsRemainingWagons_AfterPartialReturn()
         {

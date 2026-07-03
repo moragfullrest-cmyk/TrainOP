@@ -11,6 +11,7 @@
 | Раздел | Ссылка |
 |--------|--------|
 | Оглавление | [docs/README.md](docs/README.md) |
+| Установка через NuGet | [docs/nuget.md](docs/nuget.md) |
 | Начало работы | [docs/getting-started.md](docs/getting-started.md) |
 | Основной API | [docs/core-api.md](docs/core-api.md) |
 
@@ -43,10 +44,12 @@ Manifest-style станции (`AttachStation` с прямым доступом 
 
 ### NuGet
 
-```xml
-<PackageReference Include="TrainOP" Version="0.1.0" />
-<PackageReference Include="TrainOP.Generators" Version="0.1.0" />
+```bash
+dotnet add package TrainOP
+dotnet add package TrainOP.Generators
 ```
+
+Подробнее: [docs/nuget.md](docs/nuget.md) (локальный feed, проверка генератора, troubleshooting).
 
 ### Из исходников (разработка)
 

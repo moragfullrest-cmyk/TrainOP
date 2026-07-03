@@ -1,17 +1,23 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Text;
 using TrainOP.Generators.Models;
 
 namespace TrainOP.Generators
 {
+    /// <summary>
+    /// Source generator that emits typed Deconstruct extensions for route terminal wagons.
+    /// </summary>
     [Generator]
     public sealed class TrainRouteTravelGenerator : IIncrementalGenerator
     {
+        /// <summary>
+        /// Registers compilation output that discovers terminal schemas and emits travel extensions.
+        /// </summary>
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
             context.RegisterSourceOutput(context.CompilationProvider, static (productionContext, compilation) =>
@@ -20,6 +26,9 @@ namespace TrainOP.Generators
             });
         }
 
+        /// <summary>
+        /// Discovers terminal wagon schemas from route chains and emits extension source code.
+        /// </summary>
         private static void EmitTravelExtensions(SourceProductionContext context, Compilation compilation)
         {
             var discoveredSchemas = ImmutableArray.CreateBuilder<TerminalWagonSchema>();
@@ -103,6 +112,9 @@ namespace TrainOP.Generators
                 SourceText.From(source.ToString(), Encoding.UTF8));
         }
 
+        /// <summary>
+        /// Emits Deconstruct and optional tuple helper members for one terminal schema.
+        /// </summary>
         private static void EmitSchemaMembers(StringBuilder source, TerminalWagonSchema schema)
         {
             var schemaId = schema.SchemaId;
@@ -118,6 +130,9 @@ namespace TrainOP.Generators
             EmitDeconstruct(source, schema, useTupleHelper ? tupleMethod : null);
         }
 
+        /// <summary>
+        /// Emits a private helper that pulls all wagons from a manifest into a value tuple.
+        /// </summary>
         private static void EmitToTerminalTuple(StringBuilder source, TerminalWagonSchema schema, string methodName)
         {
             source.Append("        private static (");
@@ -155,6 +170,9 @@ namespace TrainOP.Generators
             source.AppendLine("        }");
         }
 
+        /// <summary>
+        /// Emits a RouteReport Deconstruct extension for the terminal wagon schema.
+        /// </summary>
         private static void EmitDeconstruct(
             StringBuilder source,
             TerminalWagonSchema schema,
@@ -199,6 +217,9 @@ namespace TrainOP.Generators
             source.AppendLine("        }");
         }
 
+        /// <summary>
+        /// Selects schemas that would not cause ambiguous var deconstruction overload resolution.
+        /// </summary>
         private static IEnumerable<TerminalWagonSchema> SelectNonAmbiguousSchemas(
             IEnumerable<TerminalWagonSchema> schemas)
         {
@@ -221,6 +242,9 @@ namespace TrainOP.Generators
             return selected;
         }
 
+        /// <summary>
+        /// Computes a specificity score for deconstruct overload preference.
+        /// </summary>
         private static int GetDeconstructSpecificity(TerminalWagonSchema schema)
         {
             var score = 0;
@@ -232,6 +256,9 @@ namespace TrainOP.Generators
             return score;
         }
 
+        /// <summary>
+        /// Assigns a numeric specificity weight to a deconstruct type display string.
+        /// </summary>
         private static int GetDeconstructTypeSpecificity(string typeDisplay)
         {
             if (typeDisplay == "global::System.String")
@@ -252,6 +279,9 @@ namespace TrainOP.Generators
             return 3;
         }
 
+        /// <summary>
+        /// Determines whether two schemas would be ambiguous for var-based deconstruction.
+        /// </summary>
         private static bool AreVarDeconstructAmbiguous(TerminalWagonSchema left, TerminalWagonSchema right)
         {
             if (left.Wagons.Length != right.Wagons.Length)
@@ -272,6 +302,9 @@ namespace TrainOP.Generators
             return false;
         }
 
+        /// <summary>
+        /// Builds a type-signature key from a schema's wagon types for deduplication.
+        /// </summary>
         private static string BuildCSharpDeconstructTypeSignature(TerminalWagonSchema schema)
         {
             var builder = new StringBuilder();
@@ -284,6 +317,9 @@ namespace TrainOP.Generators
             return builder.ToString();
         }
 
+        /// <summary>
+        /// Escapes string literals for inclusion in generated source code.
+        /// </summary>
         private static string Escape(string value)
         {
             return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
