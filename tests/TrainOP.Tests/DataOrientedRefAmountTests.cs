@@ -29,6 +29,53 @@ namespace TrainOP.Tests.DataOriented
         }
 
         /// <summary>
+        /// Verifies that a multi-station route can mutate all wagons exclusively through ref parameters.
+        /// </summary>
+        [Fact]
+        public void Route_AllWagonsUpdatedViaRef_CompletesWithMutatedValues()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { paymentId = "pay-ref-all", amount = 10m })
+                .Station("AddSuffix", (ref string paymentId, ref decimal amount) =>
+                {
+                    paymentId = paymentId + "-suffix";
+                    amount = amount + 5m;
+                })
+                .Station("ApplyDiscount", (ref string paymentId, ref decimal amount) =>
+                {
+                    amount = amount * 0.9m;
+                });
+
+            var report = route.DispatchTrain().Travel();
+            var manifest = report.TerminalSignal.Manifest;
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal(3, report.Visits.Count);
+            Assert.Equal("pay-ref-all-suffix", manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(13.5m, manifest.PullWagon<decimal>("amount"));
+        }
+
+        /// <summary>
+        /// Verifies that a void handler is equivalent to returning an empty anonymous type.
+        /// </summary>
+        [Fact]
+        public void Station_VoidHandler_MatchesEmptyAnonymousReturn()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { paymentId = "pay-void", amount = 8m, note = "drop" })
+                .Station("MutateRef", (string paymentId, ref decimal amount, string note) =>
+                {
+                    amount = amount + 2m;
+                });
+
+            var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
+
+            Assert.False(manifest.HasWagon("paymentId"));
+            Assert.Equal(10m, manifest.PullWagon<decimal>("amount"));
+            Assert.False(manifest.HasWagon("note"));
+        }
+
+        /// <summary>
         /// Verifies that a ref handler with a manifest parameter can read extra wagons from the manifest.
         /// </summary>
         [Fact]

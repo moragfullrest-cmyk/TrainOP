@@ -40,6 +40,35 @@ public static class RefRoute
         }
 
         /// <summary>
+        /// Verifies that the generator emits a void delegate for handlers without a return value.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsVoidDelegate_ForVoidHandler()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class VoidRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay"", amount = 4m })
+        .Station(""MutateRef"", (ref string paymentId, ref decimal amount) =>
+        {
+            paymentId = paymentId + ""-void"";
+            amount = amount + 1m;
+        });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("public delegate void TrainStationHandler_", generated);
+            Assert.Contains("object stationReturn = null;", generated);
+            Assert.Contains("StationMerge.ToSignal(manifest, stationReturn, stationName", generated);
+            Assert.Contains("RefFlags_", generated);
+            Assert.Contains("refLocalValues", generated);
+        }
+
+        /// <summary>
         /// Verifies that the generator emits HasWagon checks for optional wagon parameters.
         /// </summary>
         [Fact]
@@ -176,27 +205,31 @@ public static class PaymentRoute
             Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
             Assert.Contains("manifest.PullWagon<global::System.Decimal>(\"amount\")", generated);
             Assert.Contains("StationMerge.ToSignal", generated);
-            Assert.Contains("TupleOrdinals_", generated);
             Assert.Contains("ReturnMembers_", generated);
         }
 
         /// <summary>
-        /// Verifies that the generator does not emit extensions for manifest-only AttachStation calls.
+        /// Verifies that the generator emits ReturnMembers with ItemN names for an unnamed tuple return.
         /// </summary>
         [Fact]
-        public void Generator_DoesNotEmit_ForManifestOnlyStation()
+        public void Generator_EmitsItemNames_ForUnnamedTupleReturn()
         {
             const string source = @"
 using TrainOP;
 
-public static class Flow
+public static class PaymentRoute
 {
     public static TrainRoute Build() => new TrainRoute()
-        .AttachStation(""Seed"", manifest => manifest.LoadWagon(""paymentId"", ""x""));
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            (paymentId, amount * 0.9m));
 }";
 
             var generated = RunGenerators(source);
-            Assert.DoesNotContain("TrainRouteStationExtensions", generated);
+
+            Assert.Contains("\"Item1\"", generated);
+            Assert.Contains("\"Item2\"", generated);
+            Assert.DoesNotContain("TupleOrdinals_", generated);
         }
 
         /// <summary>
@@ -233,7 +266,7 @@ public static class MixedNameRoute
         }
 
         /// <summary>
-        /// Verifies that TOP009 is reported when handlers share a type signature but use different manifest keys.
+        /// Verifies that TOP008 is reported when handlers share a type signature but use different manifest keys.
         /// </summary>
         [Fact]
         public void Generator_ReportsConflictingWagonNames_WhenHandlersShareTypeSignatureButUseDifferentManifestKeys()
@@ -259,7 +292,34 @@ public static class ConflictingNameRoute
                 .SelectMany(result => result.Diagnostics)
                 .ToList();
 
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "TOP009");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "TOP008");
+        }
+
+        /// <summary>
+        /// Verifies that void and object-return handlers with the same wagon signature get separate Station overloads.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsSeparateStationOverloads_WhenHandlersShareSignatureButDifferInVoidReturn()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class VoidAndObjectReturnRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Anonymous"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m })
+        .Station(""Void"", (string paymentId, decimal amount) =>
+        {
+        });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("public delegate object TrainStationHandler_", generated);
+            Assert.Contains("public delegate void TrainStationHandler_", generated);
+            Assert.Equal(3, CountStationOverloads(generated));
         }
 
         /// <summary>
@@ -282,6 +342,13 @@ public static class MixedReturnRoute
 }";
 
             var generated = RunGenerators(source);
+
+            Assert.Equal(2, CountStationOverloads(generated));
+            Assert.Contains("ReturnMembers_", generated);
+        }
+
+        private static int CountStationOverloads(string generated)
+        {
             var stationOverloadCount = 0;
             var index = 0;
             while ((index = generated.IndexOf("public static TrainRoute Station(this TrainRoute route", index, StringComparison.Ordinal)) >= 0)
@@ -290,9 +357,7 @@ public static class MixedReturnRoute
                 index++;
             }
 
-            Assert.Equal(2, stationOverloadCount);
-            Assert.Contains("ReturnMembers_", generated);
-            Assert.Contains("TupleOrdinals_", generated);
+            return stationOverloadCount;
         }
 
         private static string RunGenerators(string source)

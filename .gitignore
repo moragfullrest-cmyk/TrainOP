@@ -31,3 +31,7 @@ Thumbs.db
 
 ## Scratch
 scratch/
+scratch-tuple.cs
+
+## Generator debug output
+**/generated/

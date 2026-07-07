@@ -1,6 +1,6 @@
 # План: data-oriented handlers (только данные на вход и выход)
 
-> **Статус:** фазы 0–6 завершены — data-oriented API является единственным целевым путём  
+> **Статус:** фазы 0–6 завершены; **фазы 7–8** — в плане (якоря цепочки; сторонние сборки)  
 > **Цель:** handler станции = чистая функция над данными; `CargoManifest`, `LoadWagon`, `PullWagon`, `RailwaySignals` скрыты в сгенерированном адаптере.  
 > **Аудитория:** разработчики и AI-агенты, продолжающие работу над TrainOP.
 
@@ -50,7 +50,7 @@ var report = PaymentRoute.Build().DispatchTrain().Travel();
 
 Пользователь пишет **только**:
 
-1. `new TrainRoute()` + `.Station(...)` — data-oriented цепочка; `.AttachStation(...)` — низкоуровневый manifest API.
+1. `new TrainRoute()` + `.Station(...)` — единственный публичный API построения маршрута.
 2. `.Station(name, (params…) => data)` — handler; **первая станция без входных параметров = seed**.
 3. `DispatchTrain().Travel(manifest?)` — запуск; внешний seed через `Travel(manifest)`.
 
@@ -60,9 +60,10 @@ var report = PaymentRoute.Build().DispatchTrain().Travel();
 
 ### 1.3. Не-цели (v1)
 
-- Динамическая сборка маршрута в runtime (`foreach` + `AttachStation`)
+- Динамическая сборка маршрута в runtime (`foreach` + `RegisterStation`)
 - Автоматический анализ произвольных тел lambda (только сигнатура + известные типы возврата)
 - Полный отказ от manifest-only станций (останутся для низкоуровневых случаев)
+- Plugin-загрузка станций из произвольных DLL без перекомпиляции (см. фазу 8 §3.9 — исследуется **композиция** с заранее собранными библиотеками, не hot-plug)
 
 ---
 
@@ -101,7 +102,7 @@ var report = PaymentRoute.Build().DispatchTrain().Travel();
 └────────────────────────────┬─────────────────────────────┘
                              │
 ┌────────────────────────────▼─────────────────────────────┐
-│ TrainRoute.AttachStation (runtime, unchanged core)       │
+│ TrainRoute.RegisterStation (runtime, codegen-only)         │
 └──────────────────────────────────────────────────────────┘
 
 Parallel compile-time:
@@ -136,7 +137,7 @@ public sealed class GreenPass { /* RailwaySignals.Pass */ }
 | `(T1, T2, …)` ValueTuple | merge по ordinal (см. §3.4) → `Green` |
 | `RailwaySignals.Green(payload)` | merge `payload` → `Green` |
 | `RailwaySignals.Red(code, msg)` | `RedSignal` с `SignalIssue(code, msg, stationName)` |
-| `RailwaySignals.Pass` | манифест без изменений → `Green` |
+| `RailwaySignals.Pass` | манифест без изменений → `Green` (merge не выполняется; `ref`-мутации в handler не записываются) |
 | `CargoManifest` | escape hatch (фаза 5): заменяет манифест целиком → `Green`; analyzer `TOP005` |
 
 
@@ -149,7 +150,7 @@ public sealed class GreenPass { /* RailwaySignals.Pass */ }
 public sealed class TrainRoute
 {
     public TrainRoute Station<THandler>(string name, THandler handler);  // data-oriented (codegen)
-    public TrainRoute AttachStation(...);  // низкоуровневый manifest API
+    public TrainRoute RegisterStation(...);  // внутренний API для codegen
     public Train DispatchTrain();
 }
 ```
@@ -169,7 +170,7 @@ public sealed class TrainRoute
 **Не используем:**
 - `[TrainRouteChain]` и любые новые атрибуты для data-маршрутов (**удалён** `TrainRouteChainAttribute`)
 - Обязательный `[TrainTuple]` / `[Wagon]` для новых маршрутов
-- Анализ голого `new TrainRoute().AttachStation(...)` как data-chain (legacy)
+- Анализ голого `new TrainRoute().RegisterStation(...)` как data-chain (не используется)
 
 #### Целевой паттерн (без атрибутов)
 
@@ -183,10 +184,9 @@ public static class PaymentRoute
 }
 ```
 
-#### Зачем `new TrainRoute()` + `.Station`, а не только `.AttachStation`
+#### Зачем `new TrainRoute()` + `.Station`
 
-- `.Station` — data-oriented handler'ы (codegen adapter в фазе 1).
-- `.AttachStation` — явный manifest/signal API (legacy, низкий уровень).
+- `.Station` — data-oriented handler'ы (codegen adapter).
 - Analyzer строит граф только по `.Station` на цепочке от `new TrainRoute()`.
 
 #### Алгоритм `ChainDetector` (фаза 2)
@@ -200,18 +200,236 @@ public static class PaymentRoute
 
 #### Runtime (репозиторий)
 
-- `TrainRoute.Station(...)` — `src/TrainOP/Railway.cs` (делегирует в `AttachStation` до codegen)
-- Data-oriented `Station((T…) => TOut)` — **фаза 1** (codegen adapter)
+- Data-oriented `Station((T…) => TOut)` — codegen adapter → `RegisterStation`
 
 | Подход | Статус |
 |--------|--------|
 | **`new TrainRoute()` + `.Station`** | ✅ якорь для analyzer |
 | **`[TrainRouteChain]`** | ❌ удалён |
 | **`DataRouteBuilder`** | ❌ удалён — всё на `TrainRoute` |
-| **`[TrainTuple]` для новых маршрутов** | ❌ legacy only |
-| **`.AttachStation` на той же цепочке** | legacy manifest, вне data-graph |
+
+### 3.8. Расширение якорей цепочки — **ПЛАН (фаза 7)**
+
+#### 3.8.1. Проблема
+
+Сейчас «легитимная» цепочка — только непрерывное синтаксическое выражение:
+
+```csharp
+new TrainRoute().Station("A", ...).Station("B", ...)
+```
+
+Codegen и analyzer расходятся:
+
+| Сценарий | Codegen | Analyzer |
+|----------|---------|----------|
+| `var r = new TrainRoute(); r.Station(...)` | ✅ | ❌ TOP006 |
+| `base.Station(...).Station(...)` | ✅ | ❌ TOP006 |
+| `Build().Station(...)` | ✅ | ❌ TOP006 (если `new` в другом методе) |
+
+#### 3.8.2. Алгоритм `DetectChainRoots`
+
+Псевдокод (замена единственного обхода `ObjectCreationExpression`):
+
+```
+roots = empty set
+
+for each ObjectCreationExpression o where type is TrainRoute:
+    roots.add(o)
+
+for each IdentifierNameSyntax id where type is TrainRoute:
+    if TryGetSingleAssignmentFromTrainRouteCreation(id):
+        roots.add(id)
+
+for each ExpressionSyntax expr in candidate receivers of .Station / .ServiceStation:
+    if IsTrainRoute(expr) && expr is not already covered as suffix of another root's forward walk:
+        if expr is InvocationExpression | MemberAccessExpression | IdentifierNameSyntax:
+            roots.add(expr)
+
+unwrap (phase 7b): ParenthesizedExpression, ConditionalExpression arms, AwaitExpression
+
+for each root in roots:
+    walk forward with TryAdvanceChain (unchanged)
+    emit RouteChain(root, stations)
+```
+
+**Правило «уже покрыто»:** если `new TrainRoute().Station("A",...)` уже поглотил `.Station("A")`, не создавать второй корень на том же invocation. Обратный обход: сначала корни от `new`, затем остальные — и вычитать уже собранные invocations.
+
+#### 3.8.3. `chainId` для разных якорей
+
+| Якорь | `chainId` (предложение) |
+|-------|-------------------------|
+| `new TrainRoute()` в `PaymentRoute.Build` | `PaymentRoute.Build` (как сейчас) |
+| Параметр `baseRoute` в `Extend` | `ContainingType.Extend@baseRoute` |
+| Поле `_route` | `ContainingType@_route` |
+| Локальная `route` | `ContainingMethod@route` |
+| `Build()` invocation | `ContainingMethod@Build()` call site |
+
+Нужен для логов, будущего typed travel per-chain (если появится), не для пользовательского API.
+
+#### 3.8.4. Семантика seed при extension
+
+```csharp
+public static TrainRoute Extend(TrainRoute baseRoute) =>
+    baseRoute
+        .Station("Extra", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount + 1m });
+```
+
+| Правило | Значение |
+|---------|----------|
+| Первая `.Station` после якоря-параметра с wagon-параметрами | **не seed**; вход считается из внешнего манифеста |
+| `TOP001` на `paymentId` / `amount` | **не** выдавать — upstream вне видимости analyzer'а |
+| `TOP001` на второй и далее `.Station` в той же цепочке | как сейчас |
+| Seed-станция `() => new { ... }` после параметра | допустима: merge поверх манифеста caller'а (как §3.6) |
+
+#### 3.8.5. Примеры после фазы 7
+
+```csharp
+// Локальная (уровень A)
+public static TrainRoute Build()
+{
+    var route = new TrainRoute();
+    return route
+        .Station("Seed", () => new { id = 1 })
+        .Station("Next", (int id) => new { id = id + 1 });
+}
+
+// Параметр (composition)
+public static TrainRoute WithAudit(TrainRoute inner) =>
+    inner.Station("Audit", (string paymentId) => new { paymentId, audited = true });
+
+// Вызов (sub-route в том же выражении)
+public static TrainRoute Build() =>
+    CreateSeed()
+        .Station("Discount", (decimal amount) => new { amount = amount * 0.9m });
+
+static TrainRoute CreateSeed() =>
+    new TrainRoute().Station("Seed", () => new { amount = 100m });
+// Цепочка в Build(): только "Discount" — вход amount внешний относительно видимого seed в CreateSeed
+```
+
+Последний пример — **ограничение v1:** analyzer в `Build()` не связывает terminal wagons `CreateSeed()` с `Discount`; `amount` трактуется как внешний вход (как у параметра). Межпроцедурный вывод внутри одной сборки — вне фазы 7; **межсборочный** — фаза 8 (§3.9).
+
+### 3.9. Маршруты и станции из сторонних сборок — **ПЛАН (фаза 8)**
+
+#### 3.9.1. Сценарий
+
+Библиотека `MyRoutes.dll` (скомпилирована с `TrainOP` + `TrainOP.Generators`) экспортирует готовые фрагменты маршрута. Потребитель `App` достраивает цепочку локальными станциями:
+
+```csharp
+// MyRoutes.dll
+public static class PaymentModule
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station("Seed", () => new { paymentId = "p1", amount = 100m })
+        .Station("Discount", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m });
+}
+
+// App (ссылка на MyRoutes.dll + TrainOP.Generators)
+public static class AppRoute
+{
+    public static TrainRoute Build() =>
+        PaymentModule.Build()
+            .Station("Finalize", (string paymentId, decimal amount) =>
+                new { paymentId, status = "completed" });
+}
+```
+
+**Цель фазы 8:** найти и зафиксировать способ, при котором такая композиция **работает в runtime** и по возможности **проверяется compile-time** (поток вагонов через границу сборок).
+
+#### 3.9.2. Ограничение Roslyn (фундамент)
+
+| Слой | Видит исходники `MyRoutes`? | Видит lambda в `App`? |
+|------|----------------------------|------------------------|
+| `TrainRouteStationGenerator` (App) | ❌ только metadata reference | ✅ |
+| `ChainValidationAnalyzer` (App) | ❌ | ✅ (локальная часть цепочки) |
+| Runtime | ✅ адаптеры уже в DLL | ✅ codegen в App |
+
+Generator и analyzer работают по `compilation.SyntaxTrees` **текущего** проекта. Тела lambda и синтаксис `.Station` в **referenced assembly недоступны** — только символы (`IMethodSymbol` у `Build()`, тип `TrainRoute`).
+
+Следствия **сейчас**:
+
+- **Runtime:** композиция обычно **работает** — адаптеры библиотеки вшиты в `MyRoutes.dll`, локальная `.Station` генерируется в App.
+- **Analyzer в App:** видит только хвост цепочки после `PaymentModule.Build()`; terminal wagons библиотеки **неизвестны** → ложный `TOP001` или «слепая» валидация (как extension-якорь в §3.8.4).
+- **Typed `Travel()` в App:** terminal schema выводится только из **видимой** части цепочки, без учёта библиотечного хвоста.
+
+Фаза 7 (якорь = вызов `PaymentModule.Build()`) — **необходимый**, но **недостаточный** предшественник.
+
+#### 3.9.3. Кандидаты решений (spike)
+
+| # | Подход | Compile-time граф | Runtime | Сложность | Примечание |
+|---|--------|-------------------|---------|-----------|------------|
+| **A** | Чёрный ящик + документация | ❌ внешний upstream неизвестен | ✅ | Низкая | Зафиксировать паттерн после фазы 7; `TOP001` не на первой локальной станции |
+| **B** | **Экспорт схемы маршрута** в DLL (metadata) | ✅ при соглашении | ✅ | Средняя | **приоритет spike** — см. §3.9.4 |
+| **C** | Явный контракт в public API библиотеки | ✅ если пользователь объявил | ✅ | Средняя | `RouteTerminal<...>`, record с именами вагонов рядом с `Build()` |
+| **D** | Runtime-merge маршрутов (`TrainRoute.Concat`) | ❌ | ✅ | Средняя | Две независимые цепочки склеиваются в runtime без единого графа |
+| **E** | Source-pack / shared project | ✅ как один проект | ✅ | Низкая | Не «скомпилированная сборка» в чистом виде |
+| **F** | Embedded sources в reference | ✅ теоретически | ✅ | Высокая | Нестандартно для NuGet; хрупко |
+| **G** | Станции как типизированные делегаты / handlers без lambda в consumer | Частично | ✅ | Высокая | Смена модели API; отдельное исследование |
+
+**Не цель фазы 8:** динамическая подгрузка станций из произвольных DLL без перекомпиляции (`Reflection.Emit`, `foreach` + plugin model).
+
+#### 3.9.4. Предпочтительный вектор (B + элементы C)
+
+Библиотека при компиляции **дополнительно** публикует машиночитаемую схему terminal (и опционально seed) wagons для каждого фабричного метода `TrainRoute`:
+
+```csharp
+// emit в MyRoutes.dll (internal или public — TBD)
+namespace MyRoutes.RouteSchemas;
+
+[RouteSchemaFor(typeof(PaymentModule), nameof(PaymentModule.Build))]
+public static class PaymentModule_Build
+{
+    public static readonly WagonSlot[] TerminalWagons =
+    {
+        new("paymentId", typeof(string)),
+        new("amount", typeof(decimal)),
+    };
+}
+```
+
+Analyzer в App при якоре `PaymentModule.Build()`:
+
+1. Разрешает `IMethodSymbol` вызова.
+2. Ищет связанный тип схемы (атрибут-ссылка **только на границе сборок**, не для внутренних маршрутов — §3.9.6).
+3. Подмешивает terminal wagons библиотеки как **виртуальный upstream** перед первой локальной `.Station`.
+4. Продолжает обычную симуляцию (`ChainGraphSimulator`) по объединённому графу.
+
+`TrainRouteTravelGenerator` может использовать ту же схему для typed `Travel()` на полной цепочке.
+
+**Альтернатива без атрибута:** соглашение об имени `PaymentModule_BuildSchema` + поиск `INamedTypeSymbol` в сборке метода по `[ModuleInitializer]` / namespace — хуже для рефакторинга; атрибут только для **export**, не для описания handler'ов.
+
+#### 3.9.5. Что уже работает без фазы 8
+
+| Паттерн | Runtime | Analyzer в consumer |
+|---------|---------|---------------------|
+| `PaymentModule.Build().DispatchTrain().Travel()` | ✅ | N/A (нет локальных станций) |
+| Вложенный sub-route через data-oriented `.Station` + `Travel(manifest)` | ✅ | ✅ (см. `NestedBranchingRouteExample`) |
+| Локальный хвост после `External.Build()` | ✅ | ❌ / ложные `TOP001` без схемы |
+| Две библиотеки, обе с generators | ✅ каждая в своей DLL | ❌ сквозная валидация |
+
+#### 3.9.6. Принцип «атрибут только на границе»
+
+Фазы 0–6: data-маршруты **без** атрибутов на handler'ах. Фаза 8 **не отменяет** это правило:
+
+- Lambda в `.Station` по-прежнему без атрибутов.
+- Допустим **опциональный** `[RouteSchemaFor]` (имя TBD) на **сгенерированном** типе схемы в **экспортирующей** сборке — машинный контракт, не ручная разметка бизнес-кода.
+- Ручной дубль схемы в библиотеке (вариант C без codegen) — escape hatch для авторов пакетов, не основной путь.
+
+#### 3.9.7. Spike-артефакты
+
+Два проекта в `tests/` или `samples/`:
+
+```
+TrainOP.RouteLib.Tests  — class library, маршрут Seed → Discount
+TrainOP.RouteConsumer.Tests — ссылается на RouteLib, добавляет Finalize
+```
+
+Проверить: ProjectReference и (отдельно) имитация NuGet через `Reference` на собранную DLL.
 
 ### 3.4. Маппинг кортежей — **РЕШЕНИЕ (фаза 0, п.3)**
+
 
 | Контекст | Правило сопоставления возврата |
 |----------|-------------------------------|
@@ -274,7 +492,7 @@ public static class PaymentRoute
 
 **Задачи:**
 - [x] Новый generator: `TrainRouteStationGenerator` (**отдельно** от `WagonTupleGenerator`, см. §3.5)
-- [x] Сканировать `.Station(...)` на `TrainRoute` (не путать с `.AttachStation` для data-graph)
+- [x] Сканировать `.Station(...)` на `TrainRoute` (не путать с `RegisterStation` для data-graph)
 - [x] Из SemanticModel извлечь: имена и типы параметров, тип возврата, `CancellationToken`, `CargoManifest` escape
 - [x] Emit адаптер: `PullWagon` → handler → `StationMerge.ToSignal`
 - [x] `StationMerge.Apply` + `RailwaySignals` runtime (`StationDataResult.cs`, `StationMerge.cs`)
@@ -285,7 +503,7 @@ public static class PaymentRoute
 
 **Критерий:** тест-проект с `TrainRoute.Station`, handler'ы без TrainOP в теле. **Выполнено.**
 
-**API-изменение:** удалены instance-перегрузки `TrainRoute.Station(manifest => …)`; manifest-стиль только через `.AttachStation`.
+**API-изменение:** удалены публичные manifest-перегрузки; codegen регистрирует станции через `RegisterStation` (`[EditorBrowsable(Never)]`).
 
 ---
 
@@ -314,7 +532,7 @@ public static class PaymentRoute
 
 **Критерий:** пример из §1.1 полностью работает. **Выполнено.**
 
-**Реализация:** `TrainRouteTravelGenerator` emit'ит `RouteReport.Deconstruct` в `namespace TrainOP` по terminal schema; дедупликация по C#-сигнатуре типов.
+**Реализация:** typed-обёртки terminal-отчёта удалены; доступ к итоговым вагонам выполняется через `RouteReport` (`report["name"]`, `report.Get<T>("name")`).
 
 ---
 
@@ -345,9 +563,172 @@ public static class PaymentRoute
 **Задачи:**
 - [x] README и docs: primary path = data-oriented
 - [x] Сквозной sample `DataOrientedPaymentRouteEndToEndTests`
-- [x] Удалены `TrainTupleAttribute`, `WagonAttribute`, `WagonTupleGenerator`, legacy-тесты и docs
+- [x] Удалены `TrainTupleAttribute`, `WagonAttribute`, `WagonTupleGenerator`, публичный `AttachStation`, legacy-тесты и docs
 
 **Критерий:** один сквозной sample в `tests/` на новом API; legacy API отсутствует. **Выполнено.**
+
+---
+
+### Фаза 7 — Расширение якорей цепочки (analyzer + travel generator) — **ПЛАН**
+
+**Цель:** `ChainDetector` и `TrainRouteTravelGenerator` распознают data-oriented цепочки не только от `new TrainRoute()`, но и от других легитимных источников `TrainRoute`, без ложных `TOP006` (осиротевшие handler'ы).
+
+**Контекст (текущее ограничение):**
+
+- Codegen (`TrainRouteStationGenerator`) уже принимает любой receiver типа `TrainRoute` (`IsTrainRouteReceiver`).
+- Analyzer (`ChainDetector`) стартует **только** с `ObjectCreationExpressionSyntax` (`new TrainRoute()`).
+- Разрыв fluent-выражения (локальная переменная, параметр, поле) → codegen есть, `TOP006` — ложное срабатывание.
+
+См. детальный дизайн §3.8.
+
+#### 7.1. Таксономия якорей
+
+| Уровень | Якорь | Пример | Примечание |
+|---------|-------|--------|------------|
+| **A (v1 фазы 7)** | `new TrainRoute()` | `new TrainRoute().Station(...)` | ✅ уже есть |
+| **A** | Вызов метода / свойства | `BuildRoute().Station(...)`, `Routes.Shared.Station(...)` | receiver = `InvocationExpression` или `MemberAccess` на property |
+| **A** | Параметр метода | `baseRoute.Station(...)` | extension / composition |
+| **A** | Поле / свойство | `_route.Station(...)`, `this.Route.Station(...)` | static или instance |
+| **A** | Локальная после прямого `new` | `var r = new TrainRoute(); r.Station(...)` | см. §3.8.2 — одно присваивание в том же методе |
+| **B (v2 фазы 7)** | Parenthesized / conditional | `(GetRoute()).Station(...)`, `(a ? r1 : r2).Station(...)` | unwrap до внутреннего якоря |
+| **B** | `await` | `(await GetRouteAsync()).Station(...)` | unwrap `AwaitExpression` |
+| **C (отложено)** | Индексатор | `routes[i].Station(...)` | нет стабильного `chainId` |
+| **C** | Произвольный data flow | `var r = Factory(); r.Station(...)` | требует flow analysis |
+| **❌** | Динамическая сборка | `foreach` + `RegisterStation` | не-цель (§1.3) |
+
+**Не дублировать** перечисление в документации: семантически все якоря уровня A — «выражение статического типа `TrainRoute`», отличие только в **синтаксической форме корня** для обхода.
+
+#### 7.2. Задачи реализации
+
+**Модель данных**
+
+- [ ] Ввести `RouteChainAnchor` (kind + syntax location + optional `IMethodSymbol` containing method).
+- [ ] Расширить `RouteChain`: якорь вместо только `Location` от `new`.
+- [ ] `chainId`: FQN containing method + стабильный суффикс якоря (см. §3.8.3).
+
+**`ChainDetector`**
+
+- [ ] `DetectChainRoots(syntaxTree, semanticModel)` → множество корневых `ExpressionSyntax`.
+- [ ] Для каждого корня — существующий `TryAdvanceChain` (без изменений логики fluent-обхода).
+- [ ] `CollectChainedStationInvocations` — union по всем корням.
+- [ ] Дедупликация: одна `.Station` не должна входить в две цепочки; при конфликте — более «внутренний» якорь (ближе к `new`) или diagnostic `TOP009` (см. §5.1).
+
+**Локальная переменная (уровень A)**
+
+- [ ] `TryGetSingleAssignmentFromTrainRouteCreation(IdentifierNameSyntax, semanticModel)` — в том же `IMethodSymbol` одно присваивание вида `var x = new TrainRoute()` / `TrainRoute x = new TrainRoute()`.
+- [ ] Не считать якорем после второго присваивания тому же символу в методе.
+- [ ] Не следовать через `out` / `ref` / поля структуры.
+
+**Seed и валидация при extension-якоре**
+
+- [ ] `ChainGraphValidator`: для extension-якоря первая станция с wagon-параметрами — внешний вход (`TOP001` не применять к недостающим upstream-вагонам).
+- [ ] `TOP007` (unused seed) — только если первая станция цепочки — seed (`0` wagon-параметров).
+- [ ] Документировать: типизированная композиция `Extend(TrainRoute base)` не выводит схему `base` без межпроцедурного анализа.
+
+**Диагностики**
+
+- [ ] Уточнить текст `TOP006`: не только `new TrainRoute()`, а «часть цепочки от легитимного якоря `TrainRoute`» (§5.1).
+- [ ] Опционально `TOP009` (Info/Warning): двусмысленная принадлежность станции к двум цепочкам.
+
+**Потребители**
+
+- [ ] `ChainValidationAnalyzer` — без изменений контракта, только новые корни.
+- [ ] `TrainRouteTravelGenerator` — автоматически подхватит цепочки через `DetectChains`.
+
+**Тесты** (`ChainValidationAnalyzerTests` + при необходимости travel)
+
+- [ ] `var r = new TrainRoute(); return r.Station(...)` — нет `TOP006`.
+- [ ] Extension-цепочка: `TOP001` не на первой `.Station` с wagon-параметрами после якоря-параметра/поля/вызова.
+- [ ] `Build().Station(...)` когда `Build()` => `new TrainRoute()` в другом методе — цепочка в caller'е.
+- [ ] `_field.Station(...)` — нет `TOP006`.
+- [ ] Двойное присваивание локальной — по-прежнему `TOP006` (или явный negative test).
+- [ ] Регрессия: существующие тесты фазы 2 без изменений поведения для `new TrainRoute()` fluent.
+
+**Документация**
+
+- [ ] `docs/core-api.md` — допустимые формы сборки маршрута.
+- [ ] `docs/getting-started.md` — краткий пример extension через параметр.
+
+#### 7.3. Критерий готовности
+
+- Паттерны уровня **A** из §7.1 не дают `TOP006`.
+- Валидация вагонов (`TOP001`–`TOP003`) работает внутри цепочки как сейчас.
+- Extension-цепочка от параметра не требует фиктивной seed-станции.
+- `dotnet test TrainOP.sln` зелёный.
+
+#### 7.4. Не делать в фазе 7
+
+- Межпроцедурный merge графов (`PaymentRoute.Build()` + `Extend(that)` с проверкой совместимости terminal wagons).
+- Flow analysis от произвольного factory-метода.
+- Runtime-изменения (`Railway.cs`).
+- Новые атрибуты для якоря.
+
+---
+
+### Фаза 8 — Сторонние сборки и композиция маршрутов — **ПЛАН (spike → решение)**
+
+**Цель:** исследовать и внедрить способ строить маршруты с участием **скомпилированных** сторонних библиотек (NuGet / ProjectReference): готовые станции из DLL + локальные `.Station` в потребителе, с предсказуемым runtime и максимально полной compile-time проверкой.
+
+**Зависимости:** фаза 7 (якорь = вызов `ExternalModule.Build()`).
+
+См. §3.9.
+
+#### 8.1. Вопросы spike (ответить до реализации)
+
+- [ ] Достаточно ли варианта **A** (чёрный ящик + правила `TOP001`) для v1 межсборочной композиции?
+- [ ] Какой формат экспорта схемы (**B**): атрибут на generated type, embedded resource, или public record рядом с `Build()`?
+- [ ] Нужен ли `TrainRoute.Concat` (**D**) как runtime API, если есть fluent `External.Build().Station(...)`?
+- [ ] Как версионировать схему при изменении библиотеки (consumer старше / новее RouteLib)?
+- [ ] Работает ли symbol lookup одинаково для ProjectReference и NuGet metadata reference?
+
+#### 8.2. Задачи spike (исследование)
+
+- [ ] PoC: `RouteLib` + `RouteConsumer` (два проекта в solution).
+- [ ] Зафиксировать baseline: runtime OK, какие диагностики в consumer без доработок.
+- [ ] Прототип emit схемы в `TrainRouteStationGenerator` / отдельный `RouteSchemaExporter` для методов, возвращающих `TrainRoute` с data-chain.
+- [ ] Прототип чтения схемы в `ChainDetector` / `ChainGraphValidator` при внешнем якоре-вызове.
+- [ ] Оценить влияние на `TrainRouteTravelGenerator` (полный terminal vs только локальный хвост).
+- [ ] Документ `docs/cross-assembly-routes.md` с выбранным решением и примерами для авторов NuGet-пакетов.
+
+#### 8.3. Задачи реализации (после выбора вектора)
+
+**Экспорт (библиотека-маршрут)**
+
+- [ ] При обнаружении полной data-chain в проекте — emit тип схемы + wagon slots (terminal; опционально seed).
+- [ ] Связь «метод `Build` → тип схемы» (атрибут или naming convention).
+- [ ] Схема в сборке: `public` или `internal` + `InternalsVisibleTo` для тестов — TBD на spike.
+
+**Импорт (потребитель)**
+
+- [ ] `TryResolveExternalRouteSchema(IMethodSymbol factoryMethod)` → `WagonSlot[]`.
+- [ ] Объединение внешней схемы с локальным хвостом цепочки; `TOP001`/`TOP002`/`TOP003` на стыке.
+- [ ] Fallback: схема не найдена → поведение как extension-якорь §3.8.4 (внешний вход неизвестен), опционально `TOP010` Info.
+
+**Тесты**
+
+- [ ] Analyzer: consumer компилируется без ложного `TOP001` при известной схеме RouteLib.
+- [ ] Analyzer: несовместимые типы на стыке → `TOP002`.
+- [ ] Negative: RouteLib без схемы (старая версия) → graceful degradation.
+- [ ] E2E: `RouteLib.Build().Station(...).DispatchTrain().Travel()` — корректный manifest.
+
+**Документация**
+
+- [ ] `docs/nuget.md` — раздел «маршруты в библиотеке и композиция в приложении».
+- [ ] `docs/core-api.md` — паттерн extension после внешнего `Build()`.
+
+#### 8.4. Критерий готовности
+
+- Автор пакета `MyRoutes` публикует `Build()`; потребитель добавляет `.Station` без ложных `TOP001` при совпадении контракта.
+- Стык библиотека → локальная станция ловит конфликт типов (`TOP002`) на этапе компиляции consumer.
+- Решение задокументировано; отклонённые варианты (D, E, F, G) кратко обоснованы в §3.9 или `cross-assembly-routes.md`.
+- `dotnet test TrainOP.sln` зелёный.
+
+#### 8.5. Не делать в фазе 8
+
+- Plugin-модель / загрузка handler'ов из произвольных сборок в runtime.
+- Анализ IL или decompile referenced assembly.
+- Обязательные атрибуты на пользовательских lambda-handler'ах.
+- Межсборочный вывод без экспортированной схемы (полный symbolic execution по metadata).
 
 ---
 
@@ -355,20 +736,34 @@ public static class PaymentRoute
 
 | ID | Severity | Условие | Message format |
 |----|----------|---------|----------------|
-| `TOP001` | — | *(удалён вместе с `WagonTupleGenerator`)* | — |
-| `TOP002` | Error | Станция требует вагон, не произведённый ранее в цепочке | `Station '{0}' requires wagon '{1}', which is not available from earlier stations in this route.` |
-| `TOP003` | Error | Конфликт типов одного вагона между станциями | `Wagon '{0}' has conflicting types: '{1}' (produced at '{2}') vs '{3}' (required at '{4}').` |
-| `TOP004` | Error | Вагон удалён частичным возвратом, но нужен дальше | `Wagon '{0}' was removed at station '{1}' but is required at station '{2}'.` |
-| `TOP005` | Warning | Handler вернул `CargoManifest` — полная замена | `Station '{0}' returns CargoManifest, which replaces the entire manifest; wagons not in the return value may be lost.` |
-| `TOP006` | Warning | ValueTuple в возврате data-handler'а | `Station '{0}' returns a tuple; element order must match handler parameter order ({1}). Prefer anonymous types or records.` |
-| `TOP007` | Error | Data-lambda вне цепочки от `new TrainRoute()` | `Data-oriented handler must be part of a TrainRoute chain starting with 'new TrainRoute()'.` |
-| `TOP008` | Info | Вагон из seed не используется downstream | `Wagon '{0}' produced at seed station '{1}' is never consumed by later stations.` |
+| `TOP001` | Error | Станция требует вагон, не произведённый ранее в цепочке | `Station '{0}' requires wagon '{1}', which is not available from earlier stations in this route` |
+| `TOP002` | Error | Конфликт типов одного вагона между станциями | `Wagon '{0}' has conflicting types: '{1}' (produced at '{2}') vs '{3}' (required at '{4}')` |
+| `TOP003` | Error | Вагон удалён частичным возвратом, но нужен дальше | `Wagon '{0}' was removed at station '{1}' but is required at station '{2}'` |
+| `TOP004` | Warning | Handler вернул `CargoManifest` — полная замена | `Station '{0}' returns CargoManifest, which replaces the entire manifest; wagons not in the return value may be lost` |
+| `TOP005` | Warning | ValueTuple в возврате data-handler'а | `Station '{0}' returns an unnamed tuple; element order must match handler parameter order ({1}). Prefer anonymous types, records, or named tuples.` |
+| `TOP006` | Error | Data-lambda вне цепочки от легитимного якоря `TrainRoute` | Сейчас: `...starting with 'new TrainRoute()'`; после фазы 7 — §3.8 |
+| `TOP007` | Info | Вагон из seed не используется downstream | `Wagon '{0}' produced at seed station '{1}' is never consumed by later stations` |
+| `TOP008` | Error | Конфликт имён вагонов для одной сигнатуры handler'а | `Handler wagon names ({0}) do not match the canonical names ({1})...` |
+
+### 5.1. Диагностики фазы 7 (черновик)
+
+| ID | Severity | Условие | Примечание |
+|----|----------|---------|------------|
+| `TOP006` | Error | Осиротевший data-handler | Текст сообщения обновить после расширения якорей (§7.2) |
+| `TOP009` | Info | Станция достижима из двух корней | Опционально; можно отложить |
+
+### 5.2. Диагностики фазы 8 (черновик)
+
+| ID | Severity | Условие | Примечание |
+|----|----------|---------|------------|
+| `TOP010` | Info | Внешний `TrainRoute` без экспортированной схемы | «Стык с `{0}` не проверяется; обновите RouteLib или объявите контракт» — TBD на spike |
 
 **Правила:**
-- `TOP001` — legacy + data (имена параметров handler'а).
-- `TOP002`–`TOP004`, `TOP007` — **фаза 2** (`ChainValidationAnalyzer`).
-- `TOP005`, `TOP006`, `TOP008` — фаза 2 (можно частично в фазе 1 как warnings при emit).
-- Release tracking: `AnalyzerReleases.Unshipped.md` при добавлении `TOP002+`; `TOP001` уже shipped с `WagonTupleGenerator`.
+- `TOP001`–`TOP004`, `TOP007` — валидация графа цепочки (`ChainValidationAnalyzer`).
+- `TOP005` — предупреждение при emit / анализе tuple-return.
+- `TOP006` — осиротевшие handler'ы; фаза 7 сужает ложные срабатывания.
+- `TOP008` — канонические имена вагонов для одинаковых сигнатур handler'а.
+- Release tracking: `AnalyzerReleases.Unshipped.md`.
 
 ---
 
@@ -464,10 +859,24 @@ tests/
 
 | API | Правило ordinal |
 |-----|-----------------|
-| **Data-oriented** `.Station` | Порядок **wagon-параметров handler'а** (§3.4); предупреждение `TOP006` |
+| **Data-oriented** `.Station` | Порядок **wagon-параметров handler'а** (§3.4); предупреждение `TOP005` |
 | **Legacy `[TrainTuple]`** | Порядок свойств `[Wagon]` на классе (без изменений) |
 
 Предпочитать анонимные типы и records в новом коде.
+
+### 8.4. Фаза 7 (якоря цепочки)
+
+1. Читать §3.8 и §4 фаза 7 перед изменением `ChainDetector`.
+2. Не ломать обход fluent от `new TrainRoute()` — только добавить корни.
+3. Extension-якорь: первая станция с параметрами ≠ seed; не применять `TOP001` к «внешним» вагонам.
+4. Сверять ID диагностик с `TrainRouteDiagnostics.cs` (§5).
+
+### 8.5. Фаза 8 (сторонние сборки)
+
+1. Сначала spike (§4 фаза 8.1–8.2) — не писать production-код до выбора вектора B/C/D.
+2. Не анализировать IL referenced assembly; только symbols + export schema.
+3. Атрибут схемы — только на generated export type, не на handler lambda.
+4. Фаза 7 должна быть готова или учтена в spike (якорь `External.Build()`).
 
 ---
 
@@ -475,10 +884,12 @@ tests/
 
 | Риск | Митигация |
 |------|-----------|
-| Цепочку нельзя вывести из разнесённого кода | `TOP007`; собирать маршрут в одном выражении или static `Build()` |
+| Цепочку нельзя вывести из разнесённого кода | `TOP006`; фаза 7: локальная после `new`, параметр, поле, вызов (§3.8) |
 | Взрыв комбинаторики overload'ов | Один generic `Station` + source-generated wrapper per call site, не per signature union |
-| Кортежи в возврате | Предпочитать анонимные типы; analyzer TOP006 |
+| Кортежи в возврате | Предпочитать анонимные типы; analyzer `TOP005` |
 | Два генератора конфликтуют | Разные extension-классы; data-route не генерит `Deconstruct` для legacy |
+| Сторонняя сборка без исходников | Фаза 8: экспорт схемы в DLL; fallback §3.8.4 (§3.9) |
+| Несовместимость версий RouteLib | Semver + опциональный `TOP010`; тесты на старую DLL без схемы |
 | Производительность рефлексии | Merge только на возврате; PullWagon типизирован в compile-time |
 
 ---
@@ -486,7 +897,9 @@ tests/
 ## 10. Критерии завершения проекта
 
 - [x] Пример payment flow без `LoadWagon`/`PullWagon` в handler'ах (кроме manifest escape / recovery)
-- [x] Analyzer ловит missing wagon в цепочке (TOP002)
+- [x] Analyzer ловит missing wagon в цепочке (`TOP001`)
+- [ ] Фаза 7: якоря цепочки кроме `new TrainRoute()` (§4, §3.8)
+- [ ] Фаза 8: композиция с маршрутами из сторонних сборок (§4, §3.9)
 - [x] `Travel()` с typed deconstruct по цепочке
 - [x] `RailwaySignals.Red` в handler без ручного `SignalIssue`
 - [x] Документация обновлена (`getting-started`, README)
@@ -504,7 +917,9 @@ tests/
 | `src/TrainOP.Generators/TrainRouteStationGenerator.cs` | Data-oriented адаптеры `.Station` |
 | `src/TrainOP.Generators/TrainRouteTravelGenerator.cs` | Typed `Travel()` deconstruct |
 | `tests/TrainOP.Tests/DataOrientedPaymentRouteEndToEndTests.cs` | Сквозной data-oriented payment flow |
-| `tests/TrainOP.Tests/TrainRuntimeTests.cs` | Runtime: async, cancellation, exceptions, AttachStation smoke |
+| `tests/TrainOP.Tests/TrainRuntimeTests.cs` | Runtime: async, cancellation, exceptions |
+| `src/TrainOP.Generators/ChainDetector.cs` | Обнаружение цепочек (фаза 7: расширение якорей) |
+| `docs/cross-assembly-routes.md` | *(фаза 8)* Межсборочная композиция — TBD |
 | `docs/core-api.md` | Базовый API |
 
 ---
@@ -517,5 +932,7 @@ tests/
 | 2026-07-02 | `DataRouteBuilder` заменён на `TrainRoute.Station`; удалён `DataRouteDefinition` |
 | 2026-07-02 | Пересмотр п.1: без `[TrainRouteChain]`; chainId и схема только из analyzer |
 | 2026-07-02 | Отказ от `WithSeed`: seed = первая `Station` без входных вагонов; внешний seed = `Travel(manifest)` |
+| 2026-07-06 | **Фаза 6 (доп.):** удалён публичный `AttachStation`; codegen → `RegisterStation`; ветвление на data-oriented `.Station` |
 | 2026-07-02 | **Фаза 6:** удаление legacy `[TrainTuple]` API, README/docs, `DataOrientedPaymentRouteEndToEndTests` |
-| 2026-07-03 | Очистка manifest-примеров и тестов; `DepotRouteTests` → `TrainRuntimeTests`; docs на `RailwaySignals` |
+| 2026-07-06 | **Фаза 8 (план):** композиция маршрутов со сторонними сборками, экспорт схемы (§3.9, §4 фаза 8) |
+| 2026-07-06 | **Фаза 7 (план):** расширение якорей `ChainDetector` — параметр, поле, вызов, локальная после `new` (§3.8, §4 фаза 7) |

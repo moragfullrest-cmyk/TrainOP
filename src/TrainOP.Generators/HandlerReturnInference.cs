@@ -23,10 +23,20 @@ namespace TrainOP.Generators
             ImmutableArray<WagonBinding> inputWagons)
         {
             var returnType = UnwrapReturnType(lambdaSymbol.ReturnType);
+            if (IsVoidReturn(returnType))
+            {
+                return ReturnShape.Void;
+            }
+
             if (returnType == null || returnType.SpecialType == SpecialType.System_Object)
             {
                 returnType = InferBodyReturnType(GetLambdaBody(lambdaSyntax), semanticModel);
                 returnType = UnwrapReturnType(returnType);
+            }
+
+            if (IsVoidReturn(returnType))
+            {
+                return ReturnShape.Void;
             }
 
             if (returnType == null)
@@ -191,10 +201,8 @@ namespace TrainOP.Generators
             if (IsValueTuple(returnType))
             {
                 var members = ImmutableArray.CreateBuilder<WagonBinding>();
-                var isUnnamedValueTuple = false;
                 if (returnType is INamedTypeSymbol namedTuple)
                 {
-                    isUnnamedValueTuple = IsUnnamedValueTuple(namedTuple);
                     var typeArguments = namedTuple.TypeArguments;
                     var elementNames = namedTuple.TupleElements;
                     for (var i = 0; i < typeArguments.Length; i++)
@@ -202,17 +210,13 @@ namespace TrainOP.Generators
                         string name;
                         if (elementNames != null
                             && i < elementNames.Length
-                            && !IsDefaultTupleElementName(elementNames[i].Name, i))
+                            && !TupleElementNaming.IsDefaultName(elementNames[i].Name, i))
                         {
                             name = elementNames[i].Name;
                         }
-                        else if (isUnnamedValueTuple && i < inputWagons.Length)
-                        {
-                            name = inputWagons[i].Name;
-                        }
                         else
                         {
-                            name = "Item" + (i + 1);
+                            name = TupleElementNaming.DefaultName(i);
                         }
 
                         members.Add(new WagonBinding(
@@ -226,8 +230,7 @@ namespace TrainOP.Generators
                 return new ReturnShape(
                     members.ToImmutable(),
                     isCargoManifest: false,
-                    isValueTuple: true,
-                    isUnnamedValueTuple: isUnnamedValueTuple);
+                    isValueTuple: true);
             }
 
             var bindings = ImmutableArray.CreateBuilder<WagonBinding>();
@@ -256,6 +259,29 @@ namespace TrainOP.Generators
             }
 
             return new ReturnShape(bindings.ToImmutable(), isCargoManifest: false, isValueTuple: false);
+        }
+
+        /// <summary>
+        /// Determines whether a handler return type represents no return value.
+        /// </summary>
+        private static bool IsVoidReturn(ITypeSymbol returnType)
+        {
+            if (returnType == null)
+            {
+                return false;
+            }
+
+            if (returnType.SpecialType == SpecialType.System_Void)
+            {
+                return true;
+            }
+
+            return returnType is INamedTypeSymbol named
+                && !named.IsGenericType
+                && string.Equals(
+                    named.ToDisplayString(),
+                    "System.Threading.Tasks.Task",
+                    StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -334,45 +360,5 @@ namespace TrainOP.Generators
                 || fullName.StartsWith("(", StringComparison.Ordinal);
         }
 
-        /// <summary>
-        /// Determines whether a tuple type uses only default ItemN element names.
-        /// </summary>
-        private static bool IsUnnamedValueTuple(INamedTypeSymbol namedTuple)
-        {
-            var elementNames = namedTuple.TupleElements;
-            if (elementNames.IsDefaultOrEmpty)
-            {
-                return true;
-            }
-
-            for (var i = 0; i < elementNames.Length; i++)
-            {
-                if (!IsDefaultTupleElementName(elementNames[i].Name, i))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// Determines whether a tuple element name is the default ItemN name for its index.
-        /// </summary>
-        private static bool IsDefaultTupleElementName(string name, int index)
-        {
-            if (string.IsNullOrEmpty(name))
-            {
-                return true;
-            }
-
-            if (!name.StartsWith("Item", StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            return int.TryParse(name.Substring(4), out var parsed)
-                && parsed == index + 1;
-        }
     }
 }

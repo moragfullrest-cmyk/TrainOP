@@ -24,7 +24,8 @@ internal sealed class DataOrientedStationExample : IExample
                     : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"));
 
         var report = route.DispatchTrain().Travel();
-        var (paymentId, amount) = report;
+        var paymentId = report.Get<string>("paymentId");
+        var amount = report.Get<decimal>("amount");
 
         Console.WriteLine($"paymentId={paymentId}, amount={amount}");
         ExampleOutput.WriteReport(report);

@@ -48,130 +48,232 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
+        /// Mutable state accumulated while walking a route chain.
+        /// </summary>
+        private sealed class SimulationState
+        {
+            public List<Diagnostic> Diagnostics { get; } = new();
+
+            public Dictionary<string, LiveWagon> Live { get; } = new(StringComparer.Ordinal);
+
+            public List<string> LiveOrder { get; } = new();
+
+            public Dictionary<string, RemovedWagon> Removed { get; } = new(StringComparer.Ordinal);
+
+            public HashSet<string> SeedWagons { get; } = new(StringComparer.Ordinal);
+
+            public HashSet<string> ConsumedWagons { get; } = new(StringComparer.Ordinal);
+
+            public bool HasUnknownReturn { get; set; }
+        }
+
+        /// <summary>
         /// Walks the chain station by station, updating live wagons and collecting diagnostics.
         /// </summary>
         public static ChainSimulationResult Simulate(RouteChain chain)
         {
-            var diagnostics = new List<Diagnostic>();
-            var live = new Dictionary<string, LiveWagon>(StringComparer.Ordinal);
-            var liveOrder = new List<string>();
-            var removed = new Dictionary<string, RemovedWagon>(StringComparer.Ordinal);
-            var seedWagons = new HashSet<string>(StringComparer.Ordinal);
-            var consumedWagons = new HashSet<string>(StringComparer.Ordinal);
-            var hasUnknownReturn = false;
+            var state = new SimulationState();
 
             for (var i = 0; i < chain.Stations.Length; i++)
             {
                 var station = chain.Stations[i];
-                var handler = station.Handler;
+                ProcessStationInputs(station, i, state);
 
-                foreach (var input in handler.InputWagons)
+                if (TryHandleSpecialReturn(station, state))
                 {
-                    consumedWagons.Add(input.Name);
-
-                    if (removed.TryGetValue(input.Name, out var removedInfo))
-                    {
-                        diagnostics.Add(Diagnostic.Create(
-                            TrainRouteDiagnostics.WagonRemovedButRequired,
-                            input.Location,
-                            input.Name,
-                            removedInfo.RemovedAtStation,
-                            station.StationName));
-                        continue;
-                    }
-
-                    if (!live.TryGetValue(input.Name, out var liveWagon))
-                    {
-                        if (input.IsOptional)
-                        {
-                            continue;
-                        }
-
-                        if (i == 0)
-                        {
-                            // Wagons may be supplied by Travel(manifest) before the first station runs.
-                            continue;
-                        }
-
-                        diagnostics.Add(Diagnostic.Create(
-                            TrainRouteDiagnostics.MissingWagon,
-                            input.Location,
-                            station.StationName,
-                            input.Name));
-                        continue;
-                    }
-
-                    if (!TypesCompatible(liveWagon.Binding.TypeSymbol, input.TypeSymbol))
-                    {
-                        diagnostics.Add(Diagnostic.Create(
-                            TrainRouteDiagnostics.WagonTypeConflict,
-                            input.Location,
-                            input.Name,
-                            liveWagon.Binding.TypeDisplay,
-                            liveWagon.ProducedAtStation,
-                            input.TypeDisplay,
-                            station.StationName));
-                    }
-                }
-
-                if (handler.ReturnShape.IsUnknown)
-                {
-                    hasUnknownReturn = true;
                     continue;
                 }
 
-                if (handler.ReturnShape.IsCargoManifest)
-                {
-                    diagnostics.Add(Diagnostic.Create(
-                        TrainRouteDiagnostics.CargoManifestReplacement,
-                        station.HandlerLocation,
-                        station.StationName));
-                    live.Clear();
-                    liveOrder.Clear();
-                    removed.Clear();
-                    continue;
-                }
+                ApplyReturn(
+                    station,
+                    station.Handler,
+                    state.Live,
+                    state.LiveOrder,
+                    state.Removed,
+                    state.SeedWagons);
 
-                if (handler.ReturnShape.IsUnnamedValueTuple
-                    && handler.InputWagons.Length > 0)
+                if (!station.Handler.ReturnShape.IsUnknown)
                 {
-                    var expected = string.Join(", ", handler.InputWagons.Select(w => w.Name));
-                    diagnostics.Add(Diagnostic.Create(
-                        TrainRouteDiagnostics.TupleReturnOrder,
-                        station.HandlerLocation,
-                        station.StationName,
-                        expected));
+                    state.HasUnknownReturn = false;
                 }
-
-                ApplyReturn(station, handler, live, liveOrder, removed, seedWagons);
             }
 
-            foreach (var seedWagon in seedWagons)
+            ReportUnusedSeedWagons(chain, state);
+
+            return new ChainSimulationResult(
+                BuildTerminalWagons(state),
+                state.HasUnknownReturn,
+                state.Diagnostics.ToImmutableArray());
+        }
+
+        /// <summary>
+        /// Validates required and optional input wagons at a station.
+        /// </summary>
+        private static void ProcessStationInputs(
+            StationChainLink station,
+            int stationIndex,
+            SimulationState state)
+        {
+            if (state.HasUnknownReturn)
             {
-                if (!consumedWagons.Contains(seedWagon) && chain.Stations.Length > 0)
+                foreach (var input in station.Handler.InputWagons)
                 {
-                    var seedStation = chain.Stations[0];
-                    diagnostics.Add(Diagnostic.Create(
+                    state.ConsumedWagons.Add(input.Name);
+                }
+
+                return;
+            }
+
+            foreach (var input in station.Handler.InputWagons)
+            {
+                state.ConsumedWagons.Add(input.Name);
+
+                if (state.Removed.TryGetValue(input.Name, out var removedInfo))
+                {
+                    state.Diagnostics.Add(Diagnostic.Create(
+                        TrainRouteDiagnostics.WagonRemovedButRequired,
+                        input.Location,
+                        input.Name,
+                        removedInfo.RemovedAtStation,
+                        station.StationName));
+                    continue;
+                }
+
+                if (!state.Live.TryGetValue(input.Name, out var liveWagon))
+                {
+                    if (input.IsOptional)
+                    {
+                        continue;
+                    }
+
+                    if (stationIndex == 0)
+                    {
+                        // Wagons may be supplied by Travel(manifest) before the first station runs.
+                        continue;
+                    }
+
+                    state.Diagnostics.Add(Diagnostic.Create(
+                        TrainRouteDiagnostics.MissingWagon,
+                        input.Location,
+                        station.StationName,
+                        input.Name));
+                    continue;
+                }
+
+                if (!TypesCompatible(liveWagon.Binding.TypeSymbol, input.TypeSymbol))
+                {
+                    state.Diagnostics.Add(Diagnostic.Create(
+                        TrainRouteDiagnostics.WagonTypeConflict,
+                        input.Location,
+                        input.Name,
+                        liveWagon.Binding.TypeDisplay,
+                        liveWagon.ProducedAtStation,
+                        input.TypeDisplay,
+                        station.StationName));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handles return shapes that skip or reset wagon state. Returns true when ApplyReturn should be skipped.
+        /// </summary>
+        private static bool TryHandleSpecialReturn(StationChainLink station, SimulationState state)
+        {
+            var handler = station.Handler;
+
+            if (handler.ReturnShape.IsUnknown)
+            {
+                state.HasUnknownReturn = true;
+                return true;
+            }
+
+            if (handler.ReturnShape.IsCargoManifest)
+            {
+                state.Diagnostics.Add(Diagnostic.Create(
+                    TrainRouteDiagnostics.CargoManifestReplacement,
+                    station.HandlerLocation,
+                    station.StationName));
+                state.Live.Clear();
+                state.LiveOrder.Clear();
+                state.Removed.Clear();
+                return true;
+            }
+
+            if (handler.ReturnShape.IsVoid)
+            {
+                ApplyVoidReturn(station, handler, state.Live, state.Removed);
+                state.HasUnknownReturn = false;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Reports seed wagons that were produced but never consumed downstream.
+        /// </summary>
+        private static void ReportUnusedSeedWagons(RouteChain chain, SimulationState state)
+        {
+            if (chain.Stations.Length == 0)
+            {
+                return;
+            }
+
+            var seedStation = chain.Stations[0];
+            foreach (var seedWagon in state.SeedWagons)
+            {
+                if (!state.ConsumedWagons.Contains(seedWagon))
+                {
+                    state.Diagnostics.Add(Diagnostic.Create(
                         TrainRouteDiagnostics.UnusedSeedWagon,
                         seedStation.HandlerLocation,
                         seedWagon,
                         seedStation.StationName));
                 }
             }
+        }
 
+        /// <summary>
+        /// Collects wagons still live at the end of the chain in production order.
+        /// </summary>
+        private static ImmutableArray<WagonBinding> BuildTerminalWagons(SimulationState state)
+        {
             var terminalWagons = ImmutableArray.CreateBuilder<WagonBinding>();
-            foreach (var wagonName in liveOrder)
+            foreach (var wagonName in state.LiveOrder)
             {
-                if (live.TryGetValue(wagonName, out var liveWagon))
+                if (state.Live.TryGetValue(wagonName, out var liveWagon))
                 {
                     terminalWagons.Add(liveWagon.Binding);
                 }
             }
 
-            return new ChainSimulationResult(
-                terminalWagons.ToImmutable(),
-                hasUnknownReturn,
-                diagnostics.ToImmutableArray());
+            return terminalWagons.ToImmutable();
+        }
+
+        /// <summary>
+        /// Applies void-return semantics: non-ref inputs are removed and no wagons are produced.
+        /// </summary>
+        private static void ApplyVoidReturn(
+            StationChainLink station,
+            StationHandlerBinding handler,
+            Dictionary<string, LiveWagon> live,
+            Dictionary<string, RemovedWagon> removed)
+        {
+            if (handler.IsSeed)
+            {
+                return;
+            }
+
+            foreach (var input in handler.InputWagons)
+            {
+                if (input.IsByReference)
+                {
+                    continue;
+                }
+
+                live.Remove(input.Name);
+                removed[input.Name] = new RemovedWagon(station.StationName);
+            }
         }
 
         /// <summary>

@@ -16,4 +16,8 @@
     <ProjectReference Include="..\..\src\TrainOP\TrainOP.csproj" />
     <ProjectReference Include="..\..\src\TrainOP.Generators\TrainOP.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="generated/**" />
+  </ItemGroup>
 </Project>

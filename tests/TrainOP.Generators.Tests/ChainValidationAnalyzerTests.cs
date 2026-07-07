@@ -56,14 +56,14 @@ public static class ExternalSeedRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP002");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
         }
 
         /// <summary>
-        /// Verifies that TOP002 is reported when a required wagon is missing from the chain.
+        /// Verifies that TOP001 is reported when a required wagon is missing from the chain.
         /// </summary>
         [Fact]
-        public async Task Analyzer_ReportsTop002_WhenWagonMissing()
+        public async Task Analyzer_ReportsTop001_WhenWagonMissing()
         {
             const string source = @"
 using TrainOP;
@@ -78,14 +78,14 @@ public static class BrokenRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.Contains(diagnostics, d => d.Id == "TOP002");
+            Assert.Contains(diagnostics, d => d.Id == "TOP001");
         }
 
         /// <summary>
-        /// Verifies that TOP003 is reported when a wagon type conflicts with a prior station.
+        /// Verifies that TOP002 is reported when a wagon type conflicts with a prior station.
         /// </summary>
         [Fact]
-        public async Task Analyzer_ReportsTop003_WhenWagonTypeConflicts()
+        public async Task Analyzer_ReportsTop002_WhenWagonTypeConflicts()
         {
             const string source = @"
 using TrainOP;
@@ -99,14 +99,14 @@ public static class BrokenRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.Contains(diagnostics, d => d.Id == "TOP003");
+            Assert.Contains(diagnostics, d => d.Id == "TOP002");
         }
 
         /// <summary>
-        /// Verifies that TOP004 is reported when a removed wagon is required by a later station.
+        /// Verifies that TOP003 is reported when a removed wagon is required by a later station.
         /// </summary>
         [Fact]
-        public async Task Analyzer_ReportsTop004_WhenRemovedWagonRequiredLater()
+        public async Task Analyzer_ReportsTop003_WhenRemovedWagonRequiredLater()
         {
             const string source = @"
 using TrainOP;
@@ -121,14 +121,117 @@ public static class BrokenRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.Contains(diagnostics, d => d.Id == "TOP004");
+            Assert.Contains(diagnostics, d => d.Id == "TOP003");
         }
 
         /// <summary>
-        /// Verifies that TOP007 is reported when a handler is defined outside a fluent chain.
+        /// Verifies that a route built via a local variable is recognized as a valid chain.
         /// </summary>
         [Fact]
-        public async Task Analyzer_ReportsTop007_WhenHandlerOutsideChain()
+        public async Task Analyzer_LocalVariableChain_ProducesNoTop006()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class LocalRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute();
+        return route.Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+            .Station(""Discount"", (string paymentId, decimal amount) =>
+                new { paymentId, amount = amount * 0.9m });
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that a local variable with explicit type is recognized as a chain anchor.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_LocalVariableChain_WithExplicitType_ProducesNoTop006()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class LocalRoute
+{
+    public static TrainRoute Build()
+    {
+        TrainRoute route = new TrainRoute();
+        route.Station(""Seed"", () => new { paymentId = ""pay-1"" });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+        }
+
+        /// <summary>
+        /// Verifies that a reused local variable is anchored to its latest preceding assignment.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_LocalVariableChain_ReuseAfterReassignment_ProducesNoTop006()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class LocalRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute();
+        route = new TrainRoute();
+        return route.Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+            .Station(""Discount"", (string paymentId, decimal amount) =>
+                new { paymentId, amount = amount * 0.9m });
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that two route chains can be built by reusing the same local variable.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_LocalVariableChain_TwoRoutesInOneMethod_ProducesNoTop006()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class LocalRoute
+{
+    public static void BuildBoth()
+    {
+        var route = new TrainRoute();
+        route.Station(""First"", () => new { paymentId = ""pay-1"" });
+
+        route = new TrainRoute();
+        route.Station(""Second"", () => new { paymentId = ""pay-2"" });
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+        }
+
+        /// <summary>
+        /// Verifies that TOP006 is reported when a local is assigned from a non-creation source.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop006_WhenLocalIsNotAssignedFromCreation()
         {
             const string source = @"
 using TrainOP;
@@ -137,14 +240,16 @@ public static class BrokenRoute
 {
     public static TrainRoute Build()
     {
-        var route = new TrainRoute();
+        var route = GetRoute();
         return route.Station(""Seed"", () => new { paymentId = ""pay-1"" });
     }
+
+    private static TrainRoute GetRoute() => new TrainRoute();
 }";
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.Contains(diagnostics, d => d.Id == "TOP007");
+            Assert.Contains(diagnostics, d => d.Id == "TOP006");
         }
 
         /// <summary>
@@ -168,7 +273,7 @@ public static class RecoveryRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP007");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
         }
 
         /// <summary>
@@ -192,72 +297,6 @@ public static class FailRoute
             var diagnostics = await RunAnalyzerAsync(source);
 
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
-        }
-
-        /// <summary>
-        /// Verifies that TOP006 is reported when a handler returns an unnamed tuple.
-        /// </summary>
-        [Fact]
-        public async Task Analyzer_ReportsTop006_WhenHandlerReturnsUnnamedTuple()
-        {
-            const string source = @"
-using TrainOP;
-
-public static class TupleRoute
-{
-    public static TrainRoute Build() => new TrainRoute()
-        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
-        .Station(""ByTuple"", (string paymentId, decimal amount) =>
-            (paymentId + ""-tuple"", amount + 1m));
-}";
-
-            var diagnostics = await RunAnalyzerAsync(source);
-
-            Assert.Contains(diagnostics, d => d.Id == "TOP006");
-        }
-
-        /// <summary>
-        /// Verifies that TOP006 is not reported when a handler returns a named tuple.
-        /// </summary>
-        [Fact]
-        public async Task Analyzer_DoesNotReportTop006_WhenHandlerReturnsNamedTuple()
-        {
-            const string source = @"
-using TrainOP;
-
-public static class TupleRoute
-{
-    public static TrainRoute Build() => new TrainRoute()
-        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
-        .Station(""ByTuple"", (string paymentId, decimal amount) =>
-            (paymentId: paymentId + ""-tuple"", amount: amount + 1m));
-}";
-
-            var diagnostics = await RunAnalyzerAsync(source);
-
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
-        }
-
-        /// <summary>
-        /// Verifies that TOP006 is not reported when tuple element names are inferred from identifiers.
-        /// </summary>
-        [Fact]
-        public async Task Analyzer_DoesNotReportTop006_WhenTupleElementNamesAreInferredFromIdentifiers()
-        {
-            const string source = @"
-using TrainOP;
-
-public static class TupleRoute
-{
-    public static TrainRoute Build() => new TrainRoute()
-        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
-        .Station(""ByTuple"", (string paymentId, decimal amount) =>
-            (paymentId, amount));
-}";
-
-            var diagnostics = await RunAnalyzerAsync(source);
-
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
         }
 
         private static async Task<ImmutableArray<Diagnostic>> RunAnalyzerAsync(string source)

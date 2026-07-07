@@ -19,6 +19,7 @@ internal static class ExampleRunner
             new PartialWagonReturnExample(),
             new DataOrientedRedSignalExample(),
             new LongRouteServiceStationExample(),
+            new NestedBranchingRouteExample(),
         };
 
         for (var i = 0; i < examples.Length; i++)

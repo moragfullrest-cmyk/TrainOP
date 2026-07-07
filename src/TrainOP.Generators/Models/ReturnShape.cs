@@ -11,8 +11,13 @@ namespace TrainOP.Generators.Models
             ImmutableArray<WagonBinding>.Empty,
             isCargoManifest: false,
             isValueTuple: false,
-            isUnnamedValueTuple: false,
             isUnknown: true);
+
+        public static ReturnShape Void { get; } = new ReturnShape(
+            ImmutableArray<WagonBinding>.Empty,
+            isCargoManifest: false,
+            isValueTuple: false,
+            isVoid: true);
 
         /// <summary>
         /// Creates a return shape with member bindings and classification flags.
@@ -21,14 +26,14 @@ namespace TrainOP.Generators.Models
             ImmutableArray<WagonBinding> members,
             bool isCargoManifest,
             bool isValueTuple,
-            bool isUnnamedValueTuple = false,
-            bool isUnknown = false)
+            bool isUnknown = false,
+            bool isVoid = false)
         {
             Members = members;
             IsCargoManifest = isCargoManifest;
             IsValueTuple = isValueTuple;
-            IsUnnamedValueTuple = isUnnamedValueTuple;
             IsUnknown = isUnknown;
+            IsVoid = isVoid;
         }
 
         public ImmutableArray<WagonBinding> Members { get; }
@@ -37,8 +42,8 @@ namespace TrainOP.Generators.Models
 
         public bool IsValueTuple { get; }
 
-        public bool IsUnnamedValueTuple { get; }
-
         public bool IsUnknown { get; }
+
+        public bool IsVoid { get; }
     }
 }

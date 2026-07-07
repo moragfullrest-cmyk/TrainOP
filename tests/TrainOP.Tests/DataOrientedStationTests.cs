@@ -78,6 +78,23 @@ namespace TrainOP.Tests.DataOriented
         }
 
         /// <summary>
+        /// Verifies that an unnamed tuple return maps values to manifest wagons by parameter order.
+        /// </summary>
+        [Fact]
+        public void Station_ReturnsUnnamedTuple_MapsByParameterOrder()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { paymentId = "pay-tuple", amount = 4m })
+                .Station("ByTuple", (string paymentId, decimal amount) =>
+                    (paymentId + "-tuple", amount + 2m));
+
+            var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
+
+            Assert.Equal("pay-tuple-tuple", manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(6m, manifest.PullWagon<decimal>("amount"));
+        }
+
+        /// <summary>
         /// Verifies that a data validation failure stops the route with a red signal.
         /// </summary>
         [Fact]

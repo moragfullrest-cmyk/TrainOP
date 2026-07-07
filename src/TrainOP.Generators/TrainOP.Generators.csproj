@@ -7,7 +7,7 @@
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
 
     <PackageId>TrainOP.Generators</PackageId>
-    <Version>0.1.1</Version>
+    <Version>0.2.0</Version>
     <Authors>Criperum</Authors>
     <Description>Source generators и analyzer для data-oriented .Station handlers</Description>
     <PackageTags>railway;rop;functional;source-generator;analyzer;roslyn</PackageTags>

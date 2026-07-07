@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -326,6 +327,38 @@ namespace TrainOP
         /// Gets whether the route reached its destination with a green signal.
         /// </summary>
         public bool ReachedDestination => TerminalSignal.IsGreen;
+
+        /// <summary>
+        /// Gets a terminal wagon value by name from the report manifest.
+        /// Throws when the wagon name is empty or missing.
+        /// </summary>
+        public object this[string wagonName]
+        {
+            get
+            {
+                return Get<object>(wagonName);
+            }
+        }
+
+        /// <summary>
+        /// Gets a typed terminal wagon value by name from the report manifest.
+        /// Throws when the wagon name is empty, missing, or has incompatible type.
+        /// </summary>
+        public T Get<T>(string wagonName)
+        {
+            if (string.IsNullOrWhiteSpace(wagonName))
+            {
+                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
+            }
+
+            var manifest = TerminalSignal.Manifest;
+            if (!manifest.HasWagon(wagonName))
+            {
+                throw new KeyNotFoundException("Wagon '" + wagonName + "' was not found in the terminal report.");
+            }
+
+            return manifest.PullWagon<T>(wagonName);
+        }
     }
 
     /// <summary>
@@ -469,8 +502,7 @@ namespace TrainOP
 
     /// <summary>
     /// Builder for a route made of stations.
-    /// Use generated <see cref="Station"/> extensions for data-oriented handlers;
-    /// use <see cref="AttachStation"/> for manifest-level control.
+    /// Use generated <see cref="Station"/> extensions for data-oriented handlers.
     /// </summary>
     public sealed class TrainRoute
     {
@@ -478,9 +510,11 @@ namespace TrainOP
         private ServiceStationPlan _serviceStation;
 
         /// <summary>
-        /// Attaches a synchronous station that returns an updated manifest.
+        /// Registers a synchronous station that returns an updated manifest.
+        /// Reserved for source-generated adapters; do not call directly.
         /// </summary>
-        public TrainRoute AttachStation(string stationName, Func<CargoManifest, CargoManifest> throughStation)
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public TrainRoute RegisterStation(string stationName, Func<CargoManifest, CargoManifest> throughStation)
         {
             if (string.IsNullOrWhiteSpace(stationName))
             {
@@ -497,9 +531,11 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Attaches a synchronous station with cancellation support that returns an updated manifest.
+        /// Registers a synchronous station with cancellation support that returns an updated manifest.
+        /// Reserved for source-generated adapters; do not call directly.
         /// </summary>
-        public TrainRoute AttachStation(string stationName, Func<CargoManifest, CancellationToken, CargoManifest> throughStationWithToken)
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public TrainRoute RegisterStation(string stationName, Func<CargoManifest, CancellationToken, CargoManifest> throughStationWithToken)
         {
             if (string.IsNullOrWhiteSpace(stationName))
             {
@@ -516,9 +552,11 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Attaches a synchronous station that returns a signal.
+        /// Registers a synchronous station that returns a signal.
+        /// Reserved for source-generated adapters; do not call directly.
         /// </summary>
-        public TrainRoute AttachStation(string stationName, Func<CargoManifest, Signal> station)
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public TrainRoute RegisterStation(string stationName, Func<CargoManifest, Signal> station)
         {
             if (string.IsNullOrWhiteSpace(stationName))
             {
@@ -535,9 +573,11 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Attaches a synchronous station with cancellation support that returns a signal.
+        /// Registers a synchronous station with cancellation support that returns a signal.
+        /// Reserved for source-generated adapters; do not call directly.
         /// </summary>
-        public TrainRoute AttachStation(string stationName, Func<CargoManifest, CancellationToken, Signal> stationWithToken)
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public TrainRoute RegisterStation(string stationName, Func<CargoManifest, CancellationToken, Signal> stationWithToken)
         {
             if (string.IsNullOrWhiteSpace(stationName))
             {
@@ -554,9 +594,11 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Attaches an asynchronous station that returns an updated manifest.
+        /// Registers an asynchronous station that returns an updated manifest.
+        /// Reserved for source-generated adapters; do not call directly.
         /// </summary>
-        public TrainRoute AttachStation(string stationName, Func<CargoManifest, Task<CargoManifest>> throughAsyncStation)
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public TrainRoute RegisterStation(string stationName, Func<CargoManifest, Task<CargoManifest>> throughAsyncStation)
         {
             if (string.IsNullOrWhiteSpace(stationName))
             {
@@ -573,9 +615,11 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Attaches an asynchronous station with cancellation support that returns an updated manifest.
+        /// Registers an asynchronous station with cancellation support that returns an updated manifest.
+        /// Reserved for source-generated adapters; do not call directly.
         /// </summary>
-        public TrainRoute AttachStation(string stationName, Func<CargoManifest, CancellationToken, Task<CargoManifest>> throughAsyncStation)
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public TrainRoute RegisterStation(string stationName, Func<CargoManifest, CancellationToken, Task<CargoManifest>> throughAsyncStation)
         {
             if (string.IsNullOrWhiteSpace(stationName))
             {
@@ -592,9 +636,11 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Attaches an asynchronous station that returns a signal.
+        /// Registers an asynchronous station that returns a signal.
+        /// Reserved for source-generated adapters; do not call directly.
         /// </summary>
-        public TrainRoute AttachStation(string stationName, Func<CargoManifest, Task<Signal>> asyncStation)
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public TrainRoute RegisterStation(string stationName, Func<CargoManifest, Task<Signal>> asyncStation)
         {
             if (string.IsNullOrWhiteSpace(stationName))
             {
@@ -611,9 +657,11 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Attaches an asynchronous station with cancellation support that returns a signal.
+        /// Registers an asynchronous station with cancellation support that returns a signal.
+        /// Reserved for source-generated adapters; do not call directly.
         /// </summary>
-        public TrainRoute AttachStation(string stationName, Func<CargoManifest, CancellationToken, Task<Signal>> asyncStation)
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public TrainRoute RegisterStation(string stationName, Func<CargoManifest, CancellationToken, Task<Signal>> asyncStation)
         {
             if (string.IsNullOrWhiteSpace(stationName))
             {

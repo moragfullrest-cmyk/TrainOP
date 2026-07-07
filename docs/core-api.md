@@ -35,7 +35,7 @@ var route = new TrainRoute()
         new { paymentId, amount = amount * 0.9m });
 ```
 
-Имена параметров handler'а = ключи вагонов. Первая станция без параметров — seed. Генератор создаёт адаптеры и typed `Travel()`.
+Имена параметров handler'а = ключи вагонов. Первая станция без параметров — seed. Генератор создаёт адаптеры вызовов станций.
 
 ### Запуск
 
@@ -70,27 +70,6 @@ var report = await route.DispatchTrain().TravelAsync();
 
 > **Важно:** вызов `Travel()` на маршруте с async-станциями бросает `InvalidOperationException` с текстом «Use TravelAsync».
 
-### Низкоуровневый API (AttachStation)
-
-Прямой доступ к `CargoManifest` и `Signal` без codegen-адаптера:
-
-```csharp
-var route = new TrainRoute()
-    .AttachStation("A", manifest => manifest.LoadWagon("a", 1))
-    .AttachStation("B", manifest => manifest.LoadWagon("b", 2));
-```
-
-Перегрузки обработчика:
-
-| Возврат | Синхронно | С `CancellationToken` |
-|---------|-----------|------------------------|
-| `CargoManifest` | `Func<CargoManifest, CargoManifest>` | `Func<CargoManifest, CancellationToken, CargoManifest>` |
-| `Signal` | `Func<CargoManifest, Signal>` | `Func<CargoManifest, CancellationToken, Signal>` |
-| `Task<CargoManifest>` | `Func<CargoManifest, Task<CargoManifest>>` | `Func<CargoManifest, CancellationToken, Task<CargoManifest>>` |
-| `Task<Signal>` | `Func<CargoManifest, Task<Signal>>` | `Func<CargoManifest, CancellationToken, Task<Signal>>` |
-
-Если обработчик возвращает `CargoManifest`, библиотека автоматически оборачивает результат в `GreenSignal`. `null` манифест трактуется как «оставить прежний».
-
 ## Сигналы
 
 ### Зелёный сигнал
@@ -99,7 +78,6 @@ var route = new TrainRoute()
 
 ```csharp
 return RailwaySignals.Green(manifest);
-// или просто return manifest;  — в through-перегрузках
 ```
 
 ### Красный сигнал
@@ -113,14 +91,6 @@ return RailwaySignals.Green(manifest);
         : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"))
 ```
 
-В низкоуровневом `AttachStation` передайте манифест явно:
-
-```csharp
-return RailwaySignals.Red(
-    manifest,
-    new SignalIssue("REQ_MISSING", "request-id is required", "Validation"));
-```
-
 Адаптер преобразует `RailwaySignals.Red(code, message)` в `RedSignal` с `SignalIssue(code, message, stationName)`.
 
 Допустимые возвраты data-handler'а:
@@ -130,8 +100,11 @@ return RailwaySignals.Red(
 | анонимный тип / record | merge в манифест → зелёный сигнал |
 | `RailwaySignals.Green(payload)` | merge payload → зелёный сигнал |
 | `RailwaySignals.Red(code, msg)` | красный сигнал, маршрут останавливается |
-| `RailwaySignals.Pass` | манифест без изменений → зелёный сигнал |
-| `GreenSignal` / `RedSignal` | возврат как есть (если есть `CargoManifest` в handler) |
+| `RailwaySignals.Pass` | манифест без изменений → зелёный сигнал (в т.ч. `ref`-вагоны: мутации в handler не попадают в манифест) |
+| `void` (без return) | эквивалент `new { }` → partial merge: `ref`-вагоны обновляются, обычные входы выгружаются |
+| `GreenSignal` / `RedSignal` | возврат как есть (например, при пробросе сигнала из подмаршрута) |
+
+`RailwaySignals.Pass` пропускает merge целиком: следующая станция получит тот же манифест, что и до вызова handler'а. Изменения `ref`-параметров в теле handler'а при `Pass` **не сохраняются**. Чтобы записать новые значения `ref`-вагонов в манифест, используйте void (без `return`) или явный partial return (`new { }`, подмножество полей).
 
 `SignalIssue` содержит:
 
@@ -148,6 +121,7 @@ if (report.ReachedDestination)
 {
     // TerminalSignal — GreenSignal
     var manifest = report.TerminalSignal.Manifest;
+    var paymentId = report.Get<string>("paymentId");
 }
 else
 {
@@ -161,6 +135,9 @@ foreach (var visit in report.Visits)
     Console.WriteLine($"{visit.StationName}: {(visit.Signal.IsGreen ? "green" : "red")}");
 }
 ```
+
+`RouteReport` поддерживает readonly индексатор `report["wagonName"]` и typed-метод `report.Get<T>("wagonName")` для чтения терминального вагона по имени.  
+Если вагона нет, бросается `KeyNotFoundException`.
 
 ## Станция техобслуживания (ServiceStation)
 
@@ -205,16 +182,75 @@ Async-вариант data-handler'а:
 
 Если станция техобслуживания не зарегистрирована, маршрут завершается с красным `TerminalSignal`.
 
+## Вложенные маршруты и ветвление
+
+TrainOP не имеет отдельного API «switch/fork». Вложенные маршруты и ветвление собираются **композицией**:
+
+1. **Подмаршруты** — отдельные `TrainRoute`, обычно в статических фабриках (`Build()`).
+2. **Станция ветвления** — data-oriented `.Station`, которая по данным вагонов выбирает подмаршрут и вызывает `subRoute.DispatchTrain().Travel(manifest)`.
+3. **Красный сигнал** подмаршрута пробрасывается наверх как `TerminalSignal` родительского маршрута.
+
+Каждый подмаршрут с цепочкой `.Station(...)` анализируется генератором **независимо**. Станция ветвления входит в data-oriented граф родительского маршрута.
+
+```csharp
+internal static class PremiumBranchRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station("ApplyPremiumDiscount", (string paymentId, decimal amount) =>
+            new { paymentId = paymentId + "-premium", amount = amount * 0.8m, channel = "premium" });
+}
+
+internal static class StandardBranchRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station("ApplyStandardFee", (string paymentId, decimal amount) =>
+            new { paymentId = paymentId + "-standard", amount = amount + 2m, channel = "standard" });
+}
+
+var route = new TrainRoute()
+    .Station("Seed", () => new { paymentId = "pay-branch", amount = 100m, tier = "premium" })
+    .Station("Branch", (string paymentId, decimal amount, string tier) =>
+    {
+        var manifest = new CargoManifest()
+            .LoadWagon("paymentId", paymentId)
+            .LoadWagon("amount", amount)
+            .LoadWagon("tier", tier);
+
+        var subRoute = tier == "premium"
+            ? PremiumBranchRoute.Build()
+            : StandardBranchRoute.Build();
+
+        var subReport = subRoute.DispatchTrain().Travel(manifest);
+        if (!subReport.ReachedDestination)
+        {
+            return subReport.TerminalSignal;
+        }
+
+        var subManifest = subReport.TerminalSignal.Manifest;
+        return new
+        {
+            paymentId = subManifest.PullWagon<string>("paymentId"),
+            amount = subManifest.PullWagon<decimal>("amount"),
+            channel = subManifest.PullWagon<string>("channel"),
+        };
+    })
+    .Station("Finalize", (string paymentId, decimal amount, string channel) =>
+        new { paymentId, amount, channel, status = "completed" });
+```
+
+Полный runnable-пример: `samples/TrainOP.Samples/Examples/NestedBranchingRouteExample.cs`.
+
 ## Отмена (CancellationToken)
 
 ```csharp
 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
 
 var route = new TrainRoute()
-    .AttachStation("Work", (manifest, token) =>
+    .Station("Seed", () => new { })
+    .Station("Work", (CancellationToken token) =>
     {
         token.ThrowIfCancellationRequested();
-        return manifest;
+        return RailwaySignals.Pass;
     });
 
 route.DispatchTrain().Travel(cts.Token);

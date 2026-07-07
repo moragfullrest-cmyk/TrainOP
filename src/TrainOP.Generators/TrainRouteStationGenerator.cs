@@ -129,7 +129,7 @@ namespace TrainOP.Generators
             }
 
             var handlerArgument = invocation.ArgumentList.Arguments[1].Expression;
-            if (!TryGetLambda(handlerArgument, semanticModel, out var lambdaSyntax, out var lambdaSymbol))
+            if (!StationSyntaxHelper.TryGetLambda(handlerArgument, semanticModel, out var lambdaSyntax, out var lambdaSymbol))
             {
                 return null;
             }
@@ -139,7 +139,7 @@ namespace TrainOP.Generators
                 return null;
             }
 
-            var schema = TryBuildSchema(lambdaSyntax, lambdaSymbol, semanticModel, forServiceStation);
+            var schema = HandlerInputSchemaBuilder.TryBuild(lambdaSyntax, lambdaSymbol, semanticModel, forServiceStation);
             if (schema == null)
             {
                 return null;
@@ -192,7 +192,7 @@ namespace TrainOP.Generators
                 && invocation.Expression is MemberAccessExpressionSyntax memberAccess)
             {
                 if (string.Equals(memberAccess.Name.Identifier.ValueText, "Station", StringComparison.Ordinal)
-                    || string.Equals(memberAccess.Name.Identifier.ValueText, "AttachStation", StringComparison.Ordinal)
+                    || string.Equals(memberAccess.Name.Identifier.ValueText, "RegisterStation", StringComparison.Ordinal)
                     || string.Equals(memberAccess.Name.Identifier.ValueText, "ServiceStation", StringComparison.Ordinal))
                 {
                     return IsTrainRouteReceiver(memberAccess.Expression, semanticModel.GetTypeInfo(memberAccess.Expression).Type, semanticModel);
@@ -200,165 +200,6 @@ namespace TrainOP.Generators
             }
 
             return false;
-        }
-
-        /// <summary>
-        /// Resolves a lambda expression and its method symbol from a handler argument.
-        /// </summary>
-        private static bool TryGetLambda(
-            ExpressionSyntax expression,
-            SemanticModel semanticModel,
-            out LambdaExpressionSyntax lambdaSyntax,
-            out IMethodSymbol lambdaSymbol)
-        {
-            lambdaSyntax = null;
-            lambdaSymbol = null;
-
-            switch (expression)
-            {
-                case ParenthesizedLambdaExpressionSyntax parenthesizedLambda:
-                    lambdaSyntax = parenthesizedLambda;
-                    break;
-                case SimpleLambdaExpressionSyntax simpleLambda:
-                    lambdaSyntax = simpleLambda;
-                    break;
-                default:
-                    return false;
-            }
-
-            lambdaSymbol = semanticModel.GetSymbolInfo(lambdaSyntax).Symbol as IMethodSymbol;
-            return lambdaSymbol != null;
-        }
-
-        /// <summary>
-        /// Builds a handler schema from a lambda and its semantic model symbols.
-        /// </summary>
-        private static HandlerSchema TryBuildSchema(
-            LambdaExpressionSyntax lambdaSyntax,
-            IMethodSymbol lambdaSymbol,
-            SemanticModel semanticModel,
-            bool forServiceStation = false)
-        {
-            var parameters = lambdaSymbol.Parameters;
-            var wagons = new List<WagonBinding>();
-            var includeManifest = false;
-            var includeRedSignal = false;
-            var includeSignalIssue = false;
-            var hasCancellationToken = false;
-
-            for (var i = 0; i < parameters.Length; i++)
-            {
-                var parameter = parameters[i];
-                var parameterType = parameter.Type;
-                if (parameter.IsDiscard)
-                {
-                    continue;
-                }
-
-                if (parameterType == null)
-                {
-                    return null;
-                }
-
-                if (IsCargoManifest(parameterType))
-                {
-                    includeManifest = true;
-                    continue;
-                }
-
-                if (forServiceStation && IsRedSignal(parameterType))
-                {
-                    includeRedSignal = true;
-                    continue;
-                }
-
-                if (forServiceStation && IsSignalIssue(parameterType))
-                {
-                    includeSignalIssue = true;
-                    continue;
-                }
-
-                if (IsCancellationToken(parameterType))
-                {
-                    hasCancellationToken = true;
-                    continue;
-                }
-
-                var name = parameter.Name;
-                var location = GetParameterLocation(lambdaSyntax, name) ?? lambdaSyntax.GetLocation();
-                var isByReference = WagonParameterAnalyzer.IsByReference(parameter);
-                var isOptional = WagonParameterAnalyzer.IsOptionalNullableValueType(parameterType, out var underlyingType);
-                var pullTypeDisplay = WagonParameterAnalyzer.GetPullTypeDisplay(parameterType, underlyingType, isOptional);
-                var effectiveTypeSymbol = WagonParameterAnalyzer.GetEffectiveTypeSymbol(parameterType, underlyingType, isOptional);
-                var typeDisplay = ManifestWagonTypes.ToWagonParameterTypeDisplay(parameterType, underlyingType, isOptional);
-                if (string.IsNullOrWhiteSpace(typeDisplay))
-                {
-                    return null;
-                }
-
-                wagons.Add(new WagonBinding(
-                    name,
-                    typeDisplay,
-                    effectiveTypeSymbol,
-                    location,
-                    isByReference,
-                    isOptional,
-                    pullTypeDisplay));
-            }
-
-            for (var i = 0; i < wagons.Count; i++)
-            {
-                if (!IsValidWagonParameterName(wagons[i].Name))
-                {
-                    return null;
-                }
-            }
-
-            if (forServiceStation
-                && wagons.Count == 0
-                && !includeManifest
-                && !includeSignalIssue
-                && includeRedSignal)
-            {
-                return null;
-            }
-
-            if (!forServiceStation && includeManifest && wagons.Count == 0)
-            {
-                return null;
-            }
-
-            var returnShape = HandlerReturnInference.Infer(
-                lambdaSyntax,
-                lambdaSymbol,
-                semanticModel,
-                wagons.ToImmutableArray());
-
-            return new HandlerSchema(
-                wagons.ToImmutableArray(),
-                includeManifest,
-                isAsync: IsAsyncLambda(lambdaSyntax, lambdaSymbol),
-                hasCancellationToken,
-                returnShape,
-                forServiceStation,
-                includeRedSignal,
-                includeSignalIssue);
-        }
-
-        /// <summary>
-        /// Determines whether a lambda is async based on syntax or return type.
-        /// </summary>
-        private static bool IsAsyncLambda(LambdaExpressionSyntax lambdaSyntax, IMethodSymbol lambdaSymbol)
-        {
-            if (lambdaSyntax.AsyncKeyword != default)
-            {
-                return true;
-            }
-
-            var returnType = lambdaSymbol.ReturnType as INamedTypeSymbol;
-            return returnType != null
-                && returnType.IsGenericType
-                && string.Equals(returnType.ConstructedFrom.ToDisplayString(), "System.Threading.Tasks.Task", StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -469,35 +310,11 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Determines whether the type is CargoManifest.
-        /// </summary>
-        private static bool IsCargoManifest(ITypeSymbol typeSymbol)
-        {
-            return IsNamedType(typeSymbol, "TrainOP.CargoManifest");
-        }
-
-        /// <summary>
-        /// Determines whether the type is CancellationToken.
-        /// </summary>
-        private static bool IsCancellationToken(ITypeSymbol typeSymbol)
-        {
-            return IsNamedType(typeSymbol, "System.Threading.CancellationToken");
-        }
-
-        /// <summary>
         /// Determines whether the type is RedSignal.
         /// </summary>
         private static bool IsRedSignal(ITypeSymbol typeSymbol)
         {
             return IsNamedType(typeSymbol, "TrainOP.RedSignal");
-        }
-
-        /// <summary>
-        /// Determines whether the type is SignalIssue.
-        /// </summary>
-        private static bool IsSignalIssue(ITypeSymbol typeSymbol)
-        {
-            return IsNamedType(typeSymbol, "TrainOP.SignalIssue");
         }
 
         /// <summary>
@@ -569,24 +386,6 @@ namespace TrainOP.Generators
 
             source.AppendLine(" };");
 
-            var tupleOrdinals = merged.TupleOrdinals;
-            string tupleOrdinalsField = null;
-            if (tupleOrdinals != null)
-            {
-                tupleOrdinalsField = "TupleOrdinals_" + delegateTypeId;
-                source.Append("        private static readonly int[] ").Append(tupleOrdinalsField).Append(" = new int[] { ");
-                for (var i = 0; i < tupleOrdinals.Length; i++)
-                {
-                    source.Append(tupleOrdinals[i]);
-                    if (i < tupleOrdinals.Length - 1)
-                    {
-                        source.Append(", ");
-                    }
-                }
-
-                source.AppendLine(" };");
-            }
-
             var returnMembers = merged.ReturnMembers;
             string returnMembersField = null;
             if (returnMembers != null)
@@ -610,13 +409,29 @@ namespace TrainOP.Generators
             var delegateName = (schema.IsServiceStation ? "TrainServiceStationHandler_" : "TrainStationHandler_") + delegateTypeId;
             if (schema.IsAsync)
             {
-                source.Append("        public delegate System.Threading.Tasks.Task<object> ").Append(delegateName).Append("(");
+                if (schema.ReturnShape.IsVoid)
+                {
+                    source.Append("        public delegate System.Threading.Tasks.Task ").Append(delegateName).Append("(");
+                }
+                else
+                {
+                    source.Append("        public delegate System.Threading.Tasks.Task<object> ").Append(delegateName).Append("(");
+                }
+
                 EmitDelegateParameters(source, schema, useNeutralParameterNames: true);
                 source.AppendLine(");");
             }
             else
             {
-                source.Append("        public delegate object ").Append(delegateName).Append("(");
+                if (schema.ReturnShape.IsVoid)
+                {
+                    source.Append("        public delegate void ").Append(delegateName).Append("(");
+                }
+                else
+                {
+                    source.Append("        public delegate object ").Append(delegateName).Append("(");
+                }
+
                 EmitDelegateParameters(source, schema, useNeutralParameterNames: true);
                 source.AppendLine(");");
             }
@@ -639,9 +454,7 @@ namespace TrainOP.Generators
                     source.AppendLine("            {");
                     source.AppendLine("                var manifest = red.Manifest;");
                     EmitPullWagons(source, schema);
-                    source.Append("                var stationReturn = await handler(");
-                    EmitHandlerCallArguments(source, schema, tokenVariable: "token", redVariable: "red");
-                    source.AppendLine(").ConfigureAwait(false);");
+                    EmitHandlerInvocation(source, schema, tokenVariable: "token", redVariable: "red");
                 }
                 else
                 {
@@ -649,28 +462,22 @@ namespace TrainOP.Generators
                     source.AppendLine("            {");
                     source.AppendLine("                var manifest = red.Manifest;");
                     EmitPullWagons(source, schema);
-                    source.Append("                var stationReturn = handler(");
-                    EmitHandlerCallArguments(source, schema, tokenVariable: "token", redVariable: "red");
-                    source.AppendLine(");");
+                    EmitHandlerInvocation(source, schema, tokenVariable: "token", redVariable: "red");
                 }
             }
             else if (schema.IsAsync)
             {
-                source.AppendLine("            return route.AttachStation(stationName, async (manifest, token) =>");
+                source.AppendLine("            return route.RegisterStation(stationName, async (manifest, token) =>");
                 source.AppendLine("            {");
                 EmitPullWagons(source, schema);
-                source.Append("                var stationReturn = await handler(");
-                EmitHandlerCallArguments(source, schema, tokenVariable: "token", redVariable: null);
-                source.AppendLine(").ConfigureAwait(false);");
+                EmitHandlerInvocation(source, schema, tokenVariable: "token", redVariable: null);
             }
             else
             {
-                source.AppendLine("            return route.AttachStation(stationName, manifest =>");
+                source.AppendLine("            return route.RegisterStation(stationName, manifest =>");
                 source.AppendLine("            {");
                 EmitPullWagons(source, schema);
-                source.Append("                var stationReturn = handler(");
-                EmitHandlerCallArguments(source, schema, tokenVariable: null, redVariable: null);
-                source.AppendLine(");");
+                EmitHandlerInvocation(source, schema, tokenVariable: null, redVariable: null);
             }
 
             if (hasRefWagons)
@@ -686,14 +493,54 @@ namespace TrainOP.Generators
                 }
 
                 source.AppendLine(" };");
-                EmitToSignalCall(source, wagonNamesField, schema, tupleOrdinalsField, returnMembersField, refFlagsField, "refLocalValues");
+                EmitToSignalCall(source, wagonNamesField, schema, returnMembersField, refFlagsField, "refLocalValues");
             }
             else
             {
-                EmitToSignalCall(source, wagonNamesField, schema, tupleOrdinalsField, returnMembersField, null, null);
+                EmitToSignalCall(source, wagonNamesField, schema, returnMembersField, null, null);
             }
             source.AppendLine("            });");
             source.AppendLine("        }");
+        }
+
+        /// <summary>
+        /// Emits handler invocation and assigns the station return value for merge.
+        /// </summary>
+        private static void EmitHandlerInvocation(
+            StringBuilder source,
+            StationHandlerBinding schema,
+            string tokenVariable,
+            string redVariable)
+        {
+            if (schema.IsAsync)
+            {
+                if (schema.ReturnShape.IsVoid)
+                {
+                    source.Append("                await handler(");
+                    EmitHandlerCallArguments(source, schema, tokenVariable, redVariable);
+                    source.AppendLine(").ConfigureAwait(false);");
+                    source.AppendLine("                object stationReturn = null;");
+                    return;
+                }
+
+                source.Append("                var stationReturn = await handler(");
+                EmitHandlerCallArguments(source, schema, tokenVariable, redVariable);
+                source.AppendLine(").ConfigureAwait(false);");
+                return;
+            }
+
+            if (schema.ReturnShape.IsVoid)
+            {
+                source.Append("                handler(");
+                EmitHandlerCallArguments(source, schema, tokenVariable, redVariable);
+                source.AppendLine(");");
+                source.AppendLine("                object stationReturn = null;");
+                return;
+            }
+
+            source.Append("                var stationReturn = handler(");
+            EmitHandlerCallArguments(source, schema, tokenVariable, redVariable);
+            source.AppendLine(");");
         }
 
         /// <summary>
@@ -702,8 +549,7 @@ namespace TrainOP.Generators
         private static void EmitToSignalCall(
             StringBuilder source,
             string wagonNamesField,
-            HandlerSchema schema,
-            string tupleOrdinalsField,
+            StationHandlerBinding schema,
             string returnMembersField,
             string refFlagsField,
             string refLocalValuesExpression)
@@ -712,8 +558,6 @@ namespace TrainOP.Generators
                 .Append(wagonNamesField)
                 .Append(", ")
                 .Append(schema.RemoveOmittedRegularInputs ? "true" : "false")
-                .Append(", ")
-                .Append(tupleOrdinalsField ?? "null")
                 .Append(", ")
                 .Append(returnMembersField ?? "null");
 
@@ -734,7 +578,7 @@ namespace TrainOP.Generators
         /// <summary>
         /// Emits delegate parameter declarations for a handler schema.
         /// </summary>
-        private static void EmitDelegateParameters(StringBuilder source, HandlerSchema schema, bool useNeutralParameterNames)
+        private static void EmitDelegateParameters(StringBuilder source, StationHandlerBinding schema, bool useNeutralParameterNames)
         {
             var needsComma = false;
             if (schema.IncludeRedSignal)
@@ -797,32 +641,9 @@ namespace TrainOP.Generators
         /// <summary>
         /// Emits manifest wagon pull statements for each handler input wagon.
         /// </summary>
-        private static void EmitPullWagons(StringBuilder source, HandlerSchema schema)
+        private static void EmitPullWagons(StringBuilder source, StationHandlerBinding schema)
         {
-            for (var i = 0; i < schema.Wagons.Length; i++)
-            {
-                var wagon = schema.Wagons[i];
-                if (wagon.IsOptional)
-                {
-                    source.Append("                var ").Append(wagon.Name).Append(" = manifest.HasWagon(\"")
-                        .Append(Escape(wagon.Name))
-                        .Append("\") ? manifest.PullWagon<")
-                        .Append(wagon.PullTypeDisplay)
-                        .Append(">(\"")
-                        .Append(Escape(wagon.Name))
-                        .Append("\") : default(")
-                        .Append(wagon.TypeDisplay)
-                        .AppendLine(");");
-                }
-                else
-                {
-                    source.Append("                var ").Append(wagon.Name).Append(" = manifest.PullWagon<")
-                        .Append(wagon.PullTypeDisplay)
-                        .Append(">(\"")
-                        .Append(Escape(wagon.Name))
-                        .AppendLine("\");");
-                }
-            }
+            WagonBindingCodegen.EmitPullWagonStatements(source, schema);
         }
 
         /// <summary>
@@ -830,7 +651,7 @@ namespace TrainOP.Generators
         /// </summary>
         private static void EmitHandlerCallArguments(
             StringBuilder source,
-            HandlerSchema schema,
+            StationHandlerBinding schema,
             string tokenVariable,
             string redVariable)
         {
@@ -892,55 +713,6 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Locates the source position of a lambda parameter by name.
-        /// </summary>
-        private static Location GetParameterLocation(LambdaExpressionSyntax lambdaSyntax, string parameterName)
-        {
-            if (lambdaSyntax is SimpleLambdaExpressionSyntax simpleLambda)
-            {
-                return simpleLambda.Parameter.Identifier.ValueText == parameterName
-                    ? simpleLambda.Parameter.Identifier.GetLocation()
-                    : null;
-            }
-
-            if (lambdaSyntax is ParenthesizedLambdaExpressionSyntax parenthesizedLambda)
-            {
-                foreach (var syntaxParameter in parenthesizedLambda.ParameterList.Parameters)
-                {
-                    if (string.Equals(syntaxParameter.Identifier.ValueText, parameterName, StringComparison.Ordinal))
-                    {
-                        return syntaxParameter.Identifier.GetLocation();
-                    }
-                }
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// Determines whether a name is a valid wagon parameter identifier.
-        /// </summary>
-        private static bool IsValidWagonParameterName(string wagonName)
-        {
-            if (string.IsNullOrWhiteSpace(wagonName))
-            {
-                return false;
-            }
-
-            if (string.Equals(wagonName, "_", StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            if (!SyntaxFacts.IsValidIdentifier(wagonName))
-            {
-                return false;
-            }
-
-            return !SyntaxFacts.IsKeywordKind(SyntaxFacts.GetKeywordKind(wagonName));
-        }
-
-        /// <summary>
         /// Escapes string literals for inclusion in generated source code.
         /// </summary>
         private static string Escape(string value)
@@ -956,13 +728,13 @@ namespace TrainOP.Generators
             /// <summary>
             /// Creates a station call record with schema and source location.
             /// </summary>
-            public StationCallInfo(HandlerSchema schema, Location location)
+            public StationCallInfo(StationHandlerBinding schema, Location location)
             {
                 Schema = schema;
                 Location = location;
             }
 
-            public HandlerSchema Schema { get; }
+            public StationHandlerBinding Schema { get; }
 
             public Location Location { get; }
         }
@@ -1019,7 +791,7 @@ namespace TrainOP.Generators
         {
             private readonly DelegateTypeSignature _typeSignature;
             private readonly List<ReturnShape> _returnShapes = new List<ReturnShape>();
-            private HandlerSchema _canonicalSchema;
+            private StationHandlerBinding _canonicalSchema;
 
             /// <summary>
             /// Creates a group keyed by delegate type signature.
@@ -1032,7 +804,7 @@ namespace TrainOP.Generators
             /// <summary>
             /// Adds a handler schema to the group and reports conflicting wagon names.
             /// </summary>
-            public void Add(HandlerSchema schema, Location location, SourceProductionContext context)
+            public void Add(StationHandlerBinding schema, Location location, SourceProductionContext context)
             {
                 if (_canonicalSchema == null)
                 {
@@ -1096,6 +868,7 @@ namespace TrainOP.Generators
                 bool includeManifest,
                 bool isAsync,
                 bool hasCancellationToken,
+                bool isVoid,
                 ImmutableArray<WagonTypeSlot> wagonTypes)
             {
                 IsServiceStation = isServiceStation;
@@ -1104,6 +877,7 @@ namespace TrainOP.Generators
                 IncludeManifest = includeManifest;
                 IsAsync = isAsync;
                 HasCancellationToken = hasCancellationToken;
+                IsVoid = isVoid;
                 WagonTypes = wagonTypes;
                 TypeId = BuildTypeId(this);
             }
@@ -1120,6 +894,8 @@ namespace TrainOP.Generators
 
             public bool HasCancellationToken { get; }
 
+            public bool IsVoid { get; }
+
             public ImmutableArray<WagonTypeSlot> WagonTypes { get; }
 
             public string TypeId { get; }
@@ -1127,7 +903,7 @@ namespace TrainOP.Generators
             /// <summary>
             /// Builds a delegate type signature from a handler schema.
             /// </summary>
-            public static DelegateTypeSignature From(HandlerSchema schema)
+            public static DelegateTypeSignature From(StationHandlerBinding schema)
             {
                 var wagonTypes = ImmutableArray.CreateBuilder<WagonTypeSlot>(schema.Wagons.Length);
                 for (var i = 0; i < schema.Wagons.Length; i++)
@@ -1147,6 +923,7 @@ namespace TrainOP.Generators
                     schema.IncludeManifest,
                     schema.IsAsync,
                     schema.HasCancellationToken,
+                    schema.ReturnShape.IsVoid,
                     wagonTypes.ToImmutable());
             }
         }
@@ -1190,18 +967,15 @@ namespace TrainOP.Generators
             /// <summary>
             /// Creates a merged schema from a canonical handler signature and delegate type id.
             /// </summary>
-            public MergedStationSchema(HandlerSchema signature, string delegateTypeId)
+            public MergedStationSchema(StationHandlerBinding signature, string delegateTypeId)
             {
                 Signature = signature;
                 DelegateTypeId = delegateTypeId;
             }
 
-            public HandlerSchema Signature { get; }
+            public StationHandlerBinding Signature { get; }
 
             public string DelegateTypeId { get; }
-
-            public int[] TupleOrdinals =>
-                StationReturnMetadataBuilder.MergeTupleElementOrdinals(Signature.Wagons, _returnShapes);
 
             public string[] ReturnMembers =>
                 StationReturnMetadataBuilder.MergeReturnMemberNames(_returnShapes);
@@ -1228,9 +1002,9 @@ namespace TrainOP.Generators
             public static bool ReturnShapesEqual(ReturnShape left, ReturnShape right)
             {
                 if (left.IsUnknown != right.IsUnknown
+                    || left.IsVoid != right.IsVoid
                     || left.IsCargoManifest != right.IsCargoManifest
                     || left.IsValueTuple != right.IsValueTuple
-                    || left.IsUnnamedValueTuple != right.IsUnnamedValueTuple
                     || left.Members.Length != right.Members.Length)
                 {
                     return false;
@@ -1246,56 +1020,6 @@ namespace TrainOP.Generators
 
                 return true;
             }
-        }
-
-        /// <summary>
-        /// Describes a data-oriented handler's inputs, flags, and inferred return shape for code generation.
-        /// </summary>
-        private sealed class HandlerSchema
-        {
-            /// <summary>
-            /// Creates a handler schema from wagon inputs, flags, and return shape metadata.
-            /// </summary>
-            public HandlerSchema(
-                ImmutableArray<WagonBinding> wagons,
-                bool includeManifest,
-                bool isAsync,
-                bool hasCancellationToken,
-                ReturnShape returnShape,
-                bool isServiceStation = false,
-                bool includeRedSignal = false,
-                bool includeSignalIssue = false)
-            {
-                Wagons = wagons;
-                IncludeManifest = includeManifest;
-                IsAsync = isAsync;
-                HasCancellationToken = hasCancellationToken;
-                ReturnShape = returnShape;
-                IsServiceStation = isServiceStation;
-                IncludeRedSignal = includeRedSignal;
-                IncludeSignalIssue = includeSignalIssue;
-                HasRefWagons = wagons.Any(w => w.IsByReference);
-            }
-
-            public ImmutableArray<WagonBinding> Wagons { get; }
-
-            public bool IncludeManifest { get; }
-
-            public bool IsAsync { get; }
-
-            public bool HasCancellationToken { get; }
-
-            public bool HasRefWagons { get; }
-
-            public ReturnShape ReturnShape { get; }
-
-            public bool IsServiceStation { get; }
-
-            public bool IncludeRedSignal { get; }
-
-            public bool IncludeSignalIssue { get; }
-
-            public bool RemoveOmittedRegularInputs => Wagons.Length > 0;
         }
 
         /// <summary>
@@ -1326,6 +1050,7 @@ namespace TrainOP.Generators
                     || x.IncludeManifest != y.IncludeManifest
                     || x.IsAsync != y.IsAsync
                     || x.HasCancellationToken != y.HasCancellationToken
+                    || x.IsVoid != y.IsVoid
                     || x.WagonTypes.Length != y.WagonTypes.Length)
                 {
                     return false;
@@ -1366,6 +1091,7 @@ namespace TrainOP.Generators
                     hash = (hash * 31) + obj.IncludeManifest.GetHashCode();
                     hash = (hash * 31) + obj.IsAsync.GetHashCode();
                     hash = (hash * 31) + obj.HasCancellationToken.GetHashCode();
+                    hash = (hash * 31) + obj.IsVoid.GetHashCode();
                     foreach (var wagon in obj.WagonTypes)
                     {
                         hash = (hash * 31) + StringComparer.Ordinal.GetHashCode(wagon.TypeDisplay);
@@ -1391,6 +1117,7 @@ namespace TrainOP.Generators
             builder.Append(signature.IncludeManifest ? "M1" : "M0");
             builder.Append(signature.IsAsync ? "A1" : "A0");
             builder.Append(signature.HasCancellationToken ? "C1" : "C0");
+            builder.Append(signature.IsVoid ? "V1" : "V0");
             for (var i = 0; i < signature.WagonTypes.Length; i++)
             {
                 var wagon = signature.WagonTypes[i];

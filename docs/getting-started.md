@@ -15,8 +15,8 @@ dotnet add package TrainOP.Generators
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.1.1" />
-  <PackageReference Include="TrainOP.Generators" Version="0.1.1" />
+  <PackageReference Include="TrainOP" Version="0.2.0" />
+  <PackageReference Include="TrainOP.Generators" Version="0.2.0" />
 </ItemGroup>
 ```
 
@@ -54,7 +54,9 @@ var route = new TrainRoute()
             ? RailwaySignals.Green(new { paymentId, amount })
             : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"));
 
-var (paymentId, amount, report) = route.DispatchTrain().Travel();
+var report = route.DispatchTrain().Travel();
+var paymentId = report.Get<string>("paymentId");
+var amount = report.Get<decimal>("amount");
 
 if (!report.ReachedDestination)
 {
@@ -82,22 +84,11 @@ Handler станции — чистая функция над данными. И
 | анонимный тип / record | merge в манифест → зелёный сигнал |
 | `RailwaySignals.Green(payload)` | merge payload → зелёный сигнал |
 | `RailwaySignals.Red(code, msg)` | красный сигнал, маршрут останавливается |
-| `RailwaySignals.Pass` | манифест без изменений → зелёный сигнал |
+| `RailwaySignals.Pass` | манифест без изменений → зелёный сигнал (в т.ч. `ref`-вагоны: мутации в handler не попадают в манифест) |
 
 Восстановление после красного сигнала — через `ServiceStation` с тем же API (`Green` / `Red`). Подробнее — в [Основном API](core-api.md#станция-техобслуживания-servicestation).
-
-## Низкоуровневый API (AttachStation)
-
-Для инфраструктурных шагов, когда нужен прямой доступ к `CargoManifest` и `Signal`, используйте `AttachStation`:
-
-```csharp
-var route = new TrainRoute()
-    .AttachStation("Step", manifest =>
-        manifest.LoadWagon("counter", manifest.PullWagon<int>("counter") + 1));
-```
-
-Генератор не анализирует такие станции; typed `Travel()` доступен только для data-oriented цепочек `.Station(...)`.
 
 ## Следующие шаги
 
 - [Основной API](core-api.md) — async, отмена, красные сигналы, отчёт маршрута
+- [Вложенные маршруты и ветвление](core-api.md#вложенные-маршруты-и-ветвление) — подмаршруты и станция-развилка через data-oriented `.Station`

@@ -11,7 +11,7 @@ TrainOP — библиотека Railway Oriented Programming (ROP) для .NET 
 | [Установка через NuGet](nuget.md) | Пакеты, CLI, локальный feed, отличия от ProjectReference |
 | [Начало работы](getting-started.md) | Подключение проекта, data-oriented пример |
 | [Основной API](core-api.md) | `CargoManifest`, `TrainRoute`, сигналы, `RailwaySignals.Green`/`Red`, async |
-| [План: data-oriented handlers](plan-data-oriented-handlers.md) | Roadmap — **фазы 0–6 ✅** |
+| [План: data-oriented handlers](plan-data-oriented-handlers.md) | Roadmap — **фазы 0–6 ✅**; фазы 7–8 (якоря, сторонние сборки) — в плане |
 
 ## Структура решения
 
@@ -30,7 +30,7 @@ TrainOP.sln
 | Тип | Назначение |
 |-----|------------|
 | `CargoManifest` | Неизменяемое хранилище вагонов (ключ → значение) |
-| `TrainRoute` | Построитель маршрута (`.Station` — основной путь; `.AttachStation` — низкоуровневый) |
+| `TrainRoute` | Построитель маршрута (`.Station` — data-oriented handlers) |
 | `Train` | Исполнитель маршрута (`DispatchTrain()`) |
 | `RouteReport` | Отчёт о прохождении маршрута |
 | `GreenSignal` / `RedSignal` | Сигналы продолжения и остановки |

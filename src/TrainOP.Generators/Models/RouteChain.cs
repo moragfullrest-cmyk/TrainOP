@@ -4,20 +4,22 @@ using System.Collections.Immutable;
 namespace TrainOP.Generators.Models
 {
     /// <summary>
-    /// Represents a detected TrainRoute station chain anchored at its creation site.
+    /// Represents a detected TrainRoute station chain anchored at a root expression.
     /// </summary>
     internal sealed class RouteChain
     {
         /// <summary>
-        /// Creates a route chain with an anchor location and ordered station links.
+        /// Creates a route chain with an anchor and ordered station links.
         /// </summary>
-        public RouteChain(Location anchorLocation, ImmutableArray<StationChainLink> stations)
+        public RouteChain(RouteChainAnchor anchor, ImmutableArray<StationChainLink> stations)
         {
-            AnchorLocation = anchorLocation;
+            Anchor = anchor;
             Stations = stations;
         }
 
-        public Location AnchorLocation { get; }
+        public RouteChainAnchor Anchor { get; }
+
+        public Location AnchorLocation => Anchor.Location;
 
         public ImmutableArray<StationChainLink> Stations { get; }
     }

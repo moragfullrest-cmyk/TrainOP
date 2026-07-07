@@ -19,7 +19,6 @@ namespace TrainOP.Generators
                 TrainRouteDiagnostics.WagonTypeConflict,
                 TrainRouteDiagnostics.WagonRemovedButRequired,
                 TrainRouteDiagnostics.CargoManifestReplacement,
-                TrainRouteDiagnostics.TupleReturnOrder,
                 TrainRouteDiagnostics.OrphanDataHandler,
                 TrainRouteDiagnostics.UnusedSeedWagon,
             ];

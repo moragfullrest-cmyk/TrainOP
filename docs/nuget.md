@@ -5,9 +5,9 @@ TrainOP поставляется двумя пакетами:
 | Пакет | Назначение |
 |-------|------------|
 | **TrainOP** | Основная библиотека: `TrainRoute`, `CargoManifest`, сигналы, runtime |
-| **TrainOP.Generators** | Source generator и analyzer для data-oriented `.Station(...)` и typed `Travel()` |
+| **TrainOP.Generators** | Source generator и analyzer для data-oriented `.Station(...)` |
 
-Оба пакета нужны, если вы используете рекомендуемый data-oriented API. Только `TrainOP` достаточно для низкоуровневого `AttachStation` без генерации.
+Оба пакета нужны для data-oriented API (`.Station` handlers).
 
 ## Требования
 
@@ -27,16 +27,16 @@ dotnet add package TrainOP.Generators
 Указать версию явно:
 
 ```bash
-dotnet add package TrainOP --version 0.1.1
-dotnet add package TrainOP.Generators --version 0.1.1
+dotnet add package TrainOP --version 0.2.0
+dotnet add package TrainOP.Generators --version 0.2.0
 ```
 
 ### PackageReference в `.csproj`
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.1.1" />
-  <PackageReference Include="TrainOP.Generators" Version="0.1.1" />
+  <PackageReference Include="TrainOP" Version="0.2.0" />
+  <PackageReference Include="TrainOP.Generators" Version="0.2.0" />
 </ItemGroup>
 ```
 
@@ -97,8 +97,8 @@ dotnet add package TrainOP.Generators --source trainop-local
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="TrainOP" Version="0.1.1" />
-    <PackageReference Include="TrainOP.Generators" Version="0.1.1" />
+    <PackageReference Include="TrainOP" Version="0.2.0" />
+    <PackageReference Include="TrainOP.Generators" Version="0.2.0" />
   </ItemGroup>
 </Project>
 ```
@@ -110,7 +110,8 @@ var route = new TrainRoute()
     .Station("Seed", () => new { id = 1 })
     .Station("Next", (int id) => new { id = id + 1 });
 
-var (id, report) = route.DispatchTrain().Travel();
+var report = route.DispatchTrain().Travel();
+var id = report.Get<int>("id");
 ```
 
 ## NuGet vs ProjectReference
@@ -134,10 +135,6 @@ var (id, report) = route.DispatchTrain().Travel();
 ### Ошибки анализатора цепочки (TRNxxxx)
 
 Генератор проверяет совместимость параметров и возвратов между станциями. Сообщения указывают на конкретную станцию в цепочке — исправьте сигнатуру handler'а или тип возврата. Подробнее — [Основной API](core-api.md).
-
-### Только AttachStation, без `.Station`
-
-Пакет **TrainOP.Generators** можно не подключать: `AttachStation` и базовый `Travel()` без typed tuple работают из основной библиотеки.
 
 ## Следующие шаги
 

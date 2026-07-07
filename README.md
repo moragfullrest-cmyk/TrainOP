@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/moragfullrest-cmyk/TrainOP/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/moragfullrest-cmyk/TrainOP/actions/workflows/ci.yml)
 
-Библиотека **Railway Oriented Programming** для `.NET Standard 2.0`: маршруты из станций, неизменяемый манифест данных и сигналы зелёный/красный. Source generator добавляет **data-oriented** `.Station` handlers и typed `Travel()`.
+Библиотека **Railway Oriented Programming** для `.NET Standard 2.0`: маршруты из станций, неизменяемый манифест данных и сигналы зелёный/красный. Source generator добавляет **data-oriented** `.Station` handlers.
 
 ## Документация
 
@@ -29,7 +29,9 @@ var route = new TrainRoute()
             ? RailwaySignals.Green(new { paymentId, amount })
             : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"));
 
-var (paymentId, amount, report) = route.DispatchTrain().Travel();
+var report = route.DispatchTrain().Travel();
+var paymentId = report.Get<string>("paymentId");
+var amount = report.Get<decimal>("amount");
 
 if (!report.ReachedDestination)
 {
@@ -37,8 +39,6 @@ if (!report.ReachedDestination)
     Console.WriteLine($"{red.Issue.Code}: {red.Issue.Message}");
 }
 ```
-
-Manifest-style станции (`AttachStation` с прямым доступом к `CargoManifest`) — для инфраструктурных шагов, когда data-oriented `.Station` не подходит. Подробнее — [docs/getting-started.md](docs/getting-started.md#низкоуровневый-api-attachstation).
 
 ## Установка
 
@@ -60,7 +60,7 @@ dotnet add package TrainOP.Generators
                   ReferenceOutputAssembly="false" />
 ```
 
-Генератор нужен для `.Station` data-oriented handlers и typed `Travel()`; базовый `AttachStation` API работает и без него.
+Генератор нужен для `.Station` data-oriented handlers.
 
 Лицензия: [MIT](LICENSE).
 
@@ -76,7 +76,7 @@ dotnet pack -c Release
 
 - `src/TrainOP` — библиотека (`netstandard2.0`)
 - `src/TrainOP.Generators` — инкрементальные generators и анализатор цепочки
-- `samples/TrainOP.Samples` — консольные примеры
+- `samples/TrainOP.Samples` — консольные примеры (в т.ч. вложенные маршруты и ветвление)
 - `tests/` — xUnit-тесты (сквозной data-oriented sample: `DataOrientedPaymentRouteEndToEndTests`)
 
 ## Тесты

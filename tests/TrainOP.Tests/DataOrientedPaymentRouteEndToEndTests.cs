@@ -10,13 +10,14 @@ namespace TrainOP.Tests.DataOriented
     public sealed class DataOrientedPaymentRouteEndToEndTests
     {
         /// <summary>
-        /// Verifies that a happy-path payment route completes and deconstructs terminal wagons correctly.
+        /// Verifies that a happy-path payment route completes and exposes terminal wagons correctly.
         /// </summary>
         [Fact]
         public void PaymentRoute_HappyPath_DeconstructsTerminalWagons()
         {
             var report = PaymentRoute.BuildHappyPath().DispatchTrain().Travel();
-            (string paymentId, decimal amount) = report;
+            var paymentId = report.Get<string>("paymentId");
+            var amount = report.Get<decimal>("amount");
 
             Assert.True(report.ReachedDestination);
             Assert.Equal(4, report.Visits.Count);
@@ -59,7 +60,9 @@ namespace TrainOP.Tests.DataOriented
         [Fact]
         public async Task PaymentRoute_AsyncHandler_CompletesWithTravelAsync()
         {
-            (string paymentId, decimal amount) = await PaymentRoute.BuildAsync().DispatchTrain().TravelAsync();
+            var report = await PaymentRoute.BuildAsync().DispatchTrain().TravelAsync();
+            var paymentId = report.Get<string>("paymentId");
+            var amount = report.Get<decimal>("amount");
 
             Assert.Equal("pay-async-e2e", paymentId);
             Assert.Equal(200m, amount);

@@ -16,34 +16,20 @@ namespace TrainOP
             string[] wagonNames,
             bool removeOmittedRegularInputs)
         {
-            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, null, null, null, null);
+            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, null, null, null);
         }
 
         /// <summary>
-        /// Merges a station return value into the manifest with tuple element ordinal mappings.
+        /// Merges a station return value into the manifest with return member names.
         /// </summary>
         public static CargoManifest Apply(
             CargoManifest manifest,
             object stationReturn,
             string[] wagonNames,
             bool removeOmittedRegularInputs,
-            int[] tupleElementOrdinals)
-        {
-            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, tupleElementOrdinals, null, null, null);
-        }
-
-        /// <summary>
-        /// Merges a station return value into the manifest with tuple ordinals and return member names.
-        /// </summary>
-        public static CargoManifest Apply(
-            CargoManifest manifest,
-            object stationReturn,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs,
-            int[] tupleElementOrdinals,
             string[] returnMemberNames)
         {
-            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, tupleElementOrdinals, returnMemberNames, null, null);
+            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, returnMemberNames, null, null);
         }
 
         /// <summary>
@@ -57,18 +43,17 @@ namespace TrainOP
             bool[] byReferenceWagons,
             object[] refLocalValues)
         {
-            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, null, null, byReferenceWagons, refLocalValues);
+            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, null, byReferenceWagons, refLocalValues);
         }
 
         /// <summary>
-        /// Merges a station return value into the manifest with full wagon and tuple metadata.
+        /// Merges a station return value into the manifest with return member names and ref wagon metadata.
         /// </summary>
         public static CargoManifest Apply(
             CargoManifest manifest,
             object stationReturn,
             string[] wagonNames,
             bool removeOmittedRegularInputs,
-            int[] tupleElementOrdinals,
             string[] returnMemberNames,
             bool[] byReferenceWagons,
             object[] refLocalValues)
@@ -114,7 +99,6 @@ namespace TrainOP
                 throw new ArgumentException("Ref wagon metadata arrays must match wagonNames length.");
             }
 
-            var effectiveTupleOrdinals = ResolveTupleOrdinals(stationReturn, tupleElementOrdinals);
             for (var i = 0; i < wagonNames.Length; i++)
             {
                 var wagonName = wagonNames[i];
@@ -123,7 +107,7 @@ namespace TrainOP
                     stationReturn,
                     wagonName,
                     i,
-                    effectiveTupleOrdinals,
+                    returnMemberNames,
                     out wagonValue);
                 if (!found
                     && WagonStationReturn.IsValueTuple(stationReturn)
@@ -194,11 +178,11 @@ namespace TrainOP
             string[] wagonNames,
             bool removeOmittedRegularInputs)
         {
-            return StationAdapter.ToSignal(manifest, stationReturn, stationName, wagonNames, removeOmittedRegularInputs, null, null, null, null);
+            return StationAdapter.ToSignal(manifest, stationReturn, stationName, wagonNames, removeOmittedRegularInputs, null, null, null);
         }
 
         /// <summary>
-        /// Converts a station return value to a signal with tuple element ordinal mappings.
+        /// Converts a station return value to a signal with return member names.
         /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
@@ -206,30 +190,6 @@ namespace TrainOP
             string stationName,
             string[] wagonNames,
             bool removeOmittedRegularInputs,
-            int[] tupleElementOrdinals)
-        {
-            return StationAdapter.ToSignal(
-                manifest,
-                stationReturn,
-                stationName,
-                wagonNames,
-                removeOmittedRegularInputs,
-                tupleElementOrdinals,
-                null,
-                null,
-                null);
-        }
-
-        /// <summary>
-        /// Converts a station return value to a signal with tuple ordinals and return member names.
-        /// </summary>
-        public static Signal ToSignal(
-            CargoManifest manifest,
-            object stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs,
-            int[] tupleElementOrdinals,
             string[] returnMemberNames)
         {
             return StationAdapter.ToSignal(
@@ -238,7 +198,6 @@ namespace TrainOP
                 stationName,
                 wagonNames,
                 removeOmittedRegularInputs,
-                tupleElementOrdinals,
                 returnMemberNames,
                 null,
                 null);
@@ -263,13 +222,12 @@ namespace TrainOP
                 wagonNames,
                 removeOmittedRegularInputs,
                 null,
-                null,
                 byReferenceWagons,
                 refLocalValues);
         }
 
         /// <summary>
-        /// Converts a station return value to a signal with full wagon and tuple metadata.
+        /// Converts a station return value to a signal with return member names and ref wagon metadata.
         /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
@@ -277,7 +235,6 @@ namespace TrainOP
             string stationName,
             string[] wagonNames,
             bool removeOmittedRegularInputs,
-            int[] tupleElementOrdinals,
             string[] returnMemberNames,
             bool[] byReferenceWagons,
             object[] refLocalValues)
@@ -288,33 +245,19 @@ namespace TrainOP
                 stationName,
                 wagonNames,
                 removeOmittedRegularInputs,
-                tupleElementOrdinals,
                 returnMemberNames,
                 byReferenceWagons,
                 refLocalValues);
         }
 
         /// <summary>
-        /// Returns tuple element ordinals when the station return is a value tuple.
-        /// </summary>
-        private static int[] ResolveTupleOrdinals(object stationReturn, int[] tupleElementOrdinals)
-        {
-            if (tupleElementOrdinals == null || !WagonStationReturn.IsValueTuple(stationReturn))
-            {
-                return null;
-            }
-
-            return tupleElementOrdinals;
-        }
-
-        /// <summary>
-        /// Resolves a wagon value from a station return by name, index, or tuple ordinal.
+        /// Resolves a wagon value from a station return by manifest wagon name or positional return member name.
         /// </summary>
         private static bool TryResolveWagonValue(
             object stationReturn,
             string wagonName,
             int wagonIndex,
-            int[] tupleElementOrdinals,
+            string[] returnMemberNames,
             out object wagonValue)
         {
             wagonValue = null;
@@ -328,18 +271,23 @@ namespace TrainOP
                 return true;
             }
 
-            if (tupleElementOrdinals != null && wagonIndex < tupleElementOrdinals.Length)
+            if (returnMemberNames != null
+                && wagonIndex < returnMemberNames.Length
+                && !string.Equals(returnMemberNames[wagonIndex], wagonName, StringComparison.Ordinal)
+                && WagonStationReturn.TryGetMemberValue(stationReturn, returnMemberNames[wagonIndex], out wagonValue))
             {
-                var ordinal = tupleElementOrdinals[wagonIndex];
-                if (ordinal < 0)
-                {
-                    return false;
-                }
-
-                return WagonStationReturn.TryGetTupleElement(stationReturn, ordinal, out wagonValue);
+                return true;
             }
 
-            return WagonStationReturn.TryGetTupleElement(stationReturn, wagonIndex, out wagonValue);
+            if (WagonStationReturn.IsValueTuple(stationReturn))
+            {
+                return WagonStationReturn.TryGetMemberValue(
+                    stationReturn,
+                    "Item" + (wagonIndex + 1),
+                    out wagonValue);
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -397,11 +345,11 @@ namespace TrainOP
             string[] wagonNames,
             bool removeOmittedRegularInputs)
         {
-            return ToSignal(manifest, stationReturn, stationName, wagonNames, removeOmittedRegularInputs, null, null, null, null);
+            return ToSignal(manifest, stationReturn, stationName, wagonNames, removeOmittedRegularInputs, null, null, null);
         }
 
         /// <summary>
-        /// Converts a station return value to a signal with tuple element ordinal mappings.
+        /// Converts a station return value to a signal with return member names.
         /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
@@ -409,30 +357,6 @@ namespace TrainOP
             string stationName,
             string[] wagonNames,
             bool removeOmittedRegularInputs,
-            int[] tupleElementOrdinals)
-        {
-            return ToSignal(
-                manifest,
-                stationReturn,
-                stationName,
-                wagonNames,
-                removeOmittedRegularInputs,
-                tupleElementOrdinals,
-                null,
-                null,
-                null);
-        }
-
-        /// <summary>
-        /// Converts a station return value to a signal with tuple ordinals and return member names.
-        /// </summary>
-        public static Signal ToSignal(
-            CargoManifest manifest,
-            object stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs,
-            int[] tupleElementOrdinals,
             string[] returnMemberNames)
         {
             return ToSignal(
@@ -441,7 +365,6 @@ namespace TrainOP
                 stationName,
                 wagonNames,
                 removeOmittedRegularInputs,
-                tupleElementOrdinals,
                 returnMemberNames,
                 null,
                 null);
@@ -466,13 +389,12 @@ namespace TrainOP
                 wagonNames,
                 removeOmittedRegularInputs,
                 null,
-                null,
                 byReferenceWagons,
                 refLocalValues);
         }
 
         /// <summary>
-        /// Converts a station return value to a signal with full wagon and tuple metadata.
+        /// Converts a station return value to a signal with return member names and ref wagon metadata.
         /// </summary>
         public static Signal ToSignal(
             CargoManifest manifest,
@@ -480,7 +402,6 @@ namespace TrainOP
             string stationName,
             string[] wagonNames,
             bool removeOmittedRegularInputs,
-            int[] tupleElementOrdinals,
             string[] returnMemberNames,
             bool[] byReferenceWagons,
             object[] refLocalValues)
@@ -522,7 +443,6 @@ namespace TrainOP
                 stationReturn,
                 wagonNames,
                 removeOmittedRegularInputs,
-                tupleElementOrdinals,
                 returnMemberNames,
                 byReferenceWagons,
                 refLocalValues);

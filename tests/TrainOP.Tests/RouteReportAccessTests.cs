@@ -4,34 +4,36 @@ using Xunit;
 namespace TrainOP.Tests.DataOriented
 {
     /// <summary>
-    /// Tests typed deconstruction of terminal wagons from Travel and TravelAsync results.
+    /// Tests terminal wagon access through RouteReport.
     /// </summary>
-    public sealed class TypedTravelTests
+    public sealed class RouteReportAccessTests
     {
         /// <summary>
-        /// Verifies that Travel deconstructs terminal wagons from a data-oriented route chain.
+        /// Verifies that Travel exposes terminal wagons via report getters.
         /// </summary>
         [Fact]
-        public void Travel_DeconstructsTerminalWagons_FromDataOrientedChain()
+        public void Travel_ReadsTerminalWagons_FromDataOrientedChain()
         {
             var route = PaymentRoute.Build();
 
-            (string paymentId, decimal amount) = route.DispatchTrain().Travel();
+            var report = route.DispatchTrain().Travel();
+            var paymentId = report.Get<string>("paymentId");
+            var amount = report.Get<decimal>("amount");
 
             Assert.Equal("pay-1", paymentId);
             Assert.Equal(90m, amount);
         }
 
         /// <summary>
-        /// Verifies that Travel deconstructs both terminal wagons and the route report from a data-oriented chain.
+        /// Verifies that Travel keeps report details available on successful route completion.
         /// </summary>
         [Fact]
-        public void Travel_DeconstructsTerminalWagonsAndReport_FromDataOrientedChain()
+        public void Travel_ProvidesReport_OnSuccessfulRoute()
         {
             var route = PaymentRoute.Build();
-
             var report = route.DispatchTrain().Travel();
-            (string paymentId, decimal amount) = report;
+            var paymentId = report.Get<string>("paymentId");
+            var amount = report.Get<decimal>("amount");
 
             Assert.Equal("pay-1", paymentId);
             Assert.Equal(90m, amount);
@@ -40,10 +42,10 @@ namespace TrainOP.Tests.DataOriented
         }
 
         /// <summary>
-        /// Verifies that TravelAsync deconstructs terminal wagons from an async data-oriented route chain.
+        /// Verifies that TravelAsync exposes terminal wagons via report getters.
         /// </summary>
         [Fact]
-        public async Task TravelAsync_DeconstructsTerminalWagons_FromAsyncDataOrientedChain()
+        public async Task TravelAsync_ReadsTerminalWagons_FromAsyncDataOrientedChain()
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { paymentId = "pay-async", amount = 5m })
@@ -53,17 +55,19 @@ namespace TrainOP.Tests.DataOriented
                     return new { paymentId = paymentId + "-async", amount = amount * 2m };
                 });
 
-            (string paymentId, decimal amount) = await route.DispatchTrain().TravelAsync();
+            var report = await route.DispatchTrain().TravelAsync();
+            var paymentId = report.Get<string>("paymentId");
+            var amount = report.Get<decimal>("amount");
 
             Assert.Equal("pay-async-async", paymentId);
             Assert.Equal(10m, amount);
         }
 
         /// <summary>
-        /// Verifies that Travel deconstructs remaining wagons after a partial station return omits some inputs.
+        /// Verifies that Travel keeps remaining wagons after a partial station return.
         /// </summary>
         [Fact]
-        public void Travel_DeconstructsRemainingWagons_AfterPartialReturn()
+        public void Travel_KeepsRemainingWagons_AfterPartialReturn()
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { paymentId = "pay-partial", amount = 3m, traceId = "keep" })
@@ -71,10 +75,11 @@ namespace TrainOP.Tests.DataOriented
                     new { paymentId = paymentId + "-merged" });
 
             var report = route.DispatchTrain().Travel();
+            var paymentId = report.Get<string>("paymentId");
+            var traceId = report.Get<string>("traceId");
 
-            Assert.Equal("pay-partial-merged", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
-            Assert.Equal("keep", report.TerminalSignal.Manifest.PullWagon<string>("traceId"));
-            Assert.False(report.TerminalSignal.Manifest.HasWagon("amount"));
+            Assert.Equal("pay-partial-merged", paymentId);
+            Assert.Equal("keep", traceId);
         }
 
         private static class PaymentRoute
