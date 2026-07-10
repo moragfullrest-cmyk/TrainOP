@@ -33,18 +33,29 @@ namespace TrainOP.Generators
             {
                 var parameter = parameters[i];
                 var parameterType = parameter.Type;
-                if (parameter.IsDiscard)
-                {
-                    continue;
-                }
-
                 if (parameterType == null)
                 {
                     return null;
                 }
 
+                if (IsCancellationToken(parameterType))
+                {
+                    hasCancellationToken = true;
+                    continue;
+                }
+
+                if (parameter.IsDiscard)
+                {
+                    continue;
+                }
+
                 if (IsCargoManifest(parameterType))
                 {
+                    if (forServiceStation)
+                    {
+                        return null;
+                    }
+
                     includeManifest = true;
                     continue;
                 }
@@ -57,14 +68,7 @@ namespace TrainOP.Generators
 
                 if (forServiceStation && IsSignalIssue(parameterType))
                 {
-                    includeSignalIssue = true;
-                    continue;
-                }
-
-                if (IsCancellationToken(parameterType))
-                {
-                    hasCancellationToken = true;
-                    continue;
+                    return null;
                 }
 
                 var name = parameter.Name;
@@ -101,11 +105,25 @@ namespace TrainOP.Generators
 
             if (forServiceStation
                 && wagons.Count == 0
-                && !includeManifest
-                && !includeSignalIssue
                 && includeRedSignal)
             {
                 return null;
+            }
+
+            if (forServiceStation)
+            {
+                if (!includeRedSignal)
+                {
+                    return null;
+                }
+
+                for (var i = 0; i < wagons.Count; i++)
+                {
+                    if (!wagons[i].IsByReference)
+                    {
+                        return null;
+                    }
+                }
             }
 
             if (!forServiceStation && includeManifest && wagons.Count == 0)
@@ -137,10 +155,8 @@ namespace TrainOP.Generators
                 return true;
             }
 
-            var returnType = lambdaSymbol.ReturnType as INamedTypeSymbol;
-            return returnType != null
-                && returnType.IsGenericType
-                && string.Equals(returnType.ConstructedFrom.ToDisplayString(), "System.Threading.Tasks.Task", StringComparison.Ordinal);
+            var returnType = lambdaSymbol.ReturnType;
+            return HandlerReturnInference.IsTask(returnType);
         }
 
         /// <summary>
@@ -156,7 +172,18 @@ namespace TrainOP.Generators
         /// </summary>
         private static bool IsCancellationToken(ITypeSymbol typeSymbol)
         {
-            return string.Equals(typeSymbol.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal);
+            if (typeSymbol == null)
+            {
+                return false;
+            }
+
+            if (string.Equals(typeSymbol.ToDisplayString(), "System.Threading.CancellationToken", StringComparison.Ordinal)
+                || string.Equals(typeSymbol.ToDisplayString(), "CancellationToken", StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return string.Equals(typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), "global::System.Threading.CancellationToken", StringComparison.Ordinal);
         }
 
         /// <summary>

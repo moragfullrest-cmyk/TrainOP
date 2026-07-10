@@ -30,6 +30,7 @@ namespace TrainOP.Generators.Models
             IncludeRedSignal = includeRedSignal;
             IncludeSignalIssue = includeSignalIssue;
             HasRefWagons = hasRefWagons;
+            ExtensionMethodName = ResolveDefaultExtensionMethodName(isServiceStation, isAsync);
         }
 
         public ImmutableArray<WagonBinding> InputWagons { get; }
@@ -52,8 +53,20 @@ namespace TrainOP.Generators.Models
 
         public bool IncludeSignalIssue { get; }
 
+        public string ExtensionMethodName { get; }
+
         public bool IsSeed => InputWagons.Length == 0 && !IncludeManifest && !IsServiceStation;
 
         public bool RemoveOmittedRegularInputs => InputWagons.Length > 0;
+
+        private static string ResolveDefaultExtensionMethodName(bool isServiceStation, bool isAsync)
+        {
+            if (isServiceStation)
+            {
+                return "ServiceStation";
+            }
+
+            return isAsync ? "StationAsync" : "Station";
+        }
     }
 }

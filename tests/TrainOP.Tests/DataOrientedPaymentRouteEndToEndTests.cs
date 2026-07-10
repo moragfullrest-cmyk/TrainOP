@@ -13,7 +13,7 @@ namespace TrainOP.Tests.DataOriented
         /// Verifies that a happy-path payment route completes and exposes terminal wagons correctly.
         /// </summary>
         [Fact]
-        public void PaymentRoute_HappyPath_DeconstructsTerminalWagons()
+        public void PaymentRoute_HappyPath_ExposesTerminalWagons()
         {
             var report = PaymentRoute.BuildHappyPath().DispatchTrain().Travel();
             var paymentId = report.Get<string>("paymentId");
@@ -114,8 +114,12 @@ namespace TrainOP.Tests.DataOriented
                         amount > 0
                             ? RailwaySignals.Green(new { paymentId, amount })
                             : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"))
-                    .ServiceStation("Recovery", (decimal amount) =>
-                        RailwaySignals.Green(new { paymentId = "pay-recover", amount = 1m }))
+                    .ServiceStation("Recovery", (ref string paymentId, ref decimal amount, RedSignal red) =>
+                    {
+                        paymentId = "pay-recover";
+                        amount = 1m;
+                        return RailwaySignals.Pass;
+                    })
                     .Station("Double", (string paymentId, decimal amount) =>
                         new { paymentId, amount = amount * 2m });
             }
@@ -124,7 +128,7 @@ namespace TrainOP.Tests.DataOriented
             {
                 return new TrainRoute()
                     .Station("Seed", () => new { paymentId = "pay-async-e2e", amount = 100m })
-                    .Station("Double", async (string paymentId, decimal amount, CancellationToken token) =>
+                .StationAsync("Double", async (string paymentId, decimal amount, CancellationToken token) =>
                     {
                         await Task.Delay(1, token);
                         return new { paymentId, amount = amount * 2m };

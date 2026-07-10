@@ -126,7 +126,7 @@ namespace TrainOP.Tests.DataOriented
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { paymentId = "pay-async-fail", amount = -5m })
-                .Station("Validate", async (string paymentId, decimal amount, CancellationToken token) =>
+                .StationAsync("Validate", async (string paymentId, decimal amount, CancellationToken token) =>
                 {
                     await Task.Delay(1, token);
                     return amount > 0
@@ -171,8 +171,11 @@ namespace TrainOP.Tests.DataOriented
                     value > 0
                         ? RailwaySignals.Green(new { value })
                         : RailwaySignals.Red("NON_POSITIVE", "value must be positive"))
-                .ServiceStation("Recovery", (int value) =>
-                    RailwaySignals.Green(new { value = 1 }))
+                .ServiceStation("Recovery", (ref int value, RedSignal red) =>
+                {
+                    value = 1;
+                    return RailwaySignals.Pass;
+                })
                 .Station("Double", (int value) => new { value = value * 2 });
 
             var report = route.DispatchTrain().Travel();
@@ -192,8 +195,8 @@ namespace TrainOP.Tests.DataOriented
                 .Station("Seed", () => new { value = 0 })
                 .Station("Validate", (int value) =>
                     RailwaySignals.Red("NON_POSITIVE", "value must be positive"))
-                .ServiceStation("Recovery", (SignalIssue issue) =>
-                    RailwaySignals.Red("CANNOT_RECOVER", "recovery declined: " + issue.Code))
+                .ServiceStation("Recovery", (ref int value, RedSignal red) =>
+                    RailwaySignals.Red("CANNOT_RECOVER", "recovery declined: " + red.Issue.Code))
                 .Station("MustNotRun", (int value) => new { value });
 
             var report = route.DispatchTrain().Travel();
@@ -213,7 +216,7 @@ namespace TrainOP.Tests.DataOriented
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { paymentId = "pay-async", amount = 5m })
-                .Station("Double", async (string paymentId, decimal amount, CancellationToken token) =>
+                .StationAsync("Double", async (string paymentId, decimal amount, CancellationToken token) =>
                 {
                     await Task.Delay(1, token);
                     return new { paymentId = paymentId + "-async", amount = amount * 2m };

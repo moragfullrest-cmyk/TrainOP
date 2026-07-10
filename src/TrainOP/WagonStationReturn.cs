@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace TrainOP
 {
@@ -8,6 +10,52 @@ namespace TrainOP
     /// </summary>
     public static class WagonStationReturn
     {
+        /// <summary>
+        /// Enumerates public instance member names exposed by a station return value.
+        /// </summary>
+        public static string[] GetMemberNames(object source)
+        {
+            if (source == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            var type = source.GetType();
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public;
+            if (IsValueTupleType(type))
+            {
+                var names = new List<string>();
+                foreach (var field in type.GetFields(flags))
+                {
+                    if (string.Equals(field.Name, "Rest", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    var elementName = GetTupleElementName(field) ?? field.Name;
+                    names.Add(elementName);
+                }
+
+                return names.ToArray();
+            }
+
+            var members = new List<string>();
+            foreach (var property in type.GetProperties(flags))
+            {
+                if (property.GetIndexParameters().Length == 0)
+                {
+                    members.Add(property.Name);
+                }
+            }
+
+            foreach (var field in type.GetFields(flags))
+            {
+                members.Add(field.Name);
+            }
+
+            return members.ToArray();
+        }
+
         /// <summary>
         /// Tries to read a member value from a typed source by name.
         /// </summary>

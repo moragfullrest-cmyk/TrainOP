@@ -51,7 +51,7 @@ namespace TrainOP.Tests
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { counter = 10 })
-                .Station("Multiply", async (int counter, CancellationToken token) =>
+                .StationAsync("Multiply", async (int counter, CancellationToken token) =>
                 {
                     await Task.Delay(10, token);
                     return new { counter = counter * 2 };
@@ -70,7 +70,7 @@ namespace TrainOP.Tests
         public void Train_Travel_ThrowsWhenRouteContainsAsyncStation()
         {
             var route = new TrainRoute()
-                .Station("AsyncOnly", async (CancellationToken token) =>
+                .StationAsync("AsyncOnly", async (CancellationToken token) =>
                 {
                     await Task.Delay(1, token);
                     return RailwaySignals.Pass;
@@ -90,7 +90,7 @@ namespace TrainOP.Tests
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { })
-                .Station("Wait", async (CancellationToken token) =>
+                .StationAsync("Wait", async (CancellationToken token) =>
                 {
                     await Task.Delay(200, token);
                     return RailwaySignals.Pass;
@@ -159,7 +159,7 @@ namespace TrainOP.Tests
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { })
-                .Station("BoomAsync", async (CancellationToken token) =>
+                .StationAsync("BoomAsync", async (CancellationToken token) =>
                 {
                     await Task.Delay(1, token);
                     throw new InvalidOperationException("async exploded");
@@ -189,8 +189,11 @@ namespace TrainOP.Tests
                 .Station("Seed", () => new { marker = true })
                 .Station("Boom", (bool marker) =>
                     RailwaySignals.Red("BOOM", "simulated failure"))
-                .ServiceStation("SignalControlAsync", (bool marker) =>
-                    RailwaySignals.Green(new { marker }))
+                .ServiceStation("SignalControlAsync", (ref bool marker, RedSignal red) =>
+                {
+                    marker = true;
+                    return RailwaySignals.Pass;
+                })
                 .Station("AfterRecovery", (bool marker) => new { after = "ok", marker });
 
             var report = await route.DispatchTrain().TravelAsync();

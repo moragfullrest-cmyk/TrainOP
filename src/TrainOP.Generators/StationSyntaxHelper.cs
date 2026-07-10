@@ -16,7 +16,8 @@ namespace TrainOP.Generators
         /// </summary>
         public static bool IsCandidateStationInvocation(SyntaxNode node)
         {
-            return IsCandidateRouteHandlerInvocation(node, "Station");
+            return IsCandidateRouteHandlerInvocation(node, "Station")
+                || IsCandidateRouteHandlerInvocation(node, "StationAsync");
         }
 
         /// <summary>
@@ -80,9 +81,7 @@ namespace TrainOP.Generators
             if (receiverExpression is InvocationExpressionSyntax invocation
                 && invocation.Expression is MemberAccessExpressionSyntax memberAccess)
             {
-                if (string.Equals(memberAccess.Name.Identifier.ValueText, "Station", StringComparison.Ordinal)
-                    || string.Equals(memberAccess.Name.Identifier.ValueText, "RegisterStation", StringComparison.Ordinal)
-                    || string.Equals(memberAccess.Name.Identifier.ValueText, "ServiceStation", StringComparison.Ordinal))
+                if (IsRouteExtensionMethodName(memberAccess.Name.Identifier.ValueText))
                 {
                     return IsTrainRouteReceiver(
                         memberAccess.Expression,
@@ -113,14 +112,26 @@ namespace TrainOP.Generators
             out Location handlerLocation,
             out StationHandlerBinding handlerBinding)
         {
+            stationName = null;
+            handlerLocation = null;
+            handlerBinding = null;
+
             return TryGetDataRouteHandlerInvocation(
-                invocation,
-                semanticModel,
-                "Station",
-                forServiceStation: false,
-                out stationName,
-                out handlerLocation,
-                out handlerBinding);
+                    invocation,
+                    semanticModel,
+                    "Station",
+                    forServiceStation: false,
+                    out stationName,
+                    out handlerLocation,
+                    out handlerBinding)
+                || TryGetDataRouteHandlerInvocation(
+                    invocation,
+                    semanticModel,
+                    "StationAsync",
+                    forServiceStation: false,
+                    out stationName,
+                    out handlerLocation,
+                    out handlerBinding);
         }
 
         /// <summary>
@@ -212,6 +223,17 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
+        /// Determines whether a method name is a generated or built-in route extension used in chains.
+        /// </summary>
+        private static bool IsRouteExtensionMethodName(string methodName)
+        {
+            return string.Equals(methodName, "Station", StringComparison.Ordinal)
+                || string.Equals(methodName, "StationAsync", StringComparison.Ordinal)
+                || string.Equals(methodName, "RegisterStation", StringComparison.Ordinal)
+                || string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
+        }
+
+        /// <summary>
         /// Resolves a lambda expression and its method symbol from a handler argument.
         /// </summary>
         public static bool TryGetLambda(
@@ -223,16 +245,21 @@ namespace TrainOP.Generators
             lambdaSyntax = null;
             lambdaSymbol = null;
 
-            switch (expression)
+            if (expression is ParenthesizedLambdaExpressionSyntax parenthesizedLambda)
             {
-                case ParenthesizedLambdaExpressionSyntax parenthesizedLambda:
-                    lambdaSyntax = parenthesizedLambda;
-                    break;
-                case SimpleLambdaExpressionSyntax simpleLambda:
-                    lambdaSyntax = simpleLambda;
-                    break;
-                default:
-                    return false;
+                lambdaSyntax = parenthesizedLambda;
+            }
+            else if (expression is SimpleLambdaExpressionSyntax simpleLambda)
+            {
+                lambdaSyntax = simpleLambda;
+            }
+            else if (expression is AnonymousMethodExpressionSyntax anonymousMethod)
+            {
+                return false;
+            }
+            else
+            {
+                return false;
             }
 
             lambdaSymbol = semanticModel.GetSymbolInfo(lambdaSyntax).Symbol as IMethodSymbol;

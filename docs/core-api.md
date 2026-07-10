@@ -54,12 +54,12 @@ var report3 = train.Travel(cancellationToken);
 
 ### Асинхронное выполнение
 
-Для станций с `Task` / `Task<T>` используйте `TravelAsync`:
+Для станций с `Task` / `Task<T>` используйте `StationAsync` и `TravelAsync`:
 
 ```csharp
 var route = new TrainRoute()
     .Station("Seed", () => new { counter = 10 })
-    .Station("Fetch", async (int counter, CancellationToken token) =>
+    .StationAsync("Fetch", async (int counter, CancellationToken token) =>
     {
         await Task.Delay(50, token);
         return new { counter = counter * 2 };

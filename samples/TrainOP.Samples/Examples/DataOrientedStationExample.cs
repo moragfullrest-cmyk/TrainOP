@@ -8,7 +8,7 @@ internal sealed class DataOrientedStationExample : IExample
     public string Title => "1. Data-oriented маршрут";
 
     /// <summary>
-    /// Runs a multi-station route with anonymous-type wagons and deconstructs the final report.
+    /// Runs a multi-station route with anonymous-type wagons and reads terminal values from the report.
     /// </summary>
     public void Run()
     {

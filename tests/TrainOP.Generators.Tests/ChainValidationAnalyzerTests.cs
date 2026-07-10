@@ -267,7 +267,7 @@ public static class RecoveryRoute
         .Station(""Seed"", () => new { value = 0 })
         .Station(""Validate"", (int value) =>
             value > 0 ? RailwaySignals.Green(new { value }) : RailwaySignals.Red(""ERR"", ""bad""))
-        .ServiceStation(""Recovery"", (int value) => RailwaySignals.Green(new { value }))
+        .ServiceStation(""Recovery"", (ref int value, RedSignal red) => RailwaySignals.Pass)
         .Station(""After"", (int value) => new { value = value + 1 });
 }";
 

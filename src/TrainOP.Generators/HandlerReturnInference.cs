@@ -31,46 +31,88 @@ namespace TrainOP.Generators
             if (returnType == null || returnType.SpecialType == SpecialType.System_Object)
             {
                 returnType = InferBodyReturnType(GetLambdaBody(lambdaSyntax), semanticModel);
-                returnType = UnwrapReturnType(returnType);
             }
+
+            returnType = UnwrapReturnType(returnType);
 
             if (IsVoidReturn(returnType))
             {
                 return ReturnShape.Void;
             }
 
+            var returnTypeDisplay = ReturnTypeDisplayBuilder.BuildDisplay(returnType);
+            var useGenericReturn = ReturnTypeDisplayBuilder.UseGenericReturn(returnType);
+
             if (returnType == null)
             {
-                return ReturnShape.Unknown;
+                return WithReturnType(ReturnShape.Unknown, returnTypeDisplay, useGenericReturn);
+            }
+
+            if (ReturnTypeDisplayBuilder.IsExplicitSignalReturn(returnType))
+            {
+                return new ReturnShape(
+                    ImmutableArray<WagonBinding>.Empty,
+                    isCargoManifest: false,
+                    isValueTuple: false,
+                    isUnknown: true,
+                    returnTypeDisplay: ReturnTypeDisplayBuilder.SignalReturnTypeDisplay,
+                    useGenericReturn: false,
+                    isExplicitSignalReturn: true);
             }
 
             if (IsCargoManifest(returnType))
             {
-                return new ReturnShape(ImmutableArray<WagonBinding>.Empty, isCargoManifest: true, isValueTuple: false);
-            }
-
-            if (IsRedFailure(returnType))
-            {
-                return ReturnShape.Unknown;
-            }
-
-            if (IsGreenPass(returnType))
-            {
-                return ReturnShape.Unknown;
+                return new ReturnShape(
+                    ImmutableArray<WagonBinding>.Empty,
+                    isCargoManifest: true,
+                    isValueTuple: false,
+                    returnTypeDisplay: returnTypeDisplay,
+                    useGenericReturn: useGenericReturn);
             }
 
             if (IsGreenPayload(returnType, out var greenPayload))
             {
-                return InferFromGreenPayload(greenPayload, inputWagons, semanticModel, lambdaSyntax.GetLocation());
+                var bodyExpression = GetLambdaBodyExpression(lambdaSyntax);
+                return WithReturnType(
+                    InferFromGreenPayload(greenPayload, inputWagons, semanticModel, lambdaSyntax.GetLocation(), bodyExpression),
+                    returnTypeDisplay,
+                    useGenericReturn);
             }
 
-            var shape = InferFromType(returnType, inputWagons, semanticModel, lambdaSyntax.GetLocation());
+            var returnBodyExpression = GetLambdaBodyExpression(lambdaSyntax);
+            var shape = InferFromType(returnType, inputWagons, semanticModel, lambdaSyntax.GetLocation(), returnBodyExpression);
             if (!shape.IsCargoManifest && shape.Members.IsDefaultOrEmpty)
             {
-                return ReturnShape.Unknown;
+                if (returnType == null || returnType.SpecialType == SpecialType.System_Object)
+                {
+                    return WithReturnType(ReturnShape.Unknown, null, useGenericReturn: true);
+                }
+
+                return WithReturnType(ReturnShape.Unknown, returnTypeDisplay, useGenericReturn);
             }
 
-            return shape;
+            return WithReturnType(shape, returnTypeDisplay, useGenericReturn);
+        }
+
+        /// <summary>
+        /// Attaches return type metadata to an inferred return shape.
+        /// </summary>
+        private static ReturnShape WithReturnType(ReturnShape shape, string returnTypeDisplay, bool useGenericReturn)
+        {
+            if (shape.IsVoid)
+            {
+                return shape;
+            }
+
+            return new ReturnShape(
+                shape.Members,
+                shape.IsCargoManifest,
+                shape.IsValueTuple,
+                shape.IsUnknown,
+                shape.IsVoid,
+                returnTypeDisplay,
+                useGenericReturn,
+                shape.IsExplicitSignalReturn);
         }
 
         /// <summary>
@@ -80,9 +122,10 @@ namespace TrainOP.Generators
             ITypeSymbol greenPayload,
             ImmutableArray<WagonBinding> inputWagons,
             SemanticModel semanticModel,
-            Location fallbackLocation)
+            Location fallbackLocation,
+            ExpressionSyntax bodyExpression)
         {
-            var shape = InferFromType(greenPayload, inputWagons, semanticModel, fallbackLocation);
+            var shape = InferFromType(greenPayload, inputWagons, semanticModel, fallbackLocation, bodyExpression);
             if (!shape.IsCargoManifest && shape.Members.IsDefaultOrEmpty)
             {
                 return ReturnShape.Unknown;
@@ -104,6 +147,29 @@ namespace TrainOP.Generators
             if (lambdaSyntax is ParenthesizedLambdaExpressionSyntax parenthesizedLambda)
             {
                 return parenthesizedLambda.Body;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Extracts the return expression from a lambda body when it is a single expression or block return.
+        /// </summary>
+        private static ExpressionSyntax GetLambdaBodyExpression(LambdaExpressionSyntax lambdaSyntax)
+        {
+            var body = GetLambdaBody(lambdaSyntax);
+            if (body is ExpressionSyntax expression)
+            {
+                return expression;
+            }
+
+            if (body is BlockSyntax block)
+            {
+                var returnStatement = block.DescendantNodes()
+                    .OfType<ReturnStatementSyntax>()
+                    .LastOrDefault(statement => statement.Expression != null);
+
+                return returnStatement?.Expression;
             }
 
             return null;
@@ -191,7 +257,8 @@ namespace TrainOP.Generators
             ITypeSymbol returnType,
             ImmutableArray<WagonBinding> inputWagons,
             SemanticModel semanticModel,
-            Location fallbackLocation)
+            Location fallbackLocation,
+            ExpressionSyntax bodyExpression)
         {
             if (returnType == null)
             {
@@ -205,10 +272,12 @@ namespace TrainOP.Generators
                 {
                     var typeArguments = namedTuple.TypeArguments;
                     var elementNames = namedTuple.TupleElements;
+                    var usePositionalNames = ShouldUsePositionalTupleNames(bodyExpression);
                     for (var i = 0; i < typeArguments.Length; i++)
                     {
                         string name;
-                        if (elementNames != null
+                        if (!usePositionalNames
+                            && elementNames != null
                             && i < elementNames.Length
                             && !TupleElementNaming.IsDefaultName(elementNames[i].Name, i))
                         {
@@ -276,12 +345,7 @@ namespace TrainOP.Generators
                 return true;
             }
 
-            return returnType is INamedTypeSymbol named
-                && !named.IsGenericType
-                && string.Equals(
-                    named.ToDisplayString(),
-                    "System.Threading.Tasks.Task",
-                    StringComparison.Ordinal);
+            return IsNonGenericTask(returnType);
         }
 
         /// <summary>
@@ -289,19 +353,40 @@ namespace TrainOP.Generators
         /// </summary>
         private static ITypeSymbol UnwrapReturnType(ITypeSymbol returnType)
         {
-            if (returnType == null)
+            while (returnType is INamedTypeSymbol named && IsTask(named))
             {
-                return null;
-            }
+                if (!named.IsGenericType)
+                {
+                    break;
+                }
 
-            if (returnType is INamedTypeSymbol named
-                && named.IsGenericType
-                && string.Equals(named.ConstructedFrom.ToDisplayString(), "System.Threading.Tasks.Task", StringComparison.Ordinal))
-            {
-                return named.TypeArguments[0];
+                returnType = named.TypeArguments[0];
             }
 
             return returnType;
+        }
+
+        /// <summary>
+        /// Determines whether a type symbol is System.Threading.Tasks.Task.
+        /// </summary>
+        internal static bool IsTask(ITypeSymbol typeSymbol)
+        {
+            return typeSymbol is INamedTypeSymbol named
+                && string.Equals(named.Name, "Task", StringComparison.Ordinal)
+                && string.Equals(
+                    named.ContainingNamespace?.ToDisplayString(),
+                    "System.Threading.Tasks",
+                    StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Determines whether a type symbol is the non-generic void Task type.
+        /// </summary>
+        internal static bool IsNonGenericTask(ITypeSymbol typeSymbol)
+        {
+            return typeSymbol is INamedTypeSymbol named
+                && IsTask(named)
+                && !named.IsGenericType;
         }
 
         /// <summary>
@@ -343,6 +428,59 @@ namespace TrainOP.Generators
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// When a tuple literal has no explicit element names in source, merge by ItemN ordinals.
+        /// </summary>
+        private static bool ShouldUsePositionalTupleNames(ExpressionSyntax bodyExpression)
+        {
+            var tupleExpression = UnwrapToTupleExpression(bodyExpression);
+            if (tupleExpression == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < tupleExpression.Arguments.Count; i++)
+            {
+                if (tupleExpression.Arguments[i].NameColon != null)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Unwraps parenthesized expressions to reach an underlying tuple literal.
+        /// </summary>
+        private static TupleExpressionSyntax UnwrapToTupleExpression(ExpressionSyntax expression)
+        {
+            while (expression != null)
+            {
+                if (expression is TupleExpressionSyntax tupleExpression)
+                {
+                    return tupleExpression;
+                }
+
+                if (expression is ParenthesizedExpressionSyntax parenthesized)
+                {
+                    expression = parenthesized.Expression;
+                    continue;
+                }
+
+                if (expression is InvocationExpressionSyntax invocation
+                    && invocation.ArgumentList?.Arguments.Count > 0)
+                {
+                    expression = invocation.ArgumentList.Arguments[0].Expression;
+                    continue;
+                }
+
+                break;
+            }
+
+            return null;
         }
 
         /// <summary>

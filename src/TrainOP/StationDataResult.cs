@@ -43,16 +43,22 @@ namespace TrainOP
     /// <summary>
     /// Red signal request for data-oriented handlers: mapped to <see cref="RedSignal"/> by generated adapters.
     /// </summary>
-    public sealed class RedFailure
+    public sealed class RedFailure : Signal
     {
         /// <summary>
         /// Creates a red failure request with the provided code and message.
         /// </summary>
         public RedFailure(string code, string message)
+            : base(new CargoManifest())
         {
             Code = code ?? throw new ArgumentNullException(nameof(code));
             Message = message ?? throw new ArgumentNullException(nameof(message));
         }
+
+        /// <summary>
+        /// Gets whether the signal allows route continuation.
+        /// </summary>
+        public override bool IsGreen => false;
 
         /// <summary>
         /// Gets the failure code.
@@ -68,7 +74,7 @@ namespace TrainOP
     /// <summary>
     /// Pass-through result: manifest is left unchanged and the route continues with a green signal.
     /// </summary>
-    public sealed class GreenPass
+    public sealed class GreenPass : Signal
     {
         /// <summary>
         /// Gets the singleton pass-through instance.
@@ -79,7 +85,13 @@ namespace TrainOP
         /// Creates the singleton pass-through instance.
         /// </summary>
         private GreenPass()
+            : base(new CargoManifest())
         {
         }
+
+        /// <summary>
+        /// Gets whether the signal allows route continuation.
+        /// </summary>
+        public override bool IsGreen => true;
     }
 }

@@ -49,7 +49,7 @@ namespace TrainOP.Tests.DataOriented
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { paymentId = "pay-async", amount = 5m })
-                .Station("Double", async (string paymentId, decimal amount, System.Threading.CancellationToken token) =>
+                .StationAsync("Double", async (string paymentId, decimal amount, System.Threading.CancellationToken token) =>
                 {
                     await Task.Delay(1, token);
                     return new { paymentId = paymentId + "-async", amount = amount * 2m };

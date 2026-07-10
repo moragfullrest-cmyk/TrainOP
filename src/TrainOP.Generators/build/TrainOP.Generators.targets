@@ -1,0 +1,5 @@
+<Project>
+  <PropertyGroup>
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);TrainOP.Generated</InterceptorsNamespaces>
+  </PropertyGroup>
+</Project>

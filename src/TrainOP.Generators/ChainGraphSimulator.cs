@@ -101,7 +101,6 @@ namespace TrainOP.Generators
             ReportUnusedSeedWagons(chain, state);
 
             return new ChainSimulationResult(
-                BuildTerminalWagons(state),
                 state.HasUnknownReturn,
                 state.Diagnostics.ToImmutableArray());
         }
@@ -234,23 +233,6 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Collects wagons still live at the end of the chain in production order.
-        /// </summary>
-        private static ImmutableArray<WagonBinding> BuildTerminalWagons(SimulationState state)
-        {
-            var terminalWagons = ImmutableArray.CreateBuilder<WagonBinding>();
-            foreach (var wagonName in state.LiveOrder)
-            {
-                if (state.Live.TryGetValue(wagonName, out var liveWagon))
-                {
-                    terminalWagons.Add(liveWagon.Binding);
-                }
-            }
-
-            return terminalWagons.ToImmutable();
-        }
-
-        /// <summary>
         /// Applies void-return semantics: non-ref inputs are removed and no wagons are produced.
         /// </summary>
         private static void ApplyVoidReturn(
@@ -287,6 +269,11 @@ namespace TrainOP.Generators
             Dictionary<string, RemovedWagon> removed,
             HashSet<string> seedWagons)
         {
+            if (handler.IsServiceStation)
+            {
+                return;
+            }
+
             var returnedNames = new HashSet<string>(
                 handler.ReturnShape.Members.Select(m => m.Name),
                 StringComparer.Ordinal);
@@ -390,19 +377,15 @@ namespace TrainOP.Generators
     internal sealed class ChainSimulationResult
     {
         /// <summary>
-        /// Creates a simulation result with terminal wagons, unknown-return flag, and diagnostics.
+        /// Creates a simulation result with unknown-return flag and diagnostics.
         /// </summary>
         public ChainSimulationResult(
-            ImmutableArray<WagonBinding> terminalWagons,
             bool hasUnknownReturn,
             ImmutableArray<Diagnostic> diagnostics)
         {
-            TerminalWagons = terminalWagons;
             HasUnknownReturn = hasUnknownReturn;
             Diagnostics = diagnostics;
         }
-
-        public ImmutableArray<WagonBinding> TerminalWagons { get; }
 
         public bool HasUnknownReturn { get; }
 

@@ -17,6 +17,7 @@ namespace TrainOP.Generators
             if (returnShape.IsUnknown
                 || returnShape.IsVoid
                 || returnShape.IsCargoManifest
+                || returnShape.IsExplicitSignalReturn
                 || returnShape.Members.IsDefaultOrEmpty)
             {
                 return null;
@@ -32,7 +33,8 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Collects the union of return member names across multiple return shapes.
+        /// Builds return member names for a delegate signature group.
+        /// Multiple object-return shapes are merged into one deduplicated member-name list.
         /// </summary>
         public static string[] MergeReturnMemberNames(IReadOnlyList<ReturnShape> returnShapes)
         {
@@ -41,7 +43,18 @@ namespace TrainOP.Generators
                 return null;
             }
 
+            if (returnShapes.Count == 1)
+            {
+                return BuildReturnMemberNames(returnShapes[0]);
+            }
+
+            if (!CanMergeReturnMemberNamesAcrossShapes(returnShapes))
+            {
+                return null;
+            }
+
             var names = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             for (var i = 0; i < returnShapes.Count; i++)
             {
                 var shapeNames = BuildReturnMemberNames(returnShapes[i]);
@@ -52,7 +65,7 @@ namespace TrainOP.Generators
 
                 for (var j = 0; j < shapeNames.Length; j++)
                 {
-                    if (!names.Contains(shapeNames[j]))
+                    if (seen.Add(shapeNames[j]))
                     {
                         names.Add(shapeNames[j]);
                     }
@@ -60,6 +73,22 @@ namespace TrainOP.Generators
             }
 
             return names.Count == 0 ? null : names.ToArray();
+        }
+
+        private static bool CanMergeReturnMemberNamesAcrossShapes(IReadOnlyList<ReturnShape> returnShapes)
+        {
+            for (var i = 0; i < returnShapes.Count; i++)
+            {
+                var returnShape = returnShapes[i];
+                if (!returnShape.UseGenericReturn
+                    && !returnShape.IsUnknown
+                    && !string.Equals(returnShape.ReturnTypeDisplay, "global::System.Object", StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 }

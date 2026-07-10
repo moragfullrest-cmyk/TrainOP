@@ -217,6 +217,7 @@ namespace TrainOP.Generators
 
             var methodName = memberAccess.Name.Identifier.ValueText;
             return string.Equals(methodName, "Station", StringComparison.Ordinal)
+                || string.Equals(methodName, "StationAsync", StringComparison.Ordinal)
                 || string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
         }
 
@@ -339,9 +340,10 @@ namespace TrainOP.Generators
             {
                 stations?.Add(new StationChainLink(
                     serviceStationName,
-                    serviceInvocation.ArgumentList.Arguments[0].GetLocation(),
                     serviceHandlerLocation,
-                    serviceHandlerBinding));
+                    serviceHandlerLocation,
+                    serviceHandlerBinding,
+                    serviceInvocation));
                 chainedInvocations?.Add(serviceInvocation);
                 next = serviceInvocation;
                 return true;
@@ -363,7 +365,8 @@ namespace TrainOP.Generators
                     stationName,
                     stationInvocation.ArgumentList.Arguments[0].GetLocation(),
                     handlerLocation,
-                    handlerBinding));
+                    handlerBinding,
+                    stationInvocation));
             }
 
             chainedInvocations?.Add(stationInvocation);
@@ -477,7 +480,8 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (!string.Equals(memberAccess.Name.Identifier.ValueText, "Station", StringComparison.Ordinal))
+            if (!string.Equals(memberAccess.Name.Identifier.ValueText, "Station", StringComparison.Ordinal)
+                && !string.Equals(memberAccess.Name.Identifier.ValueText, "StationAsync", StringComparison.Ordinal))
             {
                 return false;
             }

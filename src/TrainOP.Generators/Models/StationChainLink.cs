@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TrainOP.Generators.Models
 {
@@ -14,12 +15,15 @@ namespace TrainOP.Generators.Models
             string stationName,
             Location stationNameLocation,
             Location handlerLocation,
-            StationHandlerBinding handler)
+            StationHandlerBinding handler,
+            InvocationExpressionSyntax invocation)
         {
             StationName = stationName;
             StationNameLocation = stationNameLocation;
             HandlerLocation = handlerLocation;
             Handler = handler;
+            Invocation = invocation;
+            InvocationLocation = invocation?.GetLocation();
         }
 
         public string StationName { get; }
@@ -29,5 +33,9 @@ namespace TrainOP.Generators.Models
         public Location HandlerLocation { get; }
 
         public StationHandlerBinding Handler { get; }
+
+        public InvocationExpressionSyntax Invocation { get; }
+
+        public Location InvocationLocation { get; }
     }
 }
