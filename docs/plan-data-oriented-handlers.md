@@ -871,7 +871,7 @@ var (orderId, total)     = OrderRoute.Build().DispatchTrain().Travel();
 - [ ] `TravelCallSiteIndex` — `await var (a, b) = …TravelAsync()` и `var x = await …TravelAsync()` (без перехватчика для второго).
 - [ ] Interceptor возвращает `Task<TravelResult_*>`; внутри — `train.TravelAsync(…)`.
 - [ ] Перегрузки: `TravelAsync()`, `TravelAsync(ct)`, `TravelAsync(manifest)`, `TravelAsync(manifest, ct)`.
-- [ ] Generator + runtime тесты на async-цепочку (`StationAsync`).
+- [ ] Generator + runtime тесты на async-цепочку (`.Station` + `TravelAsync`).
 
 #### 10.2. Критерий готовности
 

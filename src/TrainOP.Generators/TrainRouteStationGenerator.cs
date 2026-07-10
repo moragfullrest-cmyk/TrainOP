@@ -221,14 +221,6 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Extracts handler schema metadata from a candidate Station invocation.
-        /// </summary>
-        private static StationCallInfo GetStationCall(GeneratorSyntaxContext context)
-        {
-            return GetRouteHandlerCall(context);
-        }
-
-        /// <summary>
         /// Determines whether a type symbol is TrainRoute.
         /// </summary>
         private static bool IsTrainRoute(ITypeSymbol typeSymbol)
@@ -409,7 +401,7 @@ namespace TrainOP.Generators
             for (var i = 0; i < schemas.Length; i++)
             {
                 var merged = schemas[i];
-                var emissionKey = HandlerFuncTypeBuilder.BuildEmissionKey(merged.Signature, merged.DelegateTypeId);
+                var emissionKey = HandlerFuncTypeBuilder.BuildGroupingKey(merged.Signature, merged.DelegateTypeId);
                 if (!emittedSignatures.Add(emissionKey))
                 {
                     continue;

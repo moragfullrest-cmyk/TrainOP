@@ -34,11 +34,6 @@ namespace TrainOP.Generators
                 return "Action<CancellationToken>";
             }
 
-            if (UsesAsyncFuncCancellationHandler(schema))
-            {
-                return "Func<CancellationToken, System.Threading.Tasks.Task>";
-            }
-
             return BuildFuncOrActionTypeName(schema);
         }
 
@@ -52,17 +47,6 @@ namespace TrainOP.Generators
 
             if (schema.ReturnShape.IsVoid)
             {
-                if (schema.IsAsync)
-                {
-                    if (parameters.Count == 0)
-                    {
-                        return "Func<System.Threading.Tasks.Task>";
-                    }
-
-                    parameters.Add("System.Threading.Tasks.Task");
-                    return "Func<" + string.Join(", ", parameters) + ">";
-                }
-
                 if (parameters.Count == 0)
                 {
                     return "Action";
@@ -72,25 +56,12 @@ namespace TrainOP.Generators
             }
 
             var returnType = ResolveCanonicalFuncReturnType(schema);
-            if (schema.IsAsync)
+            if (parameters.Count == 0)
             {
-                if (parameters.Count == 0)
-                {
-                    return "Func<System.Threading.Tasks.Task<" + returnType + ">>";
-                }
-
-                parameters.Add("System.Threading.Tasks.Task<" + returnType + ">");
-            }
-            else
-            {
-                if (parameters.Count == 0)
-                {
-                    return "Func<" + returnType + ">";
-                }
-
-                parameters.Add(returnType);
+                return "Func<" + returnType + ">";
             }
 
+            parameters.Add(returnType);
             return "Func<" + string.Join(", ", parameters) + ">";
         }
 
@@ -216,27 +187,10 @@ namespace TrainOP.Generators
             return routeMethod + "|" + BuildHandlerTypeName(schema, "unused");
         }
 
-        /// <summary>
-        /// Builds a stable emission key for grouping schemas that share the same generated extension signature.
-        /// </summary>
-        public static string BuildEmissionKey(StationHandlerBinding schema, string delegateTypeId)
-        {
-            return BuildGroupingKey(schema, delegateTypeId);
-        }
-
         private static bool UsesActionCancellationHandler(StationHandlerBinding schema)
         {
             return !schema.IsServiceStation
                 && !schema.IsAsync
-                && schema.ReturnShape.IsVoid
-                && schema.HasCancellationToken
-                && schema.Wagons.Length == 0;
-        }
-
-        private static bool UsesAsyncFuncCancellationHandler(StationHandlerBinding schema)
-        {
-            return !schema.IsServiceStation
-                && schema.IsAsync
                 && schema.ReturnShape.IsVoid
                 && schema.HasCancellationToken
                 && schema.Wagons.Length == 0;

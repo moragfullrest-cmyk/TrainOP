@@ -35,3 +35,6 @@ scratch-tuple.cs
 
 ## Generator debug output
 **/generated/
+gen-diag.txt
+tmp_gen_dbg.csx
+tools/
