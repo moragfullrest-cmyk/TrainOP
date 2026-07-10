@@ -51,7 +51,7 @@ namespace TrainOP.Tests
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { counter = 10 })
-                .StationAsync("Multiply", async (int counter, CancellationToken token) =>
+                .Station("Multiply", async (int counter, CancellationToken token) =>
                 {
                     await Task.Delay(10, token);
                     return new { counter = counter * 2 };
@@ -70,7 +70,7 @@ namespace TrainOP.Tests
         public void Train_Travel_ThrowsWhenRouteContainsAsyncStation()
         {
             var route = new TrainRoute()
-                .StationAsync("AsyncOnly", async (CancellationToken token) =>
+                .Station("AsyncOnly", async (CancellationToken token) =>
                 {
                     await Task.Delay(1, token);
                     return RailwaySignals.Pass;
@@ -90,7 +90,7 @@ namespace TrainOP.Tests
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { })
-                .StationAsync("Wait", async (CancellationToken token) =>
+                .Station("Wait", async (CancellationToken token) =>
                 {
                     await Task.Delay(200, token);
                     return RailwaySignals.Pass;
@@ -132,10 +132,8 @@ namespace TrainOP.Tests
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { })
-                .Station("Boom", (CancellationToken _) =>
-                {
-                    throw new InvalidOperationException("sync exploded");
-                })
+                .Station("Boom", (Func<CancellationToken, Signal>)((CancellationToken _) =>
+                    throw new InvalidOperationException("sync exploded")))
                 .Station("MustNotRun", () => new { afterBoom = true });
 
             var report = route.DispatchTrain().Travel();
@@ -159,7 +157,7 @@ namespace TrainOP.Tests
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { })
-                .StationAsync("BoomAsync", async (CancellationToken token) =>
+                .Station("BoomAsync", async (CancellationToken token) =>
                 {
                     await Task.Delay(1, token);
                     throw new InvalidOperationException("async exploded");

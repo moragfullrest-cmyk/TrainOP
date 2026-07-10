@@ -12,7 +12,7 @@ namespace TrainOP.Generators
     internal static class StationSyntaxHelper
     {
         /// <summary>
-        /// Determines whether a syntax node looks like a Station method invocation.
+        /// Determines whether a syntax node looks like a Station or legacy StationAsync method invocation.
         /// </summary>
         public static bool IsCandidateStationInvocation(SyntaxNode node)
         {

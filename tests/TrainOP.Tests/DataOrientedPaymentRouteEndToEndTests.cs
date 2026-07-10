@@ -128,7 +128,7 @@ namespace TrainOP.Tests.DataOriented
             {
                 return new TrainRoute()
                     .Station("Seed", () => new { paymentId = "pay-async-e2e", amount = 100m })
-                .StationAsync("Double", async (string paymentId, decimal amount, CancellationToken token) =>
+                .Station("Double", async (string paymentId, decimal amount, CancellationToken token) =>
                     {
                         await Task.Delay(1, token);
                         return new { paymentId, amount = amount * 2m };

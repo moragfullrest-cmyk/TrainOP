@@ -117,7 +117,7 @@ public static class SyncCancellationRoute
         {
             throw new InvalidOperationException(""sync exploded"");
         })
-        .StationAsync(""BoomAsync"", async (CancellationToken token) =>
+        .Station(""BoomAsync"", async (CancellationToken token) =>
         {
             await Task.Delay(1, token);
             throw new InvalidOperationException(""async exploded"");
@@ -127,10 +127,42 @@ public static class SyncCancellationRoute
             var generated = RunGenerators(source);
 
             Assert.Contains("public static TrainRoute Station(this TrainRoute route, string stationName, Action<CancellationToken> handler)", generated);
-            Assert.Contains("public static TrainRoute StationAsync(this TrainRoute route, string stationName, Func<CancellationToken, System.Threading.Tasks.Task> handler)", generated);
+            Assert.Contains("public static TrainRoute Station(this TrainRoute route, string stationName, TrainStationHandler_", generated);
+            Assert.Contains("public delegate System.Threading.Tasks.Task TrainStationHandler_", generated);
+            Assert.DoesNotContain("StationAsync", generated);
+            Assert.Contains("OverloadResolutionPriority", generated);
             Assert.Contains("Func<CancellationToken, global::TrainOP.Signal>", generated);
             Assert.Contains("(manifest, token) =>", generated);
             Assert.Contains("handler(token)", generated);
+        }
+
+        /// <summary>
+        /// Verifies that legacy StationAsync invocations are still discovered and emit Station extensions.
+        /// </summary>
+        [Fact]
+        public void Generator_AcceptsLegacyStationAsyncInvocation()
+        {
+            const string source = @"
+using System.Threading;
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class LegacyAsyncRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .StationAsync(""Fetch"", async (CancellationToken token) =>
+        {
+            await Task.Delay(1, token);
+            return new { value = 1 };
+        });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("public static TrainRoute Station(this TrainRoute route", generated);
+            Assert.Contains("TrainStationHandler_", generated);
+            Assert.Contains("System.Threading.Tasks.Task", generated);
+            Assert.DoesNotContain("StationAsync", generated);
         }
 
         /// <summary>

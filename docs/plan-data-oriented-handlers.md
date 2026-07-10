@@ -428,6 +428,53 @@ TrainOP.RouteConsumer.Tests — ссылается на RouteLib, добавля
 
 Проверить: ProjectReference и (отдельно) имитация NuGet через `Reference` на собранную DLL.
 
+### 3.10. Typed `Travel()` через interceptors — **РЕШЕНИЕ (фазы 9–12)**
+
+#### 3.10.1. Проблема
+
+Extension `Deconstruct(this RouteReport, out string paymentId, out decimal amount)` не масштабируется: несколько маршрутов с одинаковыми типами вагонов дают конфликт overload'ов. Фаза 3 отказалась от typed-обёрток в пользу `RouteReport.Get<T>()`.
+
+#### 3.10.2. Решение
+
+Roslyn interceptor на **конкретный call site** `Travel()` подменяет вызов методом, возвращающим **уникальный** readonly struct `TravelResult_{chainId}_{siteIndex}` с `Deconstruct` — по аналогии с перехватчиками `.Station()` для `TOP008`.
+
+```csharp
+// Пользовательский код (без изменений)
+var (paymentId, amount) = PaymentRoute.Build().DispatchTrain().Travel();
+var (orderId, total)     = OrderRoute.Build().DispatchTrain().Travel();
+
+// var report = …Travel() — без перехватчика, стандартный RouteReport
+```
+
+#### 3.10.3. Архитектура
+
+| Компонент | Роль |
+|-----------|------|
+| `TerminalWagon` + расширение `ChainSimulationResult` | Финальный набор вагонов цепочки (имя + тип) |
+| `TravelCallSiteIndex` | `Travel()` / `TravelAsync()` с tuple-deconstruct слева |
+| `TrainRouteTravelInterceptorsEmitter` | Emit struct + `InterceptsLocation` |
+| `TravelResult_*` | Поля вагонов + `RouteReport Report`; `Deconstruct` с arity 2..N и опционально +report |
+
+Переиспользуются: `ChainDetector`, `RouteChainIdBuilder`, `InterceptorLocationFormatter`, `ManifestWagonTypes`.
+
+#### 3.10.4. Ограничения
+
+| Сценарий | Поведение |
+|----------|-----------|
+| `var report = route.Travel()` | `RouteReport`, без перехватчика |
+| Красный сигнал | Deconstruct читает `TerminalSignal.Manifest`; полнота не гарантирована |
+| Внешний seed через `Travel(manifest)` | Runtime OK; в deconstruct попадают только compile-time terminal-вагоны цепочки |
+| IDE / Roslyn без interceptors | Graceful degradation → `report.Get<T>()` |
+
+#### 3.10.5. Фазы
+
+| Фаза | Содержание |
+|------|------------|
+| **9** | Sync `Travel()`, якорь `new TrainRoute()` |
+| **10** | `TravelAsync` + `await var (…) = …` |
+| **11** | Расширенные якоря (после фазы 7) |
+| **12** | Opt-in `[TrainRouteTerminal]` (опционально) |
+
 ### 3.4. Маппинг кортежей — **РЕШЕНИЕ (фаза 0, п.3)**
 
 
@@ -470,6 +517,8 @@ TrainOP.RouteConsumer.Tests — ссылается на RouteLib, добавля
 **Опциональные вагоны (фаза 5):** `T?` / `Nullable<T>` → `HasWagon` + `default` без throw; не часть фазы 1.
 
 ## 4. Фазы реализации
+
+**Очередь (не выполнено):** фаза 7 → фаза 8 → фаза 9 → фаза 10 → фаза 11 → фаза 12 (опционально). Фазы 9–10 могут стартовать параллельно с 7–8 при якоре `new TrainRoute()`; фаза 11 зависит от 7; фаза 12 — после 9 (и опционально 8).
 
 ### Фаза 0 — Дизайн и критерии готовности (1 PR, docs only) ✅
 
@@ -532,7 +581,7 @@ TrainOP.RouteConsumer.Tests — ссылается на RouteLib, добавля
 
 **Критерий:** пример из §1.1 полностью работает. **Выполнено.**
 
-**Реализация:** typed-обёртки terminal-отчёта удалены; доступ к итоговым вагонам выполняется через `RouteReport` (`report["name"]`, `report.Get<T>("name")`).
+**Реализация:** typed-обёртки terminal-отчёта удалены; доступ к итоговым вагонам — через `RouteReport` (`report["name"]`, `report.Get<T>("name")`). Typed deconstruct планируется заново в **фазах 9–12** (interceptors, §3.10).
 
 ---
 
@@ -633,7 +682,7 @@ TrainOP.RouteConsumer.Tests — ссылается на RouteLib, добавля
 **Потребители**
 
 - [ ] `ChainValidationAnalyzer` — без изменений контракта, только новые корни.
-- [ ] `TrainRouteTravelGenerator` — автоматически подхватит цепочки через `DetectChains`.
+- [ ] `TrainRouteTravelGenerator` — typed `Travel()` interceptors (фазы 9–12, §3.10); в фазе 7 — только подхват цепочек через `DetectChains` для validator
 
 **Тесты** (`ChainValidationAnalyzerTests` + при необходимости travel)
 
@@ -687,7 +736,7 @@ TrainOP.RouteConsumer.Tests — ссылается на RouteLib, добавля
 - [ ] Зафиксировать baseline: runtime OK, какие диагностики в consumer без доработок.
 - [ ] Прототип emit схемы в `TrainRouteStationGenerator` / отдельный `RouteSchemaExporter` для методов, возвращающих `TrainRoute` с data-chain.
 - [ ] Прототип чтения схемы в `ChainDetector` / `ChainGraphValidator` при внешнем якоре-вызове.
-- [ ] Оценить влияние на `TrainRouteTravelGenerator` (полный terminal vs только локальный хвост).
+- [ ] Оценить влияние на typed `Travel()` (фазы 9–12): terminal-схема из экспорта vs только локальный хвост.
 - [ ] Документ `docs/cross-assembly-routes.md` с выбранным решением и примерами для авторов NuGet-пакетов.
 
 #### 8.3. Задачи реализации (после выбора вектора)
@@ -732,6 +781,158 @@ TrainOP.RouteConsumer.Tests — ссылается на RouteLib, добавля
 
 ---
 
+### Фаза 9 — Typed `Travel()` через Roslyn interceptors (sync MVP) — **ПЛАН**
+
+**Цель:** вернуть эргономику `var (paymentId, amount) = route.DispatchTrain().Travel()` без конфликтующих `Deconstruct(this RouteReport, …)` extension'ов, когда в проекте несколько маршрутов с одинаковыми типами вагонов, но разными именами.
+
+**Контекст (текущее ограничение):**
+
+- Фаза 3 убрала typed-обёртки; доступ к терминальным вагонам — через `RouteReport.Get<T>()` / индексатор.
+- Extension `Deconstruct` на `RouteReport` не масштабируется: `(out string paymentId, out decimal amount)` и `(out string orderId, out decimal total)` — одна сигнатура для компилятора.
+- Перехватчики для `.Station()` (ветка `interceptors`, `TOP008`) уже решают аналогичную проблему per call site; тот же паттерн применим к `Travel()`.
+
+См. дизайн §3.10.
+
+#### 9.1. Условия эмиссии перехватчика
+
+Перехватчик **только** когда одновременно:
+
+| # | Условие |
+|---|---------|
+| 1 | Родитель `Travel()` — deconstruct-assignment: `var (a, b) = …Travel()` (не `var report = …`) |
+| 2 | `TrainRoute` трассируется к якорю цепочки (`new TrainRoute()`; после фазы 7 — расширенные якоря) |
+| 3 | `ChainGraphSimulator` дал конкретную terminal-схему (`!HasUnknownReturn`) |
+| 4 | Все terminal-типы проходят `ManifestWagonTypes.IsSupported` |
+| 5 | Число терминальных вагонов ≤ лимита (TBD, по умолчанию 8) |
+
+`var report = route.DispatchTrain().Travel()` — **без** перехватчика, стандартный `RouteReport`.
+
+#### 9.2. Задачи реализации
+
+**Модель данных**
+
+- [ ] `TerminalWagon` (name + type display) в `ChainSimulationResult` — fold `LiveOrder` + `Live` после симуляции цепочки.
+- [ ] `TravelCallSite` (invocation, chainId, terminal wagons, deconstruct arity).
+
+**Индексация**
+
+- [ ] `TravelCallSiteIndex` — обход syntax tree, поиск `Travel()` / перегрузок с `CargoManifest` / `CancellationToken` при tuple-deconstruct слева.
+- [ ] Трассировка receiver: `…DispatchTrain().Travel()` → якорь `TrainRoute` (как `ChainStationCallIndex`).
+
+**Codegen**
+
+- [ ] `TrainRouteTravelInterceptorsEmitter` — аналог `TrainRouteStationInterceptorsEmitter`.
+- [ ] Per-site readonly struct `TravelResult_{chainId}_{siteIndex}` с полями вагонов + `RouteReport Report`.
+- [ ] `Deconstruct(out T1 w1, …)` и опционально `Deconstruct(…, out RouteReport report)`.
+- [ ] Interceptor-методы для всех sync-перегрузок `Travel()`.
+
+**Потребители / интеграция**
+
+- [ ] Подключить эмиссию в `TrainRouteTravelGenerator` (или объединить с `TrainRouteStationGenerator` — TBD).
+- [ ] Переиспользовать `InterceptorLocationFormatter`, `RouteChainIdBuilder`.
+
+**Тесты**
+
+- [ ] Generator: эмиссия struct + `InterceptsLocation` для deconstruct-assignment.
+- [ ] Generator: **нет** перехватчика для `var report = …Travel()`.
+- [ ] Generator: разные `TravelResult_*` для отдельных цепочек с одинаковыми типами (`SeparateChainRoutes`).
+- [ ] Runtime: deconstruct payment/order маршрутов без перекрёстного загрязнения вагонов.
+- [ ] Runtime: `var (a, b, report) = …Travel()` — третий элемент `RouteReport`.
+
+**Документация**
+
+- [ ] `docs/core-api.md` — typed deconstruct vs `report.Get<T>()`.
+- [ ] `docs/nuget.md` — убрать/уточнить устаревшую формулировку «typed tuple как признак генератора».
+
+#### 9.3. Критерий готовности
+
+- `var (paymentId, amount) = PaymentRoute.Build().DispatchTrain().Travel()` компилируется и возвращает корректные значения.
+- Два маршрута с `(string, decimal)` и разными именами вагонов deconstruct'ятся независимо.
+- `var report = …Travel()` по-прежнему возвращает `RouteReport` без перехватчика.
+
+#### 9.4. Не делать в фазе 9
+
+- `TravelAsync` / `await var (…) = …` (фаза 10).
+- Якоря кроме `new TrainRoute()` (фаза 11, зависит от фазы 7).
+- Opt-in атрибут (фаза 12).
+- Подмена `Travel()` когда результат не deconstruct'ится.
+- Runtime-изменения контракта `Train.Travel` (только generated interceptors).
+
+---
+
+### Фаза 10 — Typed `TravelAsync()` через interceptors — **ПЛАН**
+
+**Цель:** тот же typed deconstruct для async-маршрутов.
+
+**Зависимости:** фаза 9.
+
+#### 10.1. Задачи
+
+- [ ] `TravelCallSiteIndex` — `await var (a, b) = …TravelAsync()` и `var x = await …TravelAsync()` (без перехватчика для второго).
+- [ ] Interceptor возвращает `Task<TravelResult_*>`; внутри — `train.TravelAsync(…)`.
+- [ ] Перегрузки: `TravelAsync()`, `TravelAsync(ct)`, `TravelAsync(manifest)`, `TravelAsync(manifest, ct)`.
+- [ ] Generator + runtime тесты на async-цепочку (`StationAsync`).
+
+#### 10.2. Критерий готовности
+
+- `await var (paymentId, amount) = route.DispatchTrain().TravelAsync()` работает на существующих async-тестах.
+- Синхронный путь фазы 9 не регрессирует.
+
+#### 10.3. Не делать в фазе 10
+
+- `IAsyncEnumerable` / streaming travel.
+- Комбинированный interceptor на цепочку `DispatchTrain().TravelAsync()` целиком (только `TravelAsync` invocation).
+
+---
+
+### Фаза 11 — Typed `Travel()` на расширенных якорях — **ПЛАН**
+
+**Цель:** deconstruct работает там же, где фаза 7 убирает ложные `TOP006` — локальная после `new`, параметр, поле, вызов `Build()`.
+
+**Зависимости:** фазы 7, 9.
+
+#### 11.1. Задачи
+
+- [ ] `TravelCallSiteIndex` — трассировка `TrainRoute` через якоря уровня A из §7.1 (не только `new TrainRoute()` fluent).
+- [ ] `chainId` согласован с `RouteChainIdBuilder` фазы 7.
+- [ ] Negative: deconstruct на `Travel()` вне привязанной цепочки → `TOP014`.
+- [ ] Тесты: `var r = new TrainRoute(); var (…) = r.DispatchTrain().Travel()`; `Extend(baseRoute).DispatchTrain().Travel()`.
+
+#### 11.2. Критерий готовности
+
+- Паттерны уровня A из фазы 7 поддерживают typed deconstruct без дублирования перехватчиков на одну `.Travel()` invocation.
+
+#### 11.3. Не делать в фазе 11
+
+- Flow analysis от произвольного factory (уровень C фазы 7).
+- Межсборочная terminal-схема (фаза 8 + 12).
+
+---
+
+### Фаза 12 — Opt-in `[TrainRouteTerminal]` для typed `Travel()` — **ПЛАН (опционально)**
+
+**Цель:** escape hatch, когда статический анализ не связывает `Travel()` с цепочкой, но автор явно указывает terminal-схему.
+
+**Зависимости:** фаза 9; опционально фазы 7–8 для межсборочных сценариев.
+
+#### 12.1. Задачи
+
+- [ ] Атрибут `[TrainRouteTerminal]` на метод, возвращающий `TrainRoute` (имя TBD).
+- [ ] Emit или ручное объявление terminal wagon slots; связь «метод → схема» для `TravelCallSiteIndex`.
+- [ ] Analyzer: атрибут без data-chain → warning; конфликт с выведенной схемой → error.
+- [ ] Документация в `docs/core-api.md` — когда нужен opt-in vs автоматический вывод.
+
+#### 12.2. Критерий готовности
+
+- Маршрут, собранный через нестандартный factory с `[TrainRouteTerminal]`, поддерживает `var (…) = …Travel()` без `TOP014`.
+
+#### 12.3. Не делать в фазе 12
+
+- Атрибуты на lambda-handler'ах (принцип §3.9.6 сохраняется).
+- Замена экспорта схемы фазы 8 — только дополнение.
+
+---
+
 ## 5. Диагностики — **УТВЕРЖДЕНО (фаза 0, п.4)**
 
 | ID | Severity | Условие | Message format |
@@ -758,11 +959,21 @@ TrainOP.RouteConsumer.Tests — ссылается на RouteLib, добавля
 |----|----------|---------|------------|
 | `TOP010` | Info | Внешний `TrainRoute` без экспортированной схемы | «Стык с `{0}` не проверяется; обновите RouteLib или объявите контракт» — TBD на spike |
 
+### 5.3. Диагностики фаз 9–12 (черновик, typed `Travel()`)
+
+| ID | Severity | Условие | Примечание |
+|----|----------|---------|------------|
+| `TOP011` | Info | Deconstruct при неизвестной terminal-схеме | Перехватчик не эмитится; использовать `RouteReport.Get<T>()` |
+| `TOP012` | Warning | Тип terminal-вагона не поддержан для typed travel | `ManifestWagonTypes.IsSupported` == false |
+| `TOP013` | Error | Arity deconstruct не совпадает с числом terminal-вагонов | `var (a) = …Travel()` при двух вагонах в цепочке |
+| `TOP014` | Error | `Travel()` с deconstruct вне привязанной цепочки | До фазы 11 — частый случай для разнесённого кода |
+
 **Правила:**
 - `TOP001`–`TOP004`, `TOP007` — валидация графа цепочки (`ChainValidationAnalyzer`).
 - `TOP005` — предупреждение при emit / анализе tuple-return.
 - `TOP006` — осиротевшие handler'ы; фаза 7 сужает ложные срабатывания.
 - `TOP008` — канонические имена вагонов для одинаковых сигнатур handler'а.
+- `TOP011`–`TOP014` — typed `Travel()` deconstruct (фазы 9–12, §3.10).
 - Release tracking: `AnalyzerReleases.Unshipped.md`.
 
 ---
@@ -887,9 +1098,11 @@ tests/
 | Цепочку нельзя вывести из разнесённого кода | `TOP006`; фаза 7: локальная после `new`, параметр, поле, вызов (§3.8) |
 | Взрыв комбинаторики overload'ов | Один generic `Station` + source-generated wrapper per call site, не per signature union |
 | Кортежи в возврате | Предпочитать анонимные типы; analyzer `TOP005` |
-| Два генератора конфликтуют | Разные extension-классы; data-route не генерит `Deconstruct` для legacy |
+| Два генератора конфликтуют | Разные extension-классы; per-site `TravelResult_*` вместо `Deconstruct` на `RouteReport` (§3.10) |
 | Сторонняя сборка без исходников | Фаза 8: экспорт схемы в DLL; fallback §3.8.4 (§3.9) |
-| Несовместимость версий RouteLib | Semver + опциональный `TOP010`; тесты на старую DLL без схемы |
+| Несовместимость версий RouteLib | Semver + `TOP010` Info; тесты на старую DLL без схемы |
+| Конфликт `Deconstruct` на `RouteReport` | Interceptors + уникальный struct per call site (фаза 9, §3.10) |
+| Хрупкость interceptors (старый SDK) | Deconstruct только при emit; иначе `RouteReport.Get<T>()` |
 | Производительность рефлексии | Merge только на возврате; PullWagon типизирован в compile-time |
 
 ---
@@ -900,11 +1113,15 @@ tests/
 - [x] Analyzer ловит missing wagon в цепочке (`TOP001`)
 - [ ] Фаза 7: якоря цепочки кроме `new TrainRoute()` (§4, §3.8)
 - [ ] Фаза 8: композиция с маршрутами из сторонних сборок (§4, §3.9)
-- [x] `Travel()` с typed deconstruct по цепочке
+- [ ] Фаза 9: sync typed `Travel()` deconstruct через interceptors (§4, §3.10)
+- [ ] Фаза 10: typed `TravelAsync()` deconstruct (§4, §3.10)
+- [ ] Фаза 11: typed `Travel()` на расширенных якорях (§4, §3.10; после фазы 7)
+- [ ] Фаза 12 (опционально): `[TrainRouteTerminal]` opt-in (§4, §3.10)
+- [ ] `Travel()` с typed deconstruct по цепочке (фазы 9–11; см. §3.10; фаза 3 — только `RouteReport.Get<T>()`)
 - [x] `RailwaySignals.Red` в handler без ручного `SignalIssue`
 - [x] Документация обновлена (`getting-started`, README)
 - [x] Legacy API удалён
-- [x] Этот план: все фазы §4 отмечены выполненными
+- [ ] Этот план: фазы 7–12 §4 отмечены выполненными (фазы 0–6 ✅)
 
 ---
 
@@ -915,7 +1132,10 @@ tests/
 | `src/TrainOP/Railway.cs` | Runtime маршрута |
 | `src/TrainOP/WagonStationReturn.cs` | Чтение возврата handler |
 | `src/TrainOP.Generators/TrainRouteStationGenerator.cs` | Data-oriented адаптеры `.Station` |
-| `src/TrainOP.Generators/TrainRouteTravelGenerator.cs` | Typed `Travel()` deconstruct |
+| `src/TrainOP.Generators/TrainRouteStationInterceptorsEmitter.cs` | Interceptors для chain-dispatch `.Station` |
+| `src/TrainOP.Generators/TrainRouteTravelGenerator.cs` | Typed `Travel()` interceptors (фазы 9–12, §3.10) |
+| `src/TrainOP.Generators/TravelCallSiteIndex.cs` | *(фазы 9–11)* Индекс call site'ов `Travel()` с deconstruct |
+| `src/TrainOP.Generators/TrainRouteTravelInterceptorsEmitter.cs` | *(фазы 9–10)* Emit `TravelResult_*` + interceptors |
 | `tests/TrainOP.Tests/DataOrientedPaymentRouteEndToEndTests.cs` | Сквозной data-oriented payment flow |
 | `tests/TrainOP.Tests/TrainRuntimeTests.cs` | Runtime: async, cancellation, exceptions |
 | `src/TrainOP.Generators/ChainDetector.cs` | Обнаружение цепочек (фаза 7: расширение якорей) |
@@ -936,3 +1156,4 @@ tests/
 | 2026-07-02 | **Фаза 6:** удаление legacy `[TrainTuple]` API, README/docs, `DataOrientedPaymentRouteEndToEndTests` |
 | 2026-07-06 | **Фаза 8 (план):** композиция маршрутов со сторонними сборками, экспорт схемы (§3.9, §4 фаза 8) |
 | 2026-07-06 | **Фаза 7 (план):** расширение якорей `ChainDetector` — параметр, поле, вызов, локальная после `new` (§3.8, §4 фаза 7) |
+| 2026-07-10 | **Фазы 9–12 (план):** typed `Travel()` / `TravelAsync()` через Roslyn interceptors; дизайн §3.10; диагностики `TOP011`–`TOP014` |

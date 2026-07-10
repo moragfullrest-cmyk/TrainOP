@@ -59,14 +59,9 @@ namespace TrainOP.Generators.Models
 
         public bool RemoveOmittedRegularInputs => InputWagons.Length > 0;
 
-        private static string ResolveDefaultExtensionMethodName(bool isServiceStation, bool isAsync)
+        private static string ResolveDefaultExtensionMethodName(bool isServiceStation, bool _)
         {
-            if (isServiceStation)
-            {
-                return "ServiceStation";
-            }
-
-            return isAsync ? "StationAsync" : "Station";
+            return isServiceStation ? "ServiceStation" : "Station";
         }
     }
 }

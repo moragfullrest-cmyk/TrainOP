@@ -16,7 +16,7 @@ internal sealed class AsyncRouteExample : IExample
 
         var route = new TrainRoute()
             .Station("Seed", () => new { counter = 10 })
-            .StationAsync("Multiply", async (int counter, CancellationToken token) =>
+            .Station("Multiply", async (int counter, CancellationToken token) =>
             {
                 await Task.Delay(50, token);
                 return new { counter = counter * 2 };

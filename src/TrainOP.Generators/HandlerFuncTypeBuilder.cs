@@ -10,11 +10,13 @@ namespace TrainOP.Generators
     internal static class HandlerFuncTypeBuilder
     {
         /// <summary>
-        /// Determines whether a handler must use a custom delegate because Func and Action do not support ref parameters.
+        /// Determines whether a handler must use a custom delegate.
+        /// Ref parameters are unsupported by Func/Action; async handlers use custom delegates
+        /// to avoid overload ambiguity with sync Func counterparts under a single Station name.
         /// </summary>
         public static bool RequiresCustomDelegate(StationHandlerBinding schema)
         {
-            return schema.HasRefWagons;
+            return schema.HasRefWagons || schema.IsAsync;
         }
 
         /// <summary>
@@ -22,6 +24,11 @@ namespace TrainOP.Generators
         /// </summary>
         public static string BuildHandlerTypeName(StationHandlerBinding schema, string customDelegateName)
         {
+            if (RequiresCustomDelegate(schema))
+            {
+                return customDelegateName;
+            }
+
             if (UsesActionCancellationHandler(schema))
             {
                 return "Action<CancellationToken>";
@@ -30,11 +37,6 @@ namespace TrainOP.Generators
             if (UsesAsyncFuncCancellationHandler(schema))
             {
                 return "Func<CancellationToken, System.Threading.Tasks.Task>";
-            }
-
-            if (RequiresCustomDelegate(schema))
-            {
-                return customDelegateName;
             }
 
             return BuildFuncOrActionTypeName(schema);
@@ -220,16 +222,6 @@ namespace TrainOP.Generators
         public static string BuildEmissionKey(StationHandlerBinding schema, string delegateTypeId)
         {
             return BuildGroupingKey(schema, delegateTypeId);
-        }
-
-        private static string GetRouteMethodName(StationHandlerBinding schema)
-        {
-            if (schema.IsServiceStation)
-            {
-                return "ServiceStation";
-            }
-
-            return schema.IsAsync ? "StationAsync" : "Station";
         }
 
         private static bool UsesActionCancellationHandler(StationHandlerBinding schema)

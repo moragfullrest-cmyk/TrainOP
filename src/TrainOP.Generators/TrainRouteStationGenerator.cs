@@ -26,7 +26,6 @@ namespace TrainOP.Generators
             var stationCalls = context.SyntaxProvider.CreateSyntaxProvider(
                 static (node, _) =>
                     IsCandidateStationInvocation(node)
-                    || IsCandidateStationAsyncInvocation(node)
                     || IsCandidateServiceStationInvocation(node),
                 static (generatorContext, _) => GetRouteHandlerCall(generatorContext));
 
@@ -134,19 +133,12 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Determines whether a syntax node looks like a Station method invocation.
+        /// Determines whether a syntax node looks like a Station or legacy StationAsync method invocation.
         /// </summary>
         private static bool IsCandidateStationInvocation(SyntaxNode node)
         {
-            return IsCandidateRouteHandlerInvocation(node, "Station");
-        }
-
-        /// <summary>
-        /// Determines whether a syntax node looks like a StationAsync method invocation.
-        /// </summary>
-        private static bool IsCandidateStationAsyncInvocation(SyntaxNode node)
-        {
-            return IsCandidateRouteHandlerInvocation(node, "StationAsync");
+            return IsCandidateRouteHandlerInvocation(node, "Station")
+                || IsCandidateRouteHandlerInvocation(node, "StationAsync");
         }
 
         /// <summary>
@@ -477,6 +469,18 @@ namespace TrainOP.Generators
             return schema.ExtensionMethodName;
         }
 
+        /// <summary>
+        /// Emits overload resolution priority so sync handlers win over async counterparts
+        /// when a throw-only lambda is compatible with both delegate shapes.
+        /// </summary>
+        private static void EmitOverloadResolutionPriority(StringBuilder source, StationHandlerBinding schema)
+        {
+            var priority = schema.IsAsync ? 0 : 1;
+            source.Append("        [System.Runtime.CompilerServices.OverloadResolutionPriority(")
+                .Append(priority)
+                .AppendLine(")]");
+        }
+
         private static void EmitSchemaMembers(
             StringBuilder source,
             MergedStationSchema merged,
@@ -557,6 +561,7 @@ namespace TrainOP.Generators
 
             var handlerTypeName = HandlerFuncTypeBuilder.BuildHandlerTypeName(schema, delegateName);
             var routeMethodName = GetRouteMethodName(schema);
+            EmitOverloadResolutionPriority(source, schema);
             source.Append("        public static TrainRoute ")
                 .Append(routeMethodName)
                 .Append("(this TrainRoute route, string stationName, ")
@@ -843,6 +848,7 @@ namespace TrainOP.Generators
             var handlerTypeName = HandlerFuncTypeBuilder.BuildHandlerTypeName(schema, delegateName);
             var routeMethodName = GetRouteMethodName(schema);
             var stationLabelExpression = "stationName";
+            EmitOverloadResolutionPriority(source, schema);
             source.Append("        public static TrainRoute ")
                 .Append(routeMethodName)
                 .Append("(this TrainRoute route, string stationName, ")
