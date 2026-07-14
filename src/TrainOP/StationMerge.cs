@@ -8,18 +8,6 @@ namespace TrainOP
     public static class StationMerge
     {
         /// <summary>
-        /// Merges a station return value into the manifest using wagon name mappings.
-        /// </summary>
-        public static CargoManifest Apply(
-            CargoManifest manifest,
-            object stationReturn,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs)
-        {
-            return Apply(manifest, stationReturn, wagonNames, removeOmittedRegularInputs, null, null, null);
-        }
-
-        /// <summary>
         /// Merges a station return value into the manifest with return member names.
         /// </summary>
         public static CargoManifest Apply(
@@ -180,125 +168,6 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Merges a typed station return value into the manifest using wagon name mappings.
-        /// </summary>
-        public static CargoManifest Apply<T>(
-            CargoManifest manifest,
-            T stationReturn,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs)
-        {
-            return Apply(manifest, (object)stationReturn, wagonNames, removeOmittedRegularInputs);
-        }
-
-        /// <summary>
-        /// Merges a typed station return value into the manifest with return member names and ref wagon metadata.
-        /// </summary>
-        public static CargoManifest Apply<T>(
-            CargoManifest manifest,
-            T stationReturn,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs,
-            string[] returnMemberNames,
-            bool[] byReferenceWagons,
-            object[] refLocalValues)
-        {
-            return Apply(manifest, (object)stationReturn, wagonNames, removeOmittedRegularInputs, returnMemberNames, byReferenceWagons, refLocalValues);
-        }
-
-        /// <summary>
-        /// Converts a typed station return value to a signal after merging into the manifest.
-        /// </summary>
-        public static Signal ToSignal<T>(
-            CargoManifest manifest,
-            T stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs)
-        {
-            return ToSignal(manifest, (object)stationReturn, stationName, wagonNames, removeOmittedRegularInputs);
-        }
-
-        /// <summary>
-        /// Converts a typed station return value to a signal with return member names.
-        /// </summary>
-        public static Signal ToSignal<T>(
-            CargoManifest manifest,
-            T stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs,
-            string[] returnMemberNames)
-        {
-            return ToSignal(
-                manifest,
-                (object)stationReturn,
-                stationName,
-                wagonNames,
-                removeOmittedRegularInputs,
-                returnMemberNames);
-        }
-
-        /// <summary>
-        /// Converts a typed station return value to a signal with by-reference wagon metadata.
-        /// </summary>
-        public static Signal ToSignal<T>(
-            CargoManifest manifest,
-            T stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs,
-            bool[] byReferenceWagons,
-            object[] refLocalValues)
-        {
-            return ToSignal(
-                manifest,
-                (object)stationReturn,
-                stationName,
-                wagonNames,
-                removeOmittedRegularInputs,
-                byReferenceWagons,
-                refLocalValues);
-        }
-
-        /// <summary>
-        /// Converts a typed station return value to a signal with return member names and ref wagon metadata.
-        /// </summary>
-        public static Signal ToSignal<T>(
-            CargoManifest manifest,
-            T stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs,
-            string[] returnMemberNames,
-            bool[] byReferenceWagons,
-            object[] refLocalValues)
-        {
-            return ToSignal(
-                manifest,
-                (object)stationReturn,
-                stationName,
-                wagonNames,
-                removeOmittedRegularInputs,
-                returnMemberNames,
-                byReferenceWagons,
-                refLocalValues);
-        }
-
-        /// <summary>
-        /// Converts a station return value to a signal after merging into the manifest.
-        /// </summary>
-        public static Signal ToSignal(
-            CargoManifest manifest,
-            object stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs)
-        {
-            return StationAdapter.ToSignal(manifest, stationReturn, stationName, wagonNames, removeOmittedRegularInputs, null, null, null);
-        }
-
-        /// <summary>
         /// Converts a station return value to a signal with return member names.
         /// </summary>
         public static Signal ToSignal(
@@ -318,29 +187,6 @@ namespace TrainOP
                 returnMemberNames,
                 null,
                 null);
-        }
-
-        /// <summary>
-        /// Converts a station return value to a signal with by-reference wagon metadata.
-        /// </summary>
-        public static Signal ToSignal(
-            CargoManifest manifest,
-            object stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs,
-            bool[] byReferenceWagons,
-            object[] refLocalValues)
-        {
-            return StationAdapter.ToSignal(
-                manifest,
-                stationReturn,
-                stationName,
-                wagonNames,
-                removeOmittedRegularInputs,
-                null,
-                byReferenceWagons,
-                refLocalValues);
         }
 
         /// <summary>
@@ -417,26 +263,6 @@ namespace TrainOP
             return StationAdapter.ToServiceSignal(
                 manifest,
                 stationReturn,
-                stationName,
-                wagonNames,
-                byReferenceWagons,
-                refLocalValues);
-        }
-
-        /// <summary>
-        /// Converts a typed service-station return value to a signal using ref writeback only.
-        /// </summary>
-        public static Signal ToServiceSignal<T>(
-            CargoManifest manifest,
-            T stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool[] byReferenceWagons,
-            object[] refLocalValues)
-        {
-            return ToServiceSignal(
-                manifest,
-                (object)stationReturn,
                 stationName,
                 wagonNames,
                 byReferenceWagons,
@@ -535,64 +361,6 @@ namespace TrainOP
     /// </summary>
     internal static class StationAdapter
     {
-        /// <summary>
-        /// Converts a station return value to a signal after merging into the manifest.
-        /// </summary>
-        public static Signal ToSignal(
-            CargoManifest manifest,
-            object stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs)
-        {
-            return ToSignal(manifest, stationReturn, stationName, wagonNames, removeOmittedRegularInputs, null, null, null);
-        }
-
-        /// <summary>
-        /// Converts a station return value to a signal with return member names.
-        /// </summary>
-        public static Signal ToSignal(
-            CargoManifest manifest,
-            object stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs,
-            string[] returnMemberNames)
-        {
-            return ToSignal(
-                manifest,
-                stationReturn,
-                stationName,
-                wagonNames,
-                removeOmittedRegularInputs,
-                returnMemberNames,
-                null,
-                null);
-        }
-
-        /// <summary>
-        /// Converts a station return value to a signal with by-reference wagon metadata.
-        /// </summary>
-        public static Signal ToSignal(
-            CargoManifest manifest,
-            object stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs,
-            bool[] byReferenceWagons,
-            object[] refLocalValues)
-        {
-            return ToSignal(
-                manifest,
-                stationReturn,
-                stationName,
-                wagonNames,
-                removeOmittedRegularInputs,
-                null,
-                byReferenceWagons,
-                refLocalValues);
-        }
-
         /// <summary>
         /// Converts a station return value to a signal with return member names and ref wagon metadata.
         /// </summary>

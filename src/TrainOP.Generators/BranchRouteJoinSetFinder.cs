@@ -8,7 +8,7 @@ namespace TrainOP.Generators
 {
     /// <summary>
     /// Finds join sets in a syntax tree: forking receivers that are used as
-    /// <c>MemberAccess.Expression</c> of Station / StationAsync / ServiceStation.
+    /// <c>MemberAccess.Expression</c> of Station / ServiceStation.
     /// </summary>
     internal static class BranchRouteJoinSetFinder
     {
@@ -67,7 +67,7 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Determines whether a node is a Station / StationAsync / ServiceStation candidate.
+        /// Determines whether a node is a Station / ServiceStation candidate.
         /// </summary>
         private static bool IsCandidateDownstreamStation(SyntaxNode node)
         {

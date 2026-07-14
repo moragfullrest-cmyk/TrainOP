@@ -43,7 +43,7 @@ var route = new TrainRoute()
 - anonymous method: `delegate(string paymentId, decimal amount) { … }`
 - method group / local function: `.Station("Discount", Discount)` где `Discount` объявлен в этом проекте
 
-Не поддерживаются: переменные/`Func<>` без dataflow, неоднозначные перегрузки, методы только из referenced DLL без исходников — analyzer сообщает **TOP016**.
+Не поддерживаются: переменные/`Func<>` без dataflow, неоднозначные перегрузки, методы только из referenced DLL без исходников — analyzer сообщает **TOP009**.
 
 **Валидные формы сборки цепочки** (analyzer / chain-dispatch):
 
@@ -60,7 +60,7 @@ route = route
     .Station("Next", (int id) => new { id = id + 1 });
 ```
 
-Фабрика вроде `PaymentRoute.Build()` допустима, если **внутри** — один из двух паттернов, а снаружи только `Build().DispatchTrain().Travel()`. Вызов `Build().Station(...)` / `CreateSeed().Station(...)` пока **не** поддерживается (TOP006) — плохо стыкуется с генераторами; отдельное решение позже.
+Фабрика вроде `PaymentRoute.Build()` допустима, если **внутри** — один из двух паттернов, а снаружи только `Build().DispatchTrain().Travel()`. Вызов `Build().Station(...)` / `CreateSeed().Station(...)` пока **не** поддерживается (TOP005) — плохо стыкуется с генераторами; отдельное решение позже.
 
 ### Запуск
 
@@ -85,7 +85,7 @@ var amount = report.Get<decimal>("amount");
 var reportWithCt = train.Travel(cancellationToken);
 ```
 
-`Travel(CargoManifest)` / `TravelAsync(CargoManifest, …)` помечены **obsolete**: публичный канон не передаёт манифест на запуске.
+Публичный канон: входные данные только через seed-станцию сверху; `Travel()` / `TravelAsync()` стартуют с пустого манифеста.
 
 Доступ к терминальным вагонам — через `RouteReport` (`Get<T>` / индексатор). Typed deconstruct (`var (a, b) = …Travel()`) **не** используется: при C# 15 и ниже конфликты декомпозиции кортежей на общем terminal-типе не решаются языком.
 

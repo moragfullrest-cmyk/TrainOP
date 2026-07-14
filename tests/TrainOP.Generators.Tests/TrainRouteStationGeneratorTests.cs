@@ -137,35 +137,6 @@ public static class SyncCancellationRoute
         }
 
         /// <summary>
-        /// Verifies that legacy StationAsync invocations are still discovered and emit Station extensions.
-        /// </summary>
-        [Fact]
-        public void Generator_AcceptsLegacyStationAsyncInvocation()
-        {
-            const string source = @"
-using System.Threading;
-using System.Threading.Tasks;
-using TrainOP;
-
-public static class LegacyAsyncRoute
-{
-    public static TrainRoute Build() => new TrainRoute()
-        .StationAsync(""Fetch"", async (CancellationToken token) =>
-        {
-            await Task.Delay(1, token);
-            return new { value = 1 };
-        });
-}";
-
-            var generated = RunGenerators(source);
-
-            Assert.Contains("public static TrainRoute Station(this TrainRoute route", generated);
-            Assert.Contains("TrainStationHandler_", generated);
-            Assert.Contains("System.Threading.Tasks.Task", generated);
-            Assert.DoesNotContain("StationAsync", generated);
-        }
-
-        /// <summary>
         /// Verifies that the generator emits adapters for static method-group handlers.
         /// </summary>
         [Fact]
@@ -549,7 +520,7 @@ public static class MixedSeedRoute
         }
 
         /// <summary>
-        /// Verifies that legacy handlers in separate chains get interceptors and avoid TOP008.
+        /// Verifies that legacy handlers in separate chains get interceptors and avoid TOP007.
         /// </summary>
         [Fact]
         public void Generator_EmitsInterceptors_ForLegacyStationsInSeparateChains()
@@ -576,7 +547,7 @@ public static class ConflictingNameRoute
                 .ToList();
             var generated = RunGenerators(source);
 
-            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "TOP008");
+            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "TOP007");
             Assert.Contains("InterceptsLocation", generated);
             Assert.Contains("StationCore_", generated);
             Assert.Contains("ResolveChainBinding_", generated);
@@ -614,7 +585,7 @@ public static class MixedNameRoute
                 .SelectMany(result => result.Diagnostics)
                 .ToList();
 
-            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "TOP008");
+            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "TOP007");
         }
 
         /// <summary>
@@ -645,7 +616,7 @@ public static class MixedNameRoute
         }
 
         /// <summary>
-        /// Verifies that TOP008 is reported when non-chain handlers share a type signature but use different manifest keys.
+        /// Verifies that TOP007 is reported when non-chain handlers share a type signature but use different manifest keys.
         /// </summary>
         [Fact]
         public void Generator_ReportsConflictingWagonNames_WhenHandlersShareTypeSignatureButUseDifferentManifestKeysOutsideChains()
@@ -672,7 +643,7 @@ public static class ConflictingNameRoute
                 .SelectMany(result => result.Diagnostics)
                 .ToList();
 
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "TOP008");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "TOP007");
         }
 
         /// <summary>

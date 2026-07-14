@@ -139,7 +139,7 @@ public sealed class GreenPass { /* RailwaySignals.Pass */ }
 | `RailwaySignals.Green(payload)` | merge `payload` → `Green` |
 | `RailwaySignals.Red(code, msg)` | `RedSignal` с `SignalIssue(code, msg, stationName)` |
 | `RailwaySignals.Pass` | манифест без изменений → `Green` (merge не выполняется; `ref`-мутации в handler не записываются) |
-| `CargoManifest` | escape hatch (фаза 5): заменяет манифест целиком → `Green`; analyzer `TOP005` |
+| `CargoManifest` | escape hatch (фаза 5): заменяет манифест целиком → `Green`; analyzer `TOP004` |
 
 
 **Связь с `ServiceStation`:** тот же контракт `Green` / `Red` / `Pass`; codegen читает вагоны из `red.Manifest`, опционально `SignalIssue` / `RedSignal`. Escape hatch `Func<RedSignal, Signal>` сохранён.
@@ -197,7 +197,7 @@ public static class PaymentRoute
 3. Для каждого `.Station(name, lambda)` — построить `HandlerSchema` из lambda.
 4. Станция без wagon-параметров: вход пуст, выход = seed. Первая станция с входными вагонами без upstream seed → `TOP001`.
 5. `chainId` = символ метода, содержащего выражение.
-6. Data-lambda в `.Station` вне цепочки от `new TrainRoute()` → `TOP007`.
+6. Data-lambda в `.Station` вне цепочки от `new TrainRoute()` → `TOP005`.
 
 #### Runtime (репозиторий)
 
@@ -233,7 +233,7 @@ public static class PaymentRoute
 | Поле / свойство `_route.Station(...)` | Нет стабильной привязки к `new` без flow analysis |
 | `var r = Factory(); r.Station(...)` | Не `new TrainRoute()` |
 
-Ожидаемое поведение сейчас: **TOP006** на `.Station` вне валидного якоря. Не расширять `ChainDetector` под эти формы, пока не будет отдельного дизайна.
+Ожидаемое поведение сейчас: **TOP005** на `.Station` вне валидного якоря. Не расширять `ChainDetector` под эти формы, пока не будет отдельного дизайна.
 
 #### 3.8.3. `chainId` (текущие якоря)
 
@@ -261,12 +261,12 @@ public static class PaymentRoute
 Для `cond ? a : b`, `x ?? y`, `switch { … }` и аналогов **не** peel к одному ядру. Обработка:
 
 1. **Определить все имеющиеся графы** — для каждого рукава выражения-receiver разрешить якорь и симулировать цепочку до точки стыка (как `ChainGraphSimulator` / слоты вагонов). **Реализовано:** `BranchRouteGraphDiscoverer` (+ `ChainDetector.TryBuildChainEndingAt`); terminal-слоты — `ChainSimulationResult.TerminalWagons` (LiveOrder после симуляции; пусто при `HasUnknownReturn`).
-2. **Определить какие должны быть соединены** — рукава, чьи результаты сходятся в один call site `.Station` / дальше по fluent (общий downstream). **Реализовано:** `BranchRouteJoinSetFinder` (+ модель `BranchRouteJoinSet`); `Find(tree, model)` — Station/StationAsync/ServiceStation с forking receiver после peel; `FromForkReceiver` — join set из уже известного fork.
+2. **Определить какие должны быть соединены** — рукава, чьи результаты сходятся в один call site `.Station` / дальше по fluent (общий downstream). **Реализовано:** `BranchRouteJoinSetFinder` (+ модель `BranchRouteJoinSet`); `Find(tree, model)` — Station/ServiceStation с forking receiver после peel; `FromForkReceiver` — join set из уже известного fork.
 3. **Провалидировать возможность соединения** — совместимость схем на стыке (имена/типы terminal-вагонов; правила как `TOP001`/`TOP002`/`TOP003` на объединённом входе). **Реализовано:** `BranchRouteJoinValidator` (+ `BranchRouteJoinValidation`); `CanMerge`, пересечение terminal-имён, `TypesCompatible` из `ChainGraphSimulator`.
-4. **Ошибка в случае неудачи** — diagnostic (новый ID или расширение `TOP002`/`TOP006`); цепочку / interceptors для этого стыка не эмитить как «успешный merge». **Реализовано:** `TOP015` (`TrainRouteDiagnostics.RouteBranchJoinFailed`); analyzer подавляет `TOP006` на DownstreamStation join set (успех и неудача).
+4. **Ошибка в случае неудачи** — diagnostic (новый ID или расширение `TOP002`/`TOP005`); цепочку / interceptors для этого стыка не эмитить как «успешный merge». **Реализовано:** `TOP008` (`TrainRouteDiagnostics.RouteBranchJoinFailed`); analyzer подавляет `TOP005` на DownstreamStation join set (успех и неудача).
 5. **Merge в случае удачи** — один объединённый upstream-граф для продолжения `.Station…` и дальнейшей валидации. **Реализовано:** `BranchRouteJoinMerger.TryMerge`; downstream-симуляция через `ChainGraphSimulator.Simulate(chain, initialWagons)` + `ChainDetector.TryBuildChainFromStationInvocation` (`RouteChainAnchorKind.BranchJoin`).
 
-**Шаги 3–5 подключены в analyzer:** успешный join снимает TOP006 с downstream и валидирует продолжение цепочки от merged terminals; при неудаче — только TOP015 (без TOP006 на Join). Transparent peel (paren / `!` / cast / `await` / `Task.FromResult`) — ортогонален и не заменяет этот протокол. `Build().Station` по-прежнему TOP006.
+**Шаги 3–5 подключены в analyzer:** успешный join снимает TOP005 с downstream и валидирует продолжение цепочки от merged terminals; при неудаче — только TOP008 (без TOP005 на Join). Transparent peel (paren / `!` / cast / `await` / `Task.FromResult`) — ортогонален и не заменяет этот протокол. `Build().Station` по-прежнему TOP005.
 
 ### 3.9. Маршруты и станции из сторонних сборок — **ПЛАН (фаза 8)**
 
@@ -411,7 +411,7 @@ var amount = report.Get<decimal>("amount");
 
 #### 3.10.3–3.10.5. ~~Архитектура interceptors / фазы 9–12~~ — не применяем
 
-Station-interceptors для `TOP008` / chain-dispatch остаются (§ station interceptors на ветке `interceptors`).
+Station-interceptors для `TOP007` / chain-dispatch остаются (§ station interceptors на ветке `interceptors`).
 
 ### 3.4. Маппинг кортежей — **РЕШЕНИЕ (фаза 0, п.3)**
 
@@ -421,7 +421,7 @@ Station-interceptors для `TOP008` / chain-dispatch остаются (§ stati
 | **Data-oriented** (`.Station(lambda)`) | Имена полей анонимного типа / record → ключи манифеста. Для `ValueTuple`: **ordinal = порядок wagon-параметров handler'а** (слева направо), без `CargoManifest` и `CancellationToken` |
 | **Legacy `[TrainTuple]`** | Без изменений: ordinal tuple = порядок свойств класса с `[Wagon]` |
 
-**Рекомендация для нового кода:** анонимные типы и records; кортежи в возврате — только если осознанно (analyzer `TOP006`).
+**Рекомендация для нового кода:** анонимные типы и records; кортежи в возврате — только если осознанно (ordinal = порядок wagon-параметров).
 
 **Пример (data-oriented):**
 
@@ -446,7 +446,7 @@ Station-interceptors для `TOP008` / chain-dispatch остаются (§ stati
 | `CargoManifest` первым параметром | Не seed; wagon-параметры после него участвуют в графе (фаза 5) |
 | Внешний вход | Только через seed сверху: замыкание внешних переменных или `Build(paymentId, amount)` с seed внутри |
 | Две seed-станции подряд | Допустимо: вторая merge'ит поверх результата первой |
-| `Travel(CargoManifest)` | Obsolete: не публичный канон; runtime по-прежнему принимает манифест внутри движка |
+| `Travel(CargoManifest)` | Не публичный API; runtime принимает манифест только внутри движка |
 
 ### 3.7. `StationMerge` — **РЕШЕНИЕ (фаза 0)**
 
@@ -460,7 +460,7 @@ Station-interceptors для `TOP008` / chain-dispatch остаются (§ stati
 |-----------|------------|
 | **[Выполненное](#41-выполненное)** | Фазы **0–6**; фаза **7** в объёме прямая fluent + локальная после `new`; terminal-доступ через `RouteReport.Get` / indexer |
 | **[Неполностью выполненное](#42-неполностью-выполненное)** | Фаза **7**: якоря `Build().Station` / параметр / поле / factory (§3.8.2) — вынесены из scope, отдельный дизайн |
-| **[Удалённое](#43-удалённое)** | Фазы **9–12** (typed Travel / deconstruct / `TravelTyped` / `TOP011`–`TOP014`) — сняты; C# ≤15 не решает конфликты декомпозиции |
+| **[Удалённое](#43-удалённое)** | Фазы **9–12** (typed Travel / deconstruct / `TravelTyped`) — сняты; C# ≤15 не решает конфликты декомпозиции |
 | **[Запланированное](#44-запланированное)** | Фаза **8** — межсборочная композиция маршрутов (§3.9) |
 
 ---
@@ -473,7 +473,7 @@ Station-interceptors для `TOP008` / chain-dispatch остаются (§ stati
 - [x] Утвердить якорь цепочки — **`new TrainRoute()` + `.Station` + analyzer, без атрибутов** (см. §3.3)
 - [x] Утвердить API ошибок — **`RailwaySignals.Green` / `Red` / `Pass`** (см. §3.1)
 - [x] Утвердить правила маппинга кортежей — **ordinal = порядок wagon-параметров handler'а** (см. §3.4)
-- [x] Утвердить список диагностик — **`TOP001`–`TOP008`** (см. §5)
+- [x] Утвердить список диагностик — **`TOP001`–`TOP009`** (см. §5)
 - [x] Судьба `[TrainTuple]` — **удалён** (см. §3.5)
 
 **Файлы:** этот документ, `docs/README.md` (ссылка на план).
@@ -510,7 +510,7 @@ Station-interceptors для `TOP008` / chain-dispatch остаются (§ stati
 **Задачи:**
 - [x] `ChainDetector`: от якоря собрать упорядоченный список станций и их схем in/out
 - [x] `ChainGraphValidator`: для каждой станции — required inputs, produced outputs, removed keys (partial return)
-- [x] Диагностики (§5): missing wagon, type conflict, use-after-remove (`TOP002`–`TOP004`, `TOP007`; warnings `TOP005`–`TOP006`, info `TOP008`)
+- [x] Диагностики (§5): missing wagon, type conflict, use-after-remove (`TOP001`–`TOP003`); CargoManifest (`TOP004`); orphan (`TOP005`); unused seed (`TOP006`); wagon-name conflict (`TOP007`)
 - [x] Unit-тесты analyzer'а (`ChainValidationAnalyzerTests`)
 
 **Не делать:** исправление кода, автогенерация seed.
@@ -571,8 +571,8 @@ Station-interceptors для `TOP008` / chain-dispatch остаются (§ stati
 
 - [x] Якорь `ObjectCreation` (`new TrainRoute().Station…`)
 - [x] Якорь `LocalVariable` (`var r = new TrainRoute(); r.Station…`)
-- [x] `TOP006` на `.Station` вне этих якорей
-- [x] Docs + регрессии (`CreateSeed().Station` → `TOP006`)
+- [x] `TOP005` на `.Station` вне этих якорей
+- [x] Docs + регрессии (`CreateSeed().Station` → `TOP005`)
 
 | Уровень | Якорь | Пример | Статус |
 |---------|-------|--------|--------|
@@ -594,7 +594,7 @@ Station-interceptors для `TOP008` / chain-dispatch остаются (§ stati
 | **D** | Вызов метода / свойства | `BuildRoute().Station(...)` | ❌ не сделано |
 | **D** | Параметр метода | `baseRoute.Station(...)` | ❌ |
 | **D** | Поле / свойство | `_route.Station(...)` | ❌ |
-| **D** | Conditional / switch / coalesce | `cond ? a : b`, `x ?? y` | ✅ шаги 1–5 §3.8.5 (TOP015 / merge; TOP006 на Join снят) |
+| **D** | Conditional / switch / coalesce | `cond ? a : b`, `x ?? y` | ✅ шаги 1–5 §3.8.5 (TOP008 / merge; TOP005 на Join снят) |
 | **D** | Parenthesized / `!` / cast / `await` на внешнем якоре | `(GetRoute()).Station(...)` | ❌ якорь D |
 | **❌** | Динамическая сборка | `foreach` + `RegisterStation` | не-цель (§1.3) |
 
@@ -607,7 +607,7 @@ Transparent peel (paren / `!` / cast / `await`) для приёмников на
 - Межпроцедурный merge графов; flow analysis от `Factory()`
 - Runtime-изменения (`Railway.cs`); новые атрибуты для якоря
 
-Ожидаемое поведение сейчас: **TOP006** на `.Station` вне якорей A (кроме join-downstream после forking receiver — §3.8.5 / `TOP015`).
+Ожидаемое поведение сейчас: **TOP005** на `.Station` вне якорей A (кроме join-downstream после forking receiver — §3.8.5 / `TOP008`).
 
 ---
 
@@ -620,12 +620,12 @@ Transparent peel (paren / `!` / cast / `await`) для приёмников на
 | Typed `var (a, b) = …Travel()` через interceptors | Interceptor не меняет bound return type `Travel()` → `RouteReport` |
 | `TravelTyped(marker)` + `TravelResult_*` | Хуже эргономики, чем indexer / `Get` |
 | `Deconstruct` на `RouteReport` / per-arity overloads | Конфликты декомпозиции кортежей |
-| Диагностики `TOP011`–`TOP014` | Не вводятся |
+| Диагностики typed Travel | Не вводятся |
 | Opt-in `[TrainRouteTerminal]` (фаза 12) | Вместе с typed Travel |
 
 **Ограничение языка:** C# 15 и ниже **не позволяют** решить конфликты декомпозиции кортежей для общего terminal-типа (§3.10.1). Повторно — только после смены языка/Roslyn.
 
-Терминальный доступ остаётся: **`RouteReport` indexer / `Get<T>`**. Interceptors для `.Station` (TOP008) **сохранены**.
+Терминальный доступ остаётся: **`RouteReport` indexer / `Get<T>`**. Interceptors для `.Station` (TOP007) **сохранены**.
 
 ---
 
@@ -668,7 +668,7 @@ Transparent peel (paren / `!` / cast / `await`) для приёмников на
 
 - [ ] `TryResolveExternalRouteSchema(IMethodSymbol factoryMethod)` → `WagonSlot[]`.
 - [ ] Объединение внешней схемы с локальным хвостом цепочки; `TOP001`/`TOP002`/`TOP003` на стыке.
-- [ ] Fallback: схема не найдена → поведение как extension-якорь §3.8.4 (внешний вход неизвестен), опционально `TOP010` Info.
+- [ ] Fallback: схема не найдена → поведение как extension-якорь §3.8.4 (внешний вход неизвестен), опционально `TOP011` Info.
 
 **Тесты**
 
@@ -706,43 +706,42 @@ Transparent peel (paren / `!` / cast / `await`) для приёмников на
 | `TOP002` | Error | Конфликт типов одного вагона между станциями | `Wagon '{0}' has conflicting types: '{1}' (produced at '{2}') vs '{3}' (required at '{4}')` |
 | `TOP003` | Error | Вагон удалён частичным возвратом, но нужен дальше | `Wagon '{0}' was removed at station '{1}' but is required at station '{2}'` |
 | `TOP004` | Warning | Handler вернул `CargoManifest` — полная замена | `Station '{0}' returns CargoManifest, which replaces the entire manifest; wagons not in the return value may be lost` |
-| `TOP005` | Warning | ValueTuple в возврате data-handler'а | `Station '{0}' returns an unnamed tuple; element order must match handler parameter order ({1}). Prefer anonymous types, records, or named tuples.` |
-| `TOP006` | Error | Data-lambda вне цепочки от легитимного якоря `TrainRoute` | Прямая fluent или локальная после `new`; иначе error (§3.8) |
-| `TOP007` | Info | Вагон из seed не используется downstream | `Wagon '{0}' produced at seed station '{1}' is never consumed by later stations` |
-| `TOP008` | Error | Конфликт имён вагонов для одной сигнатуры handler'а | `Handler wagon names ({0}) do not match the canonical names ({1})...` |
-| `TOP015` | Error | Нельзя соединить ветки маршрута перед downstream Station | `Cannot join route branches before station '{0}': {1}` |
-| `TOP016` | Error | Handler не лямбда/anonymous/однозначный method group текущей compilation | `Station handler must be a lambda, anonymous method, or method group / local function declared in the current compilation and uniquely resolvable` |
+| `TOP005` | Error | Data-lambda вне цепочки от легитимного якоря `TrainRoute` | Прямая fluent или локальная после `new`; иначе error (§3.8) |
+| `TOP006` | Info | Вагон из seed не используется downstream | `Wagon '{0}' produced at seed station '{1}' is never consumed by later stations` |
+| `TOP007` | Error | Конфликт имён вагонов для одной сигнатуры handler'а | `Handler wagon names ({0}) do not match the canonical names ({1})...` |
+| `TOP008` | Error | Нельзя соединить ветки маршрута перед downstream Station | `Cannot join route branches before station '{0}': {1}` |
+| `TOP009` | Error | Handler не лямбда/anonymous/однозначный method group текущей compilation | `Station handler must be a lambda, anonymous method, or method group / local function declared in the current compilation and uniquely resolvable` |
 
 ### 5.1. Диагностики фазы 7 (черновик)
 
 | ID | Severity | Условие | Примечание |
 |----|----------|---------|------------|
-| `TOP006` | Error | Осиротевший data-handler | Текст сообщения обновить после расширения якорей (§7.2) |
-| `TOP009` | Info | Станция достижима из двух корней | Опционально; можно отложить |
-| `TOP015` | Error | Join forking receiver невалиден | Нерезолвимый рукав, unknown terminals, конфликт типов; подавляет TOP006 на Join |
+| `TOP005` | Error | Осиротевший data-handler | Текст сообщения обновить после расширения якорей (§7.2) |
+| `TOP010` | Info | Станция достижима из двух корней | Опционально; можно отложить |
+| `TOP008` | Error | Join forking receiver невалиден | Нерезолвимый рукав, unknown terminals, конфликт типов; подавляет TOP005 на Join |
 
 ### 5.2. Диагностики фазы 8 (черновик)
 
 | ID | Severity | Условие | Примечание |
 |----|----------|---------|------------|
-| `TOP010` | Info | Внешний `TrainRoute` без экспортированной схемы | «Стык с `{0}` не проверяется; обновите RouteLib или объявите контракт» — TBD на spike |
+| `TOP011` | Info | Внешний `TrainRoute` без экспортированной схемы | «Стык с `{0}` не проверяется; обновите RouteLib или объявите контракт» — TBD на spike |
 
 ### 5.3. Диагностики merge ветвлений (§3.8.5)
 
 | ID | Severity | Условие | Message format |
 |----|----------|---------|----------------|
-| `TOP015` | Error | Ветки `?:` / `??` / `switch` нельзя соединить | `Cannot join route branches before station '{0}': {1}` |
+| `TOP008` | Error | Ветки `?:` / `??` / `switch` нельзя соединить | `Cannot join route branches before station '{0}': {1}` |
 
 Примеры `{1}`: `one or more branches are not resolvable TrainRoute chains`; `branch has unknown terminal wagon state`; `wagon '{name}' has conflicting types across branches ('{t1}' vs '{t2}')`; `no branches to join`.
 
-Typed Travel / deconstruct снят; `TOP011`–`TOP014` не вводятся.
+Typed Travel / deconstruct снят; отдельные ID под typed Travel не резервируются.
 
 **Правила:**
-- `TOP001`–`TOP004`, `TOP007` — валидация графа цепочки (`ChainValidationAnalyzer`).
-- `TOP005` — предупреждение при emit / анализе tuple-return.
-- `TOP006` — осиротевшие handler'ы; фаза 7 сужает ложные срабатывания; на DownstreamStation join set не выдаётся (вместо него TOP015 при ошибке стыка).
-- `TOP008` — канонические имена вагонов для одинаковых сигнатур handler'а.
-- `TOP015` — валидация join set (§3.8.5 шаги 3–4).
+- `TOP001`–`TOP004`, `TOP006` — валидация графа цепочки (`ChainValidationAnalyzer`).
+- `TOP005` — осиротевшие handler'ы; фаза 7 сужает ложные срабатывания; на DownstreamStation join set не выдаётся (вместо него TOP008 при ошибке стыка).
+- `TOP007` — канонические имена вагонов для одинаковых сигнатур handler'а.
+- `TOP008` — валидация join set (§3.8.5 шаги 3–4).
+- `TOP009` — unsupported handler form (не лямбда / неоднозначный method group / нет исходников).
 - Release tracking: `AnalyzerReleases.Unshipped.md`.
 
 ---
@@ -839,7 +838,7 @@ tests/
 
 | API | Правило ordinal |
 |-----|-----------------|
-| **Data-oriented** `.Station` | Порядок **wagon-параметров handler'а** (§3.4); предупреждение `TOP005` |
+| **Data-oriented** `.Station` | Порядок **wagon-параметров handler'а** (§3.4) |
 | **Legacy `[TrainTuple]`** | Порядок свойств `[Wagon]` на классе (без изменений) |
 
 Предпочитать анонимные типы и records в новом коде.
@@ -865,14 +864,14 @@ tests/
 
 | Риск | Митигация |
 |------|-----------|
-| Цепочку нельзя вывести из разнесённого кода | `TOP006`; валидны прямая цепочка и локальная после `new`; `Build().Station` / параметр / поле — отложены (§3.8) |
+| Цепочку нельзя вывести из разнесённого кода | `TOP005`; валидны прямая цепочка и локальная после `new`; `Build().Station` / параметр / поле — отложены (§3.8) |
 | Взрыв комбинаторики overload'ов | Один generic `Station` + source-generated wrapper per call site, не per signature union |
-| Кортежи в возврате | Предпочитать анонимные типы; analyzer `TOP005` |
+| Кортежи в возврате | Предпочитать анонимные типы; ordinal = порядок wagon-параметров |
 | Два генератора конфликтуют | Разные extension-классы; station interceptors только для `.Station` |
 | Сторонняя сборка без исходников | Фаза 8: экспорт схемы в DLL; fallback §3.8.4 (§3.9) |
-| Несовместимость версий RouteLib | Semver + `TOP010` Info; тесты на старую DLL без схемы |
+| Несовместимость версий RouteLib | Semver + `TOP011` Info; тесты на старую DLL без схемы |
 | Конфликт `Deconstruct` на `RouteReport` | C# ≤15 не решает; не эмитим; доступ через `Get<T>` / indexer (§3.10.1) |
-| Хрупкость station interceptors (старый SDK) | Opt-in `InterceptorsNamespaces`; иначе canonical names / TOP008 |
+| Хрупкость station interceptors (старый SDK) | Opt-in `InterceptorsNamespaces`; иначе canonical names / TOP007 |
 | Производительность рефлексии | Merge только на возврате; PullWagon типизирован в compile-time |
 
 ---
@@ -882,8 +881,8 @@ tests/
 ### Выполненное
 - [x] Пример payment flow без `LoadWagon`/`PullWagon` в handler'ах (кроме manifest escape / recovery)
 - [x] Analyzer ловит missing wagon в цепочке (`TOP001`)
-- [x] Фаза 7 (якоря A): прямая + локальная; `Build().Station` → `TOP006` (§4.1, §3.8)
-- [x] §3.8.5 шаги 1–5: discover → join set → validate (`TOP015`) → merge + analyzer (TOP006 на Join снят; `Build().Station` по-прежнему TOP006)
+- [x] Фаза 7 (якоря A): прямая + локальная; `Build().Station` → `TOP005` (§4.1, §3.8)
+- [x] §3.8.5 шаги 1–5: discover → join set → validate (`TOP008`) → merge + analyzer (TOP005 на Join снят; `Build().Station` по-прежнему TOP005)
 - [x] Терминальный доступ: `RouteReport.Get` / indexer (§3.10); фазы 9–12 сняты (§4.3)
 - [x] `RailwaySignals.Red` в handler без ручного `SignalIssue`
 - [x] Документация обновлена (`getting-started`, README)
@@ -926,18 +925,19 @@ tests/
 | 2026-07-02 | `DataRouteBuilder` заменён на `TrainRoute.Station`; удалён `DataRouteDefinition` |
 | 2026-07-02 | Пересмотр п.1: без `[TrainRouteChain]`; chainId и схема только из analyzer |
 | 2026-07-02 | Отказ от `WithSeed`: seed = первая `Station` без входных вагонов; внешний seed = `Travel(manifest)` |
-| 2026-07-14 | **Seed-only вход:** публичный канон — seed сверху + `Travel()`; `Travel(CargoManifest)` obsolete; analyzer без Travel-escape на станции 0 |
+| 2026-07-14 | **Seed-only вход:** публичный канон — seed сверху + `Travel()`; публичный `Travel(CargoManifest)` удалён; analyzer без Travel-escape на станции 0 |
 | 2026-07-06 | **Фаза 6 (доп.):** удалён публичный `AttachStation`; codegen → `RegisterStation`; ветвление на data-oriented `.Station` |
 | 2026-07-02 | **Фаза 6:** удаление legacy `[TrainTuple]` API, README/docs, `DataOrientedPaymentRouteEndToEndTests` |
 | 2026-07-06 | **Фаза 8 (план):** композиция маршрутов со сторонними сборками, экспорт схемы (§3.9, §4 фаза 8) |
 | 2026-07-06 | **Фаза 7 (план):** расширение якорей `ChainDetector` — параметр, поле, вызов, локальная после `new` (§3.8, §4 фаза 7) |
-| 2026-07-10 | **Фазы 9–12 (план):** typed `Travel()` / `TravelAsync()` через Roslyn interceptors; дизайн §3.10; диагностики `TOP011`–`TOP014` |
+| 2026-07-10 | **Фазы 9–12 (план):** typed `Travel()` / `TravelAsync()` через Roslyn interceptors; дизайн §3.10 (диагностики typed Travel сняты вместе с фазами) |
 | 2026-07-14 | **Очередь:** фаза 8 (сторонние сборки) сдвинута ближе к концу — `7 → 9 → 10 → 11 → 12 → 8` |
 | 2026-07-14 | **Якоря:** временно только прямая цепочка и локальная после `new`; `Build().Station` / параметр / поле сняты с фазы 7 (§3.8) |
 | 2026-07-14 | **Фазы 9–12 сняты:** typed Travel / `TravelTyped` отвергнуты; **C# ≤15 не решает конфликты декомпозиции кортежей**; доступ — `RouteReport` indexer/`Get` (§3.10) |
 | 2026-07-14 | **§4 переразмечен:** выполнено / неполно / удалено / запланировано |
 | 2026-07-14 | **§3.8.5:** протокол merge графов для `?:` / `??` / `switch` (discover → join set → validate → error/merge) |
-| 2026-07-14 | **§3.8.5 шаг 1:** `BranchRouteGraphDiscoverer` + `TryBuildChainEndingAt`; `TerminalWagons` на `ChainSimulationResult` (шаги 2–5 и снятие TOP006 — pending) |
-| 2026-07-14 | **§3.8.5 шаг 2:** `BranchRouteJoinSetFinder` + `BranchRouteJoinSet`; join sets по общему downstream `.Station` (шаги 3–5 и снятие TOP006 — pending) |
-| 2026-07-14 | **§3.8.5 шаги 3–5:** `BranchRouteJoinValidator` / `BranchRouteJoinMerger` / `TOP015`; `Simulate(chain, initialWagons)`; analyzer merge + подавление TOP006 на Join |
-| 2026-07-14 | **Non-lambda handlers (same-compilation):** `TryResolveHandler` — lambda / anonymous / method group / local function; `TOP016` для unsupported форм; пункт G частично |
+| 2026-07-14 | **§3.8.5 шаг 1:** `BranchRouteGraphDiscoverer` + `TryBuildChainEndingAt`; `TerminalWagons` на `ChainSimulationResult` (шаги 2–5 и снятие TOP005 — pending) |
+| 2026-07-14 | **§3.8.5 шаг 2:** `BranchRouteJoinSetFinder` + `BranchRouteJoinSet`; join sets по общему downstream `.Station` (шаги 3–5 и снятие TOP005 — pending) |
+| 2026-07-14 | **§3.8.5 шаги 3–5:** `BranchRouteJoinValidator` / `BranchRouteJoinMerger` / `TOP008`; `Simulate(chain, initialWagons)`; analyzer merge + подавление TOP005 на Join |
+| 2026-07-14 | **Non-lambda handlers (same-compilation):** `TryResolveHandler` — lambda / anonymous / method group / local function; `TOP009` для unsupported форм; пункт G частично |
+| 2026-07-14 | **Ренумерация TOP:** плотный ряд `TOP001`–`TOP009` (бывшие TOP006–008→005–007, TOP015→008, TOP016→009; phantom ValueTuple-ID снят) |

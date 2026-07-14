@@ -239,7 +239,7 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Walks backward from <paramref name="endpoint"/> through Station / StationAsync / ServiceStation
+        /// Walks backward from <paramref name="endpoint"/> through Station / ServiceStation
         /// receivers until a <c>new TrainRoute()</c> or resolvable local root is found.
         /// </summary>
         private static bool TryFindChainRootEndingAt(
@@ -289,7 +289,7 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// If <paramref name="expression"/> is a Station / StationAsync / ServiceStation invocation,
+        /// If <paramref name="expression"/> is a Station / ServiceStation invocation,
         /// returns its receiver expression.
         /// </summary>
         private static bool TryGetChainMethodReceiver(
@@ -307,7 +307,6 @@ namespace TrainOP.Generators
 
             var methodName = memberAccess.Name.Identifier.ValueText;
             if (!string.Equals(methodName, "Station", StringComparison.Ordinal)
-                && !string.Equals(methodName, "StationAsync", StringComparison.Ordinal)
                 && !string.Equals(methodName, "ServiceStation", StringComparison.Ordinal))
             {
                 return false;
@@ -442,7 +441,6 @@ namespace TrainOP.Generators
 
             var methodName = memberAccess.Name.Identifier.ValueText;
             return string.Equals(methodName, "Station", StringComparison.Ordinal)
-                || string.Equals(methodName, "StationAsync", StringComparison.Ordinal)
                 || string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
         }
 
@@ -711,8 +709,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (!string.Equals(memberAccess.Name.Identifier.ValueText, "Station", StringComparison.Ordinal)
-                && !string.Equals(memberAccess.Name.Identifier.ValueText, "StationAsync", StringComparison.Ordinal))
+            if (!string.Equals(memberAccess.Name.Identifier.ValueText, "Station", StringComparison.Ordinal))
             {
                 return false;
             }

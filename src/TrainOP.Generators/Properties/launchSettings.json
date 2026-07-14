@@ -1,8 +1,5 @@
 {
   "profiles": {
-    "TrainOP.Generators": {
-      "commandName": "Project"
-    },
     "Profile 1": {
       "commandName": "DebugRoslynComponent",
       "targetProject": "..\\..\\samples\\TrainOP.Samples\\TrainOP.Samples.csproj"

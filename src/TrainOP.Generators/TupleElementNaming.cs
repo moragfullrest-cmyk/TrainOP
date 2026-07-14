@@ -13,20 +13,6 @@ namespace TrainOP.Generators
         public static string DefaultName(int index) => "Item" + (index + 1);
 
         /// <summary>
-        /// Builds default ItemN names for a tuple of the given arity.
-        /// </summary>
-        public static string[] BuildDefaultNames(int count)
-        {
-            var names = new string[count];
-            for (var i = 0; i < count; i++)
-            {
-                names[i] = DefaultName(i);
-            }
-
-            return names;
-        }
-
-        /// <summary>
         /// Determines whether a tuple element name is the default ItemN name for its index.
         /// </summary>
         public static bool IsDefaultName(string name, int index)

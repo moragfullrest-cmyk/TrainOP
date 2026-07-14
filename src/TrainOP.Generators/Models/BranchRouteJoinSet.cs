@@ -29,7 +29,7 @@ namespace TrainOP.Generators.Models
         public ExpressionSyntax JoinReceiver { get; }
 
         /// <summary>
-        /// The <c>.Station</c> / <c>StationAsync</c> / <c>ServiceStation</c> that uses the fork as
+        /// The <c>.Station</c> / <c>.ServiceStation</c> that uses the fork as
         /// receiver; may be <c>null</c> when the join set is built from a bare fork without walking
         /// the parent.
         /// </summary>

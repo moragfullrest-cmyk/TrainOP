@@ -13,12 +13,11 @@ namespace TrainOP.Generators
     internal static class StationSyntaxHelper
     {
         /// <summary>
-        /// Determines whether a syntax node looks like a Station or legacy StationAsync method invocation.
+        /// Determines whether a syntax node looks like a Station method invocation.
         /// </summary>
         public static bool IsCandidateStationInvocation(SyntaxNode node)
         {
-            return IsCandidateRouteHandlerInvocation(node, "Station")
-                || IsCandidateRouteHandlerInvocation(node, "StationAsync");
+            return IsCandidateRouteHandlerInvocation(node, "Station");
         }
 
         /// <summary>
@@ -118,21 +117,13 @@ namespace TrainOP.Generators
             handlerBinding = null;
 
             return TryGetDataRouteHandlerInvocation(
-                    invocation,
-                    semanticModel,
-                    "Station",
-                    forServiceStation: false,
-                    out stationName,
-                    out handlerLocation,
-                    out handlerBinding)
-                || TryGetDataRouteHandlerInvocation(
-                    invocation,
-                    semanticModel,
-                    "StationAsync",
-                    forServiceStation: false,
-                    out stationName,
-                    out handlerLocation,
-                    out handlerBinding);
+                invocation,
+                semanticModel,
+                "Station",
+                forServiceStation: false,
+                out stationName,
+                out handlerLocation,
+                out handlerBinding);
         }
 
         /// <summary>
@@ -225,7 +216,7 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Determines whether a data-oriented Station/ServiceStation call has an unsupported handler argument (TOP016).
+        /// Determines whether a data-oriented Station/ServiceStation call has an unsupported handler argument (TOP009).
         /// </summary>
         public static bool TryGetUnsupportedStationHandler(
             InvocationExpressionSyntax invocation,
@@ -246,8 +237,7 @@ namespace TrainOP.Generators
             var methodName = memberAccess.Name.Identifier.ValueText;
             var forServiceStation = string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
             if (!forServiceStation
-                && !string.Equals(methodName, "Station", StringComparison.Ordinal)
-                && !string.Equals(methodName, "StationAsync", StringComparison.Ordinal))
+                && !string.Equals(methodName, "Station", StringComparison.Ordinal))
             {
                 return false;
             }
@@ -287,7 +277,7 @@ namespace TrainOP.Generators
         /// <summary>
         /// Determines whether an invocation resolves to a built-in TrainRoute handler method.
         /// </summary>
-        private static bool IsBuiltinTrainRouteHandler(
+        internal static bool IsBuiltinTrainRouteHandler(
             InvocationExpressionSyntax invocation,
             SemanticModel semanticModel,
             string methodName)
@@ -389,7 +379,6 @@ namespace TrainOP.Generators
         private static bool IsRouteExtensionMethodName(string methodName)
         {
             return string.Equals(methodName, "Station", StringComparison.Ordinal)
-                || string.Equals(methodName, "StationAsync", StringComparison.Ordinal)
                 || string.Equals(methodName, "RegisterStation", StringComparison.Ordinal)
                 || string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
         }

@@ -66,7 +66,7 @@ public static class Route
         }
 
         /// <summary>
-        /// An unresolved arm (<c>GetRoute()</c>) fails the join with TOP015.
+        /// An unresolved arm (<c>GetRoute()</c>) fails the join with TOP008.
         /// </summary>
         [Fact]
         public void Validate_TernaryUnresolvedArm_CannotMerge_ReportsTop015()
@@ -90,14 +90,14 @@ public static class Route
 
             Assert.False(validation.CanMerge);
             Assert.Empty(validation.MergedTerminalWagons);
-            Assert.Contains(validation.Diagnostics, d => d.Id == "TOP015");
+            Assert.Contains(validation.Diagnostics, d => d.Id == "TOP008");
             Assert.Contains(
                 validation.Diagnostics,
                 d => d.GetMessage().Contains("not resolvable", StringComparison.Ordinal));
         }
 
         /// <summary>
-        /// Conflicting types for the same wagon name across arms fail with TOP015.
+        /// Conflicting types for the same wagon name across arms fail with TOP008.
         /// </summary>
         [Fact]
         public void Validate_TernaryConflictingWagonTypes_CannotMerge_ReportsTop015()
@@ -118,7 +118,7 @@ public static class Route
 
             Assert.False(validation.CanMerge);
             Assert.Empty(validation.MergedTerminalWagons);
-            Assert.Contains(validation.Diagnostics, d => d.Id == "TOP015");
+            Assert.Contains(validation.Diagnostics, d => d.Id == "TOP008");
             Assert.Contains(
                 validation.Diagnostics,
                 d => d.GetMessage().Contains("conflicting types", StringComparison.Ordinal));

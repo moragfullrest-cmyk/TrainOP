@@ -97,23 +97,6 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Infers the return shape from a handler lambda symbol, body, and input wagons.
-        /// </summary>
-        public static ReturnShape Infer(
-            LambdaExpressionSyntax lambdaSyntax,
-            IMethodSymbol lambdaSymbol,
-            SemanticModel semanticModel,
-            ImmutableArray<WagonBinding> inputWagons)
-        {
-            return Infer(
-                lambdaSymbol,
-                lambdaSyntax?.Body,
-                lambdaSyntax?.GetLocation(),
-                semanticModel,
-                inputWagons);
-        }
-
-        /// <summary>
         /// Attaches return type metadata to an inferred return shape.
         /// </summary>
         private static ReturnShape WithReturnType(ReturnShape shape, string returnTypeDisplay, bool useGenericReturn)
@@ -405,22 +388,6 @@ namespace TrainOP.Generators
         private static bool IsCargoManifest(ITypeSymbol typeSymbol)
         {
             return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.CargoManifest", StringComparison.Ordinal);
-        }
-
-        /// <summary>
-        /// Determines whether the type is RedFailure.
-        /// </summary>
-        private static bool IsRedFailure(ITypeSymbol typeSymbol)
-        {
-            return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.RedFailure", StringComparison.Ordinal);
-        }
-
-        /// <summary>
-        /// Determines whether the type is GreenPass.
-        /// </summary>
-        private static bool IsGreenPass(ITypeSymbol typeSymbol)
-        {
-            return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.GreenPass", StringComparison.Ordinal);
         }
 
         /// <summary>

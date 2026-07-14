@@ -146,7 +146,7 @@ public static class LocalRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
@@ -171,7 +171,7 @@ public static class LocalRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
         }
 
         /// <summary>
@@ -197,7 +197,7 @@ public static class LocalRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
@@ -224,7 +224,7 @@ public static class LocalRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
         }
 
         /// <summary>
@@ -246,7 +246,7 @@ public static class ParenRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
@@ -272,7 +272,7 @@ public static class ParenLocalRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
@@ -298,7 +298,7 @@ public static class NullForgivingRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
@@ -321,7 +321,7 @@ public static class CastRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
@@ -347,7 +347,7 @@ public static class CastLocalRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
@@ -371,7 +371,7 @@ public static class AwaitCreationRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
@@ -398,12 +398,12 @@ public static class AwaitLocalRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
         /// <summary>
-        /// Verifies that TOP006 is reported when a local is assigned from a non-creation source.
+        /// Verifies that TOP005 is reported when a local is assigned from a non-creation source.
         /// </summary>
         [Fact]
         public async Task Analyzer_ReportsTop006_WhenLocalIsNotAssignedFromCreation()
@@ -424,11 +424,11 @@ public static class BrokenRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.Contains(diagnostics, d => d.Id == "TOP006");
+            Assert.Contains(diagnostics, d => d.Id == "TOP005");
         }
 
         /// <summary>
-        /// Verifies that TOP006 is reported for Build().Station composition (deferred anchor).
+        /// Verifies that TOP005 is reported for Build().Station composition (deferred anchor).
         /// </summary>
         [Fact]
         public async Task Analyzer_ReportsTop006_WhenStationChainedOnBuildCall()
@@ -448,11 +448,11 @@ public static class BrokenRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.Contains(diagnostics, d => d.Id == "TOP006");
+            Assert.Contains(diagnostics, d => d.Id == "TOP005");
         }
 
         /// <summary>
-        /// Verifies that a matching ternary join does not report TOP006 or other errors on Join.
+        /// Verifies that a matching ternary join does not report TOP005 or other errors on Join.
         /// </summary>
         [Fact]
         public async Task Analyzer_TernaryJoin_MatchingArms_NoTop006NoErrors()
@@ -471,13 +471,13 @@ public static class JoinedRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP015");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP008");
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
         /// <summary>
-        /// Verifies that conflicting branch wagon types report TOP015 and suppress TOP006 on Join.
+        /// Verifies that conflicting branch wagon types report TOP008 and suppress TOP005 on Join.
         /// </summary>
         [Fact]
         public async Task Analyzer_TernaryJoin_ConflictingTypes_ReportsTop015_NoTop006OnJoin()
@@ -496,8 +496,8 @@ public static class BrokenJoinRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.Contains(diagnostics, d => d.Id == "TOP015");
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.Contains(diagnostics, d => d.Id == "TOP008");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
         }
 
         /// <summary>
@@ -521,7 +521,7 @@ public static class RecoveryRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
         }
 
         /// <summary>
@@ -570,7 +570,7 @@ public static class MethodGroupRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP016");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP009");
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
@@ -595,12 +595,12 @@ public static class AnonymousRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP016");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP009");
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
         /// <summary>
-        /// Verifies that a Func variable handler is rejected with TOP016.
+        /// Verifies that a Func variable handler is rejected with TOP009.
         /// </summary>
         [Fact]
         public async Task Analyzer_ReportsTop016_ForFuncVariableHandler()
@@ -624,11 +624,11 @@ public static class FuncVariableRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.Contains(diagnostics, d => d.Id == "TOP016");
+            Assert.Contains(diagnostics, d => d.Id == "TOP009");
         }
 
         /// <summary>
-        /// Verifies that an ambiguous method-group handler is rejected with TOP016.
+        /// Verifies that an ambiguous method-group handler is rejected with TOP009.
         /// </summary>
         [Fact]
         public async Task Analyzer_ReportsTop016_ForAmbiguousMethodGroup()
@@ -651,7 +651,7 @@ public static class AmbiguousRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.Contains(diagnostics, d => d.Id == "TOP016");
+            Assert.Contains(diagnostics, d => d.Id == "TOP009");
         }
 
         private static async Task<ImmutableArray<Diagnostic>> RunAnalyzerAsync(string source)

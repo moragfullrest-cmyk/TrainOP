@@ -75,7 +75,7 @@ namespace TrainOP.Generators
 
                     if (joinSet.DownstreamStation != null)
                     {
-                        // Always suppress TOP006 on fork-downstream (TOP015 covers join failures).
+                        // Always suppress TOP005 on fork-downstream (TOP008 covers join failures).
                         joinDownstream.Add(joinSet.DownstreamStation);
                     }
 

@@ -1,6 +1,6 @@
 # Чеклист готовности TrainOP к релизу
 
-Срез: **2026-07-14** · версия в csproj: **0.4.0** · целевой статус сейчас: **NuGet Preview (0.x)**
+Срез: **2026-07-14** · версия в csproj: **0.5.0** · целевой статус сейчас: **NuGet Preview (0.x)**
 
 | Показатель | Скор |
 |------------|------|
@@ -22,7 +22,7 @@
 | A4 | Тесты runtime + generators + analyzer (~138 Fact/Theory) | 85% | Хорошо; нет coverage-отчёта и автоматического прогона samples |
 | A5 | CI build + test (ubuntu/windows, .NET 10) | 100% | Готово для compile/test |
 | A6 | Упаковка Generators (`analyzers/dotnet/cs` + `.targets` / InterceptorsNamespaces) | 80% | Схема верная; нет PackageReadme у Generators |
-| A7 | Obsolete на legacy `Travel(CargoManifest)` | 100% | Канон seed-only зафиксирован |
+| A7 | Seed-only вход (`Travel()` без манифеста) | 100% | Канон зафиксирован; публичного `Travel(CargoManifest)` нет |
 
 **По блоку A (среднее):** ~90%
 
@@ -34,7 +34,7 @@
 |---|--------|---|--------------|
 | 1 | Согласовать TFM docs ↔ пакет | **10%** | Пакет `net10.0`; docs всё ещё пишут netstandard2.0 / пример net8.0. Нужно: multi-target **или** полностью переписать docs под .NET 10 |
 | 2 | CHANGELOG с историей 0.1 → 0.3 | **0%** | Файла нет |
-| 3 | Git-тег, согласованный с `Version` (например `v0.4.0`) | **25%** | Version=0.4.0 в csproj; теги только `v0.1.0` / `v0.1.1` |
+| 3 | Git-тег, согласованный с `Version` (например `v0.5.0`) | **25%** | Version=0.5.0 в csproj; теги только `v0.1.0` / `v0.1.1` |
 | 4 | CI: `dotnet pack` (артефакты `.nupkg`) | **0%** | В workflow только restore/build/test |
 | 5 | CI/ритуал publish (хотя бы ручной on tag) | **0%** | Нет release workflow / публикации |
 | 6 | Known limitations в пользовательских docs (7D / фаза 8) | **50%** | `core-api` уже говорит про `Build().Station`; нет явного «limitations» и нет `cross-assembly-routes.md` |
@@ -71,7 +71,7 @@
 | 12 | Политика nullable (`enable` или явный отказ) | **0%** | `Nullable` disable в обоих пакетах |
 | 13 | Dependabot / Renovate на Roslyn pin | **0%** | Нет |
 | 14 | Прогон samples в CI (или smoke pack→consume) | **0%** | Samples только вручную |
-| 15 | Фаза 7D *или* окончательный отказ с docs | **10%** | Отложено; поведение TOP006 задокументировано как ограничение |
+| 15 | Фаза 7D *или* окончательный отказ с docs | **10%** | Отложено; поведение TOP005 задокументировано как ограничение |
 | 16 | Фаза 8 cross-assembly *или* окончательный отказ с docs | **5%** | План есть; spike/док `cross-assembly-routes.md` нет |
 
 **По блоку C (среднее): ~4%**

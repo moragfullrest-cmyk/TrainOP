@@ -55,7 +55,7 @@ namespace TrainOP.Generators
         /// Reported when a data-oriented handler is not attached to a TrainRoute fluent chain.
         /// </summary>
         public static readonly DiagnosticDescriptor OrphanDataHandler = new DiagnosticDescriptor(
-            id: "TOP006",
+            id: "TOP005",
             title: "Data-oriented handler is outside a TrainRoute chain",
             messageFormat: "Data-oriented handler must be part of a TrainRoute chain starting with 'new TrainRoute()' (direct fluent chain or a local assigned from it)",
             category: "TrainOP.Generators",
@@ -66,7 +66,7 @@ namespace TrainOP.Generators
         /// Informs that a seed station produced a wagon never consumed by downstream stations.
         /// </summary>
         public static readonly DiagnosticDescriptor UnusedSeedWagon = new DiagnosticDescriptor(
-            id: "TOP007",
+            id: "TOP006",
             title: "Seed wagon is never consumed",
             messageFormat: "Wagon '{0}' produced at seed station '{1}' is never consumed by later stations",
             category: "TrainOP.Generators",
@@ -77,7 +77,7 @@ namespace TrainOP.Generators
         /// Reported when handlers sharing the same parameter type signature use different wagon names.
         /// </summary>
         public static readonly DiagnosticDescriptor ConflictingWagonNames = new DiagnosticDescriptor(
-            id: "TOP008",
+            id: "TOP007",
             title: "Conflicting wagon names for the same handler type signature",
             messageFormat: "Handler wagon names ({0}) do not match the canonical names ({1}) for this parameter type sequence. Use the same manifest keys everywhere handlers share the same parameter types.",
             category: "TrainOP.Generators",
@@ -88,7 +88,7 @@ namespace TrainOP.Generators
         /// Reported when forking TrainRoute branches cannot be joined before a downstream Station.
         /// </summary>
         public static readonly DiagnosticDescriptor RouteBranchJoinFailed = new DiagnosticDescriptor(
-            id: "TOP015",
+            id: "TOP008",
             title: "Route branch join failed",
             messageFormat: "Cannot join route branches before station '{0}': {1}",
             category: "TrainOP.Generators",
@@ -99,7 +99,7 @@ namespace TrainOP.Generators
         /// Reported when a Station handler argument is not a supported resolvable form in the current compilation.
         /// </summary>
         public static readonly DiagnosticDescriptor UnsupportedStationHandler = new DiagnosticDescriptor(
-            id: "TOP016",
+            id: "TOP009",
             title: "Unsupported station handler form",
             messageFormat: "Station handler must be a lambda, anonymous method, or method group / local function declared in the current compilation and uniquely resolvable",
             category: "TrainOP.Generators",
@@ -107,4 +107,3 @@ namespace TrainOP.Generators
             isEnabledByDefault: true);
     }
 }
-

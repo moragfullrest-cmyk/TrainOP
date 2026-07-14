@@ -15,8 +15,8 @@ dotnet add package TrainOP.Generators
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.4.0" />
-  <PackageReference Include="TrainOP.Generators" Version="0.4.0" />
+  <PackageReference Include="TrainOP" Version="0.5.0" />
+  <PackageReference Include="TrainOP.Generators" Version="0.5.0" />
 </ItemGroup>
 ```
 

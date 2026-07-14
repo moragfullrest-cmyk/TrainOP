@@ -25,8 +25,8 @@ namespace TrainOP.Generators
         {
             var stationCalls = context.SyntaxProvider.CreateSyntaxProvider(
                 static (node, _) =>
-                    IsCandidateStationInvocation(node)
-                    || IsCandidateServiceStationInvocation(node),
+                    StationSyntaxHelper.IsCandidateStationInvocation(node)
+                    || StationSyntaxHelper.IsCandidateServiceStationInvocation(node),
                 static (generatorContext, _) => GetRouteHandlerCall(generatorContext));
 
             var combined = context.CompilationProvider.Combine(stationCalls.Collect());
@@ -120,7 +120,7 @@ namespace TrainOP.Generators
 
                         interceptorSites.Add(new TrainRouteStationInterceptorsEmitter.InterceptorSite(
                             binding.Invocation,
-                            GetRouteMethodName(schema),
+                            schema.ExtensionMethodName,
                             handlerTypeName,
                             coreMethodName,
                             binding.ChainId,
@@ -130,41 +130,6 @@ namespace TrainOP.Generators
 
                 TrainRouteStationInterceptorsEmitter.Emit(productionContext, compilation, interceptorSites);
             });
-        }
-
-        /// <summary>
-        /// Determines whether a syntax node looks like a Station or legacy StationAsync method invocation.
-        /// </summary>
-        private static bool IsCandidateStationInvocation(SyntaxNode node)
-        {
-            return IsCandidateRouteHandlerInvocation(node, "Station")
-                || IsCandidateRouteHandlerInvocation(node, "StationAsync");
-        }
-
-        /// <summary>
-        /// Determines whether a syntax node looks like a ServiceStation method invocation.
-        /// </summary>
-        private static bool IsCandidateServiceStationInvocation(SyntaxNode node)
-        {
-            return IsCandidateRouteHandlerInvocation(node, "ServiceStation");
-        }
-
-        /// <summary>
-        /// Determines whether a syntax node is an invocation of the given route handler method name.
-        /// </summary>
-        private static bool IsCandidateRouteHandlerInvocation(SyntaxNode node, string methodName)
-        {
-            if (!(node is InvocationExpressionSyntax invocation))
-            {
-                return false;
-            }
-
-            if (!(invocation.Expression is MemberAccessExpressionSyntax memberAccess))
-            {
-                return false;
-            }
-
-            return string.Equals(memberAccess.Name.Identifier.ValueText, methodName, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -183,19 +148,18 @@ namespace TrainOP.Generators
             var methodName = memberAccess.Name.Identifier.ValueText;
             var forServiceStation = string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
             if (!forServiceStation
-                && !string.Equals(methodName, "Station", StringComparison.Ordinal)
-                && !string.Equals(methodName, "StationAsync", StringComparison.Ordinal))
+                && !string.Equals(methodName, "Station", StringComparison.Ordinal))
             {
                 return null;
             }
 
             var receiverType = semanticModel.GetTypeInfo(memberAccess.Expression).Type;
-            if (!IsTrainRouteReceiver(memberAccess.Expression, receiverType, semanticModel))
+            if (!StationSyntaxHelper.IsTrainRouteReceiver(memberAccess.Expression, receiverType, semanticModel))
             {
                 return null;
             }
 
-            if (IsBuiltinTrainRouteHandler(invocation, semanticModel, methodName))
+            if (StationSyntaxHelper.IsBuiltinTrainRouteHandler(invocation, semanticModel, methodName))
             {
                 return null;
             }
@@ -219,87 +183,6 @@ namespace TrainOP.Generators
             }
 
             return new StationCallInfo(schema, resolved.Location, invocation);
-        }
-
-        /// <summary>
-        /// Determines whether a type symbol is TrainRoute.
-        /// </summary>
-        private static bool IsTrainRoute(ITypeSymbol typeSymbol)
-        {
-            if (typeSymbol == null)
-            {
-                return false;
-            }
-
-            return string.Equals(typeSymbol.ToDisplayString(), "TrainOP.TrainRoute", StringComparison.Ordinal);
-        }
-
-        /// <summary>
-        /// Determines whether an expression is or derives from a TrainRoute receiver.
-        /// </summary>
-        private static bool IsTrainRouteReceiver(
-            ExpressionSyntax receiverExpression,
-            ITypeSymbol receiverType,
-            SemanticModel semanticModel)
-        {
-            if (IsTrainRoute(receiverType))
-            {
-                return true;
-            }
-
-            if (receiverExpression is ObjectCreationExpressionSyntax objectCreation)
-            {
-                var typeInfo = semanticModel.GetTypeInfo(objectCreation);
-                return IsTrainRoute(typeInfo.Type) || IsTrainRoute(typeInfo.ConvertedType);
-            }
-
-            if (receiverExpression is InvocationExpressionSyntax invocation
-                && invocation.Expression is MemberAccessExpressionSyntax memberAccess)
-            {
-                if (IsRouteExtensionMethodName(memberAccess.Name.Identifier.ValueText))
-                {
-                    return IsTrainRouteReceiver(memberAccess.Expression, semanticModel.GetTypeInfo(memberAccess.Expression).Type, semanticModel);
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Determines whether an invocation resolves to a built-in TrainRoute handler method.
-        /// </summary>
-        private static bool IsBuiltinTrainRouteHandler(
-            InvocationExpressionSyntax invocation,
-            SemanticModel semanticModel,
-            string methodName)
-        {
-            var symbolInfo = semanticModel.GetSymbolInfo(invocation);
-            if (IsBuiltinTrainRouteMethod(symbolInfo.Symbol as IMethodSymbol, methodName))
-            {
-                return true;
-            }
-
-            foreach (var candidate in symbolInfo.CandidateSymbols)
-            {
-                if (IsBuiltinTrainRouteMethod(candidate as IMethodSymbol, methodName))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Determines whether a method symbol is a built-in TrainRoute handler of the given name.
-        /// </summary>
-        private static bool IsBuiltinTrainRouteMethod(IMethodSymbol methodSymbol, string methodName)
-        {
-            return methodSymbol != null
-                && methodSymbol.MethodKind == MethodKind.Ordinary
-                && methodSymbol.ContainingType != null
-                && string.Equals(methodSymbol.ContainingType.ToDisplayString(), "TrainOP.TrainRoute", StringComparison.Ordinal)
-                && string.Equals(methodSymbol.Name, methodName, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -363,25 +246,6 @@ namespace TrainOP.Generators
             }
 
             return HandlerFuncTypeBuilder.ResolveCanonicalFuncReturnType(schema);
-        }
-
-        /// <summary>
-        /// Determines whether a method name is a generated or built-in route extension used in chains.
-        /// </summary>
-        private static bool IsRouteExtensionMethodName(string methodName)
-        {
-            return string.Equals(methodName, "Station", StringComparison.Ordinal)
-                || string.Equals(methodName, "StationAsync", StringComparison.Ordinal)
-                || string.Equals(methodName, "RegisterStation", StringComparison.Ordinal)
-                || string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
-        }
-
-        /// <summary>
-        /// Resolves the generated extension method name for a handler schema.
-        /// </summary>
-        private static string GetRouteMethodName(StationHandlerBinding schema)
-        {
-            return schema.ExtensionMethodName;
         }
 
         /// <summary>
@@ -475,7 +339,7 @@ namespace TrainOP.Generators
             }
 
             var handlerTypeName = HandlerFuncTypeBuilder.BuildHandlerTypeName(schema, delegateName);
-            var routeMethodName = GetRouteMethodName(schema);
+            var routeMethodName = schema.ExtensionMethodName;
             EmitOverloadResolutionPriority(source, schema);
             source.Append("        public static TrainRoute ")
                 .Append(routeMethodName)
@@ -761,7 +625,7 @@ namespace TrainOP.Generators
             }
 
             var handlerTypeName = HandlerFuncTypeBuilder.BuildHandlerTypeName(schema, delegateName);
-            var routeMethodName = GetRouteMethodName(schema);
+            var routeMethodName = schema.ExtensionMethodName;
             var stationLabelExpression = "stationName";
             EmitOverloadResolutionPriority(source, schema);
             source.Append("        public static TrainRoute ")
@@ -780,7 +644,7 @@ namespace TrainOP.Generators
                     source.Append("            return route.ServiceStation(").Append(stationLabelExpression).AppendLine(", async (red, token) =>");
                     source.AppendLine("            {");
                     source.AppendLine("                var manifest = red.Manifest;");
-                    EmitPullWagons(source, schema);
+                    WagonBindingCodegen.EmitPullWagonStatements(source, schema);
                     EmitHandlerInvocation(source, schema, tokenVariable: "token", redVariable: "red");
                 }
                 else
@@ -788,7 +652,7 @@ namespace TrainOP.Generators
                     source.Append("            return route.ServiceStation(").Append(stationLabelExpression).AppendLine(", (red, token) =>");
                     source.AppendLine("            {");
                     source.AppendLine("                var manifest = red.Manifest;");
-                    EmitPullWagons(source, schema);
+                    WagonBindingCodegen.EmitPullWagonStatements(source, schema);
                     EmitHandlerInvocation(source, schema, tokenVariable: "token", redVariable: "red");
                 }
             }
@@ -796,21 +660,21 @@ namespace TrainOP.Generators
             {
                 source.Append("            return route.RegisterStation(").Append(stationLabelExpression).AppendLine(", async (manifest, token) =>");
                 source.AppendLine("            {");
-                EmitPullWagons(source, schema);
+                WagonBindingCodegen.EmitPullWagonStatements(source, schema);
                 EmitHandlerInvocation(source, schema, tokenVariable: "token", redVariable: null);
             }
             else if (schema.HasCancellationToken)
             {
                 source.Append("            return route.RegisterStation(").Append(stationLabelExpression).AppendLine(", (manifest, token) =>");
                 source.AppendLine("            {");
-                EmitPullWagons(source, schema);
+                WagonBindingCodegen.EmitPullWagonStatements(source, schema);
                 EmitHandlerInvocation(source, schema, tokenVariable: "token", redVariable: null);
             }
             else
             {
                 source.Append("            return route.RegisterStation(").Append(stationLabelExpression).AppendLine(", manifest =>");
                 source.AppendLine("            {");
-                EmitPullWagons(source, schema);
+                WagonBindingCodegen.EmitPullWagonStatements(source, schema);
                 EmitHandlerInvocation(source, schema, tokenVariable: null, redVariable: null);
             }
 
@@ -983,14 +847,6 @@ namespace TrainOP.Generators
             {
                 source.AppendLine(");");
             }
-        }
-
-        /// <summary>
-        /// Emits manifest wagon pull statements for each handler input wagon.
-        /// </summary>
-        private static void EmitPullWagons(StringBuilder source, StationHandlerBinding schema)
-        {
-            WagonBindingCodegen.EmitPullWagonStatements(source, schema);
         }
 
         /// <summary>
@@ -1519,27 +1375,6 @@ namespace TrainOP.Generators
                 }
 
                 return wagonNameSets.Count > 1;
-            }
-
-            private static string FormatWagonNames(ImmutableArray<WagonBinding> wagons)
-            {
-                if (wagons.Length == 0)
-                {
-                    return "(none)";
-                }
-
-                var builder = new StringBuilder();
-                for (var i = 0; i < wagons.Length; i++)
-                {
-                    if (i > 0)
-                    {
-                        builder.Append(", ");
-                    }
-
-                    builder.Append(wagons[i].Name);
-                }
-
-                return builder.ToString();
             }
 
             public string[] ReturnMembers =>
