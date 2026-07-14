@@ -1,5 +1,7 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 
 namespace TrainOP.Generators
@@ -21,6 +23,7 @@ namespace TrainOP.Generators
                 TrainRouteDiagnostics.CargoManifestReplacement,
                 TrainRouteDiagnostics.OrphanDataHandler,
                 TrainRouteDiagnostics.UnusedSeedWagon,
+                TrainRouteDiagnostics.RouteBranchJoinFailed,
             ];
 
         /// <summary>
@@ -58,9 +61,52 @@ namespace TrainOP.Generators
                     }
                 }
 
+                var joinDownstream = new HashSet<InvocationExpressionSyntax>();
+                var joinSets = BranchRouteJoinSetFinder.Find(tree, semanticModel);
+                foreach (var joinSet in joinSets)
+                {
+                    var validation = BranchRouteJoinValidator.Validate(joinSet);
+                    foreach (var diagnostic in validation.Diagnostics)
+                    {
+                        modelContext.ReportDiagnostic(diagnostic);
+                    }
+
+                    if (joinSet.DownstreamStation != null)
+                    {
+                        // Always suppress TOP006 on fork-downstream (TOP015 covers join failures).
+                        joinDownstream.Add(joinSet.DownstreamStation);
+                    }
+
+                    if (!validation.CanMerge || joinSet.DownstreamStation == null)
+                    {
+                        continue;
+                    }
+
+                    if (ChainDetector.TryBuildChainFromStationInvocation(
+                        joinSet.DownstreamStation,
+                        semanticModel,
+                        out var downstreamChain))
+                    {
+                        foreach (var link in downstreamChain.Stations)
+                        {
+                            joinDownstream.Add(link.Invocation);
+                        }
+
+                        foreach (var diagnostic in ChainGraphSimulator
+                            .Simulate(downstreamChain, validation.MergedTerminalWagons)
+                            .Diagnostics)
+                        {
+                            modelContext.ReportDiagnostic(diagnostic);
+                        }
+                    }
+                }
+
                 var chainedInvocations = ChainDetector.CollectChainedStationInvocations(tree, semanticModel);
-                var chainedSet = new System.Collections.Generic.HashSet<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>(
-                    chainedInvocations);
+                var chainedSet = new HashSet<InvocationExpressionSyntax>(chainedInvocations);
+                foreach (var invocation in joinDownstream)
+                {
+                    chainedSet.Add(invocation);
+                }
 
                 foreach (var orphan in ChainDetector.DetectOrphanStationInvocations(
                     tree,

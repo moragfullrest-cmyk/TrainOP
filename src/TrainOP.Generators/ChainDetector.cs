@@ -125,6 +125,230 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
+        /// Builds a <see cref="RouteChain"/> starting at an already-identified Station invocation
+        /// (inclusive) and continuing through further fluent stations.
+        /// </summary>
+        internal static bool TryBuildChainFromStationInvocation(
+            InvocationExpressionSyntax startStation,
+            SemanticModel semanticModel,
+            out RouteChain chain)
+        {
+            chain = null;
+
+            if (startStation == null || semanticModel == null)
+            {
+                return false;
+            }
+
+            var stations = ImmutableArray.CreateBuilder<StationChainLink>();
+
+            if (StationSyntaxHelper.IsCandidateServiceStationInvocation(startStation)
+                && StationSyntaxHelper.TryGetDataServiceStationInvocation(
+                    startStation,
+                    semanticModel,
+                    out var serviceStationName,
+                    out var serviceHandlerLocation,
+                    out var serviceHandlerBinding))
+            {
+                stations.Add(new StationChainLink(
+                    serviceStationName,
+                    serviceHandlerLocation,
+                    serviceHandlerLocation,
+                    serviceHandlerBinding,
+                    startStation));
+            }
+            else if (StationSyntaxHelper.TryGetDataStationInvocation(
+                startStation,
+                semanticModel,
+                out var stationName,
+                out var handlerLocation,
+                out var handlerBinding))
+            {
+                stations.Add(new StationChainLink(
+                    stationName,
+                    startStation.ArgumentList.Arguments[0].GetLocation(),
+                    handlerLocation,
+                    handlerBinding,
+                    startStation));
+            }
+            else
+            {
+                return false;
+            }
+
+            var anchor = new RouteChainAnchor(
+                RouteChainAnchorKind.BranchJoin,
+                startStation,
+                startStation.GetLocation(),
+                GetContainingMethod(startStation, semanticModel));
+
+            var current = (ExpressionSyntax)startStation;
+            while (TryAdvanceChain(current, semanticModel, stations, out current, null)) ;
+
+            chain = new RouteChain(anchor, stations.ToImmutable());
+            return true;
+        }
+
+        /// <summary>
+        /// Builds a <see cref="RouteChain"/> from a known chain root forward until
+        /// <paramref name="endpoint"/> (inclusive), without continuing past a fork into an outer join.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="DetectChains"/>, this accepts bare <c>new TrainRoute()</c> / local endpoints
+        /// with zero stations, and does not require a local identifier to already be a Station receiver.
+        /// </remarks>
+        internal static bool TryBuildChainEndingAt(
+            ExpressionSyntax endpoint,
+            SemanticModel semanticModel,
+            out RouteChain chain)
+        {
+            chain = null;
+
+            var target = ReceiverExpressionPeel.UnwrapTransparent(endpoint);
+            if (target == null)
+            {
+                return false;
+            }
+
+            if (!TryFindChainRootEndingAt(target, semanticModel, out var root, out var anchorKind))
+            {
+                return false;
+            }
+
+            var anchor = new RouteChainAnchor(
+                anchorKind,
+                root,
+                root.GetLocation(),
+                GetContainingMethod(root, semanticModel));
+
+            var stations = ImmutableArray.CreateBuilder<StationChainLink>();
+            var current = root;
+
+            while (!MatchesChainEndpoint(current, endpoint, target))
+            {
+                if (!TryAdvanceChain(current, semanticModel, stations, out var next, null))
+                {
+                    return false;
+                }
+
+                current = next;
+            }
+
+            chain = new RouteChain(anchor, stations.ToImmutable());
+            return true;
+        }
+
+        /// <summary>
+        /// Walks backward from <paramref name="endpoint"/> through Station / StationAsync / ServiceStation
+        /// receivers until a <c>new TrainRoute()</c> or resolvable local root is found.
+        /// </summary>
+        private static bool TryFindChainRootEndingAt(
+            ExpressionSyntax endpoint,
+            SemanticModel semanticModel,
+            out ExpressionSyntax root,
+            out RouteChainAnchorKind anchorKind)
+        {
+            root = null;
+            anchorKind = default;
+
+            var current = endpoint;
+
+            while (current != null)
+            {
+                current = ReceiverExpressionPeel.UnwrapTransparent(current);
+                if (current == null)
+                {
+                    return false;
+                }
+
+                if (current is ObjectCreationExpressionSyntax objectCreation
+                    && StationSyntaxHelper.IsTrainRouteCreation(objectCreation, semanticModel))
+                {
+                    root = objectCreation;
+                    anchorKind = RouteChainAnchorKind.ObjectCreation;
+                    return true;
+                }
+
+                if (current is IdentifierNameSyntax identifier
+                    && TryGetPrecedingTrainRouteCreationAssignment(identifier, semanticModel, out _))
+                {
+                    root = identifier;
+                    anchorKind = RouteChainAnchorKind.LocalVariable;
+                    return true;
+                }
+
+                if (!TryGetChainMethodReceiver(current, out var receiver))
+                {
+                    return false;
+                }
+
+                current = receiver;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// If <paramref name="expression"/> is a Station / StationAsync / ServiceStation invocation,
+        /// returns its receiver expression.
+        /// </summary>
+        private static bool TryGetChainMethodReceiver(
+            ExpressionSyntax expression,
+            out ExpressionSyntax receiver)
+        {
+            receiver = null;
+
+            if (expression is not InvocationExpressionSyntax invocation
+                || invocation.Expression is not MemberAccessExpressionSyntax memberAccess
+                || !ReferenceEquals(invocation.Expression, memberAccess))
+            {
+                return false;
+            }
+
+            var methodName = memberAccess.Name.Identifier.ValueText;
+            if (!string.Equals(methodName, "Station", StringComparison.Ordinal)
+                && !string.Equals(methodName, "StationAsync", StringComparison.Ordinal)
+                && !string.Equals(methodName, "ServiceStation", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (invocation.ArgumentList.Arguments.Count != 2)
+            {
+                return false;
+            }
+
+            receiver = memberAccess.Expression;
+            return receiver != null;
+        }
+
+        /// <summary>
+        /// Determines whether <paramref name="current"/> matches the chain endpoint (raw or unwrapped forms).
+        /// </summary>
+        private static bool MatchesChainEndpoint(
+            ExpressionSyntax current,
+            ExpressionSyntax endpoint,
+            ExpressionSyntax unwrappedEndpoint)
+        {
+            if (ReferenceEquals(current, endpoint)
+                || ReferenceEquals(current, unwrappedEndpoint))
+            {
+                return true;
+            }
+
+            var unwrappedCurrent = ReceiverExpressionPeel.UnwrapTransparent(current);
+            if (ReferenceEquals(unwrappedCurrent, endpoint)
+                || ReferenceEquals(unwrappedCurrent, unwrappedEndpoint))
+            {
+                return true;
+            }
+
+            var outermostCurrent = ReceiverExpressionPeel.WrapTransparentOutermost(current);
+            var outermostEndpoint = ReceiverExpressionPeel.WrapTransparentOutermost(endpoint);
+            return ReferenceEquals(outermostCurrent, outermostEndpoint);
+        }
+
+        /// <summary>
         /// Attempts to detect a route chain anchor at the given syntax node.
         /// </summary>
         private static bool TryDetectAnchor(
@@ -205,12 +429,13 @@ namespace TrainOP.Generators
         /// </summary>
         private static bool IsLocalVariableChainReceiver(IdentifierNameSyntax identifier)
         {
-            if (identifier.Parent is not MemberAccessExpressionSyntax memberAccess)
+            var receiver = ReceiverExpressionPeel.WrapTransparentOutermost(identifier);
+            if (receiver.Parent is not MemberAccessExpressionSyntax memberAccess)
             {
                 return false;
             }
 
-            if (!ReferenceEquals(memberAccess.Expression, identifier))
+            if (!ReferenceEquals(memberAccess.Expression, receiver))
             {
                 return false;
             }
@@ -224,7 +449,7 @@ namespace TrainOP.Generators
         /// <summary>
         /// Finds the latest direct <c>new TrainRoute()</c> assignment to the local before its use site.
         /// </summary>
-        private static bool TryGetPrecedingTrainRouteCreationAssignment(
+        internal static bool TryGetPrecedingTrainRouteCreationAssignment(
             IdentifierNameSyntax identifier,
             SemanticModel semanticModel,
             out ObjectCreationExpressionSyntax creation)
@@ -264,7 +489,9 @@ namespace TrainOP.Generators
                 ObjectCreationExpressionSyntax objectCreation = null;
 
                 if (node is VariableDeclaratorSyntax declarator
-                    && declarator.Initializer?.Value is ObjectCreationExpressionSyntax declaratorCreation)
+                    && declarator.Initializer != null
+                    && ReceiverExpressionPeel.UnwrapTransparent(declarator.Initializer.Value)
+                        is ObjectCreationExpressionSyntax declaratorCreation)
                 {
                     if (semanticModel.GetDeclaredSymbol(declarator) is ILocalSymbol declaredLocal
                         && SymbolEqualityComparer.Default.Equals(declaredLocal, localSymbol))
@@ -275,7 +502,8 @@ namespace TrainOP.Generators
                 }
                 else if (node is AssignmentExpressionSyntax assignment
                     && assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
-                    && assignment.Right is ObjectCreationExpressionSyntax assignmentCreation
+                    && ReceiverExpressionPeel.UnwrapTransparent(assignment.Right)
+                        is ObjectCreationExpressionSyntax assignmentCreation
                     && semanticModel.GetSymbolInfo(assignment.Left).Symbol is ILocalSymbol assignedLocal
                     && SymbolEqualityComparer.Default.Equals(assignedLocal, localSymbol))
                 {
@@ -321,7 +549,7 @@ namespace TrainOP.Generators
         /// <summary>
         /// Advances along a route chain by resolving the next station or service-station invocation.
         /// </summary>
-        private static bool TryAdvanceChain(
+        internal static bool TryAdvanceChain(
             ExpressionSyntax current,
             SemanticModel semanticModel,
             ImmutableArray<StationChainLink>.Builder stations,
@@ -383,7 +611,8 @@ namespace TrainOP.Generators
         {
             serviceStationInvocation = null;
 
-            if (current.Parent is not MemberAccessExpressionSyntax memberAccess)
+            var receiver = ReceiverExpressionPeel.WrapTransparentOutermost(current);
+            if (receiver.Parent is not MemberAccessExpressionSyntax memberAccess)
             {
                 return false;
             }
@@ -393,7 +622,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (!ReferenceEquals(memberAccess.Expression, current))
+            if (!ReferenceEquals(memberAccess.Expression, receiver))
             {
                 return false;
             }
@@ -438,7 +667,8 @@ namespace TrainOP.Generators
                 return true;
             }
 
-            if (current.Parent is not MemberAccessExpressionSyntax memberAccess)
+            var receiver = ReceiverExpressionPeel.WrapTransparentOutermost(current);
+            if (receiver.Parent is not MemberAccessExpressionSyntax memberAccess)
             {
                 return false;
             }
@@ -448,7 +678,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (!ReferenceEquals(memberAccess.Expression, current))
+            if (!ReferenceEquals(memberAccess.Expression, receiver))
             {
                 return false;
             }
@@ -475,7 +705,8 @@ namespace TrainOP.Generators
         {
             stationInvocation = null;
 
-            if (current.Parent is not MemberAccessExpressionSyntax memberAccess)
+            var receiver = ReceiverExpressionPeel.WrapTransparentOutermost(current);
+            if (receiver.Parent is not MemberAccessExpressionSyntax memberAccess)
             {
                 return false;
             }
@@ -486,7 +717,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (!ReferenceEquals(memberAccess.Expression, current))
+            if (!ReferenceEquals(memberAccess.Expression, receiver))
             {
                 return false;
             }

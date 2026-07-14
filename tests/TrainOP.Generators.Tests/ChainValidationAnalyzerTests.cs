@@ -39,15 +39,15 @@ public static class PaymentRoute
         }
 
         /// <summary>
-        /// Verifies that the first station is allowed when wagons come from an external Travel manifest.
+        /// Verifies that TOP001 is reported when the first station requires wagons without a seed.
         /// </summary>
         [Fact]
-        public async Task Analyzer_AllowsFirstStation_WhenWagonsComeFromExternalTravelManifest()
+        public async Task Analyzer_ReportsTop001_WhenFirstStationRequiresWagonsWithoutSeed()
         {
             const string source = @"
 using TrainOP;
 
-public static class ExternalSeedRoute
+public static class MissingSeedRoute
 {
     public static TrainRoute Build() => new TrainRoute()
         .Station(""Double"", (string paymentId, decimal amount) =>
@@ -56,7 +56,7 @@ public static class ExternalSeedRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.Contains(diagnostics, d => d.Id == "TOP001");
         }
 
         /// <summary>
@@ -228,6 +228,181 @@ public static class LocalRoute
         }
 
         /// <summary>
+        /// Verifies that parentheses around a creation receiver do not break chain detection.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ParenthesizedCreationReceiver_ProducesNoTop006()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class ParenRoute
+{
+    public static TrainRoute Build() => (new TrainRoute())
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that nested parentheses around a local creation receiver do not break chain detection.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ParenthesizedLocalReceiver_ProducesNoTop006()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class ParenLocalRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute();
+        return ((route)).Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+            .Station(""Discount"", (string paymentId, decimal amount) =>
+                new { paymentId, amount = amount * 0.9m });
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that a null-forgiving operator on a local creation receiver does not break chain detection.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_NullForgivingLocalReceiver_ProducesNoTop006()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class NullForgivingRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute();
+        return route!.Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+            .Station(""Discount"", (string paymentId, decimal amount) =>
+                new { paymentId, amount = amount * 0.9m });
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that a cast around a creation receiver does not break chain detection.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_CastCreationReceiver_ProducesNoTop006()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class CastRoute
+{
+    public static TrainRoute Build() => ((TrainRoute)(object)new TrainRoute())
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that a cast around a local creation receiver does not break chain detection.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_CastLocalReceiver_ProducesNoTop006()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class CastLocalRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute();
+        return ((TrainRoute)(object)route).Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+            .Station(""Discount"", (string paymentId, decimal amount) =>
+                new { paymentId, amount = amount * 0.9m });
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that await Task.FromResult around a creation receiver does not break chain detection.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_AwaitFromResultCreationReceiver_ProducesNoTop006()
+        {
+            const string source = @"
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class AwaitCreationRoute
+{
+    public static async Task<TrainRoute> BuildAsync() => (await Task.FromResult(new TrainRoute()))
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that await Task.FromResult around a local creation receiver does not break chain detection.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_AwaitFromResultLocalReceiver_ProducesNoTop006()
+        {
+            const string source = @"
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class AwaitLocalRoute
+{
+    public static async Task<TrainRoute> BuildAsync()
+    {
+        var route = new TrainRoute();
+        return (await Task.FromResult(route)).Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+            .Station(""Discount"", (string paymentId, decimal amount) =>
+                new { paymentId, amount = amount * 0.9m });
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
         /// Verifies that TOP006 is reported when a local is assigned from a non-creation source.
         /// </summary>
         [Fact]
@@ -250,6 +425,79 @@ public static class BrokenRoute
             var diagnostics = await RunAnalyzerAsync(source);
 
             Assert.Contains(diagnostics, d => d.Id == "TOP006");
+        }
+
+        /// <summary>
+        /// Verifies that TOP006 is reported for Build().Station composition (deferred anchor).
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop006_WhenStationChainedOnBuildCall()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class BrokenRoute
+{
+    public static TrainRoute Build() =>
+        CreateSeed()
+            .Station(""Discount"", (decimal amount) => new { amount = amount * 0.9m });
+
+    private static TrainRoute CreateSeed() =>
+        new TrainRoute().Station(""Seed"", () => new { amount = 100m });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP006");
+        }
+
+        /// <summary>
+        /// Verifies that a matching ternary join does not report TOP006 or other errors on Join.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_TernaryJoin_MatchingArms_NoTop006NoErrors()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class JoinedRoute
+{
+    public static TrainRoute Build(bool flag) =>
+        (flag
+            ? new TrainRoute().Station(""Seed"", () => new { value = 1 })
+            : new TrainRoute().Station(""Seed"", () => new { value = 2 }))
+        .Station(""Join"", (int value) => new { value });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP015");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that conflicting branch wagon types report TOP015 and suppress TOP006 on Join.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_TernaryJoin_ConflictingTypes_ReportsTop015_NoTop006OnJoin()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class BrokenJoinRoute
+{
+    public static TrainRoute Build(bool flag) =>
+        (flag
+            ? new TrainRoute().Station(""Left"", () => new { value = 1 })
+            : new TrainRoute().Station(""Right"", () => new { value = ""text"" }))
+        .Station(""Join"", (int value) => new { value });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP015");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
         }
 
         /// <summary>

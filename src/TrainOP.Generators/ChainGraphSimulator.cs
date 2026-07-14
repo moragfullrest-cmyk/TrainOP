@@ -72,12 +72,47 @@ namespace TrainOP.Generators
         /// </summary>
         public static ChainSimulationResult Simulate(RouteChain chain)
         {
+            return SimulateCore(chain, hasInitial: false, initialWagons: default);
+        }
+
+        /// <summary>
+        /// Walks the chain after seeding live wagons (e.g. merged terminals from a branch join).
+        /// Skips unused-seed reporting (seed wagons are not produced by a station-0 seed in this path).
+        /// </summary>
+        public static ChainSimulationResult Simulate(
+            RouteChain chain,
+            ImmutableArray<WagonBinding> initialWagons)
+        {
+            return SimulateCore(chain, hasInitial: true, initialWagons);
+        }
+
+        /// <summary>
+        /// Shared simulation walk with optional initial live wagons.
+        /// </summary>
+        private static ChainSimulationResult SimulateCore(
+            RouteChain chain,
+            bool hasInitial,
+            ImmutableArray<WagonBinding> initialWagons)
+        {
             var state = new SimulationState();
+
+            if (hasInitial && !initialWagons.IsDefaultOrEmpty)
+            {
+                foreach (var wagon in initialWagons)
+                {
+                    if (!state.Live.ContainsKey(wagon.Name))
+                    {
+                        state.LiveOrder.Add(wagon.Name);
+                    }
+
+                    state.Live[wagon.Name] = new LiveWagon(wagon, "<join>");
+                }
+            }
 
             for (var i = 0; i < chain.Stations.Length; i++)
             {
                 var station = chain.Stations[i];
-                ProcessStationInputs(station, i, state);
+                ProcessStationInputs(station, state);
 
                 if (TryHandleSpecialReturn(station, state))
                 {
@@ -98,9 +133,20 @@ namespace TrainOP.Generators
                 }
             }
 
-            ReportUnusedSeedWagons(chain, state);
+            if (!hasInitial)
+            {
+                ReportUnusedSeedWagons(chain, state);
+            }
+
+            var terminalWagons = state.HasUnknownReturn
+                ? ImmutableArray<WagonBinding>.Empty
+                : state.LiveOrder
+                    .Where(name => state.Live.ContainsKey(name))
+                    .Select(name => state.Live[name].Binding)
+                    .ToImmutableArray();
 
             return new ChainSimulationResult(
+                terminalWagons,
                 state.HasUnknownReturn,
                 state.Diagnostics.ToImmutableArray());
         }
@@ -110,7 +156,6 @@ namespace TrainOP.Generators
         /// </summary>
         private static void ProcessStationInputs(
             StationChainLink station,
-            int stationIndex,
             SimulationState state)
         {
             if (state.HasUnknownReturn)
@@ -142,12 +187,6 @@ namespace TrainOP.Generators
                 {
                     if (input.IsOptional)
                     {
-                        continue;
-                    }
-
-                    if (stationIndex == 0)
-                    {
-                        // Wagons may be supplied by Travel(manifest) before the first station runs.
                         continue;
                     }
 
@@ -324,7 +363,7 @@ namespace TrainOP.Generators
         /// <summary>
         /// Checks whether an existing wagon type is compatible with a required input type.
         /// </summary>
-        private static bool TypesCompatible(ITypeSymbol existing, ITypeSymbol required)
+        internal static bool TypesCompatible(ITypeSymbol existing, ITypeSymbol required)
         {
             if (existing == null || required == null)
             {
@@ -369,26 +408,5 @@ namespace TrainOP.Generators
             return false;
         }
 
-    }
-
-    /// <summary>
-    /// Outcome of simulating wagon flow through a route chain.
-    /// </summary>
-    internal sealed class ChainSimulationResult
-    {
-        /// <summary>
-        /// Creates a simulation result with unknown-return flag and diagnostics.
-        /// </summary>
-        public ChainSimulationResult(
-            bool hasUnknownReturn,
-            ImmutableArray<Diagnostic> diagnostics)
-        {
-            HasUnknownReturn = hasUnknownReturn;
-            Diagnostics = diagnostics;
-        }
-
-        public bool HasUnknownReturn { get; }
-
-        public ImmutableArray<Diagnostic> Diagnostics { get; }
     }
 }

@@ -6,6 +6,7 @@ TOP001 | TrainOP.Generators | Error | Required wagon is not available in the rou
 TOP002 | TrainOP.Generators | Error | Wagon type conflict in route chain
 TOP003 | TrainOP.Generators | Error | Removed wagon is required later in the route chain
 TOP004 | TrainOP.Generators | Warning | Station returns CargoManifest
-TOP006 | TrainOP.Generators | Error | Data-oriented handler is outside a TrainRoute chain
+TOP006 | TrainOP.Generators | Error | Data-oriented handler is outside a TrainRoute chain (direct fluent or local from new)
 TOP007 | TrainOP.Generators | Info | Seed wagon is never consumed
 TOP008 | TrainOP.Generators | Error | Conflicting wagon names for the same handler type signature
+TOP015 | TrainOP.Generators | Error | Cannot join route branches before a downstream station (unresolved arm, unknown terminals, or type conflict)

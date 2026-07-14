@@ -41,35 +41,30 @@ internal sealed class NestedBranchingRouteExample : IExample
 
     private static object DispatchBranch(string paymentId, decimal amount, string channel)
     {
-        var manifest = new CargoManifest()
-            .LoadWagon("paymentId", paymentId)
-            .LoadWagon("amount", amount)
-            .LoadWagon("channel", channel);
-
         var subRoute = channel == "premium"
-            ? PremiumBranchRoute.Build()
-            : StandardBranchRoute.Build();
+            ? PremiumBranchRoute.Build(paymentId, amount)
+            : StandardBranchRoute.Build(paymentId, amount);
 
-        var subReport = subRoute.DispatchTrain().Travel(manifest);
+        var subReport = subRoute.DispatchTrain().Travel();
         if (!subReport.ReachedDestination)
         {
             return subReport.TerminalSignal;
         }
 
-        var subManifest = subReport.TerminalSignal.Manifest;
         return new
         {
-            paymentId = subManifest.PullWagon<string>("paymentId"),
-            amount = subManifest.PullWagon<decimal>("amount"),
-            channel = subManifest.PullWagon<string>("channel"),
+            paymentId = subReport.Get<string>("paymentId"),
+            amount = subReport.Get<decimal>("amount"),
+            channel = subReport.Get<string>("channel"),
         };
     }
 
     private static class PremiumBranchRoute
     {
-        public static TrainRoute Build()
+        public static TrainRoute Build(string paymentId, decimal amount)
         {
             return new TrainRoute()
+                .Station("Seed", () => new { paymentId, amount })
                 .Station("ApplyPremiumDiscount", (string paymentId, decimal amount) =>
                     new { paymentId = paymentId + "-premium", amount = amount * 0.8m, channel = "premium" });
         }
@@ -77,9 +72,10 @@ internal sealed class NestedBranchingRouteExample : IExample
 
     private static class StandardBranchRoute
     {
-        public static TrainRoute Build()
+        public static TrainRoute Build(string paymentId, decimal amount)
         {
             return new TrainRoute()
+                .Station("Seed", () => new { paymentId, amount })
                 .Station("ApplyStandardFee", (string paymentId, decimal amount) =>
                     new { paymentId = paymentId + "-standard", amount = amount + 2m, channel = "standard" });
         }

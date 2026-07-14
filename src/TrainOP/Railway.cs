@@ -771,10 +771,14 @@ namespace TrainOP
 
         /// <summary>
         /// Executes the route from the specified manifest.
+        /// Prefer a seed station (() =&gt; new { … }) and <see cref="Travel()"/> instead.
         /// </summary>
+        [Obsolete("Pass input data via a seed station (() => new { … }) at the top of the route, then call Travel(). Do not seed from CargoManifest.")]
         public RouteReport Travel(CargoManifest manifest)
         {
-            return Travel(manifest, CancellationToken.None);
+            return TravelCoreAsync(manifest, CancellationToken.None, synchronousOnly: true)
+                .GetAwaiter()
+                .GetResult();
         }
 
         /// <summary>
@@ -782,12 +786,16 @@ namespace TrainOP
         /// </summary>
         public RouteReport Travel()
         {
-            return Travel(new CargoManifest(), CancellationToken.None);
+            return TravelCoreAsync(new CargoManifest(), CancellationToken.None, synchronousOnly: true)
+                .GetAwaiter()
+                .GetResult();
         }
 
         /// <summary>
         /// Executes the route from the specified manifest with cancellation support.
+        /// Prefer a seed station (() =&gt; new { … }) and <see cref="Travel(CancellationToken)"/> instead.
         /// </summary>
+        [Obsolete("Pass input data via a seed station (() => new { … }) at the top of the route, then call Travel(CancellationToken). Do not seed from CargoManifest.")]
         public RouteReport Travel(CargoManifest manifest, CancellationToken cancellationToken)
         {
             return TravelCoreAsync(manifest, cancellationToken, synchronousOnly: true)
@@ -800,12 +808,16 @@ namespace TrainOP
         /// </summary>
         public RouteReport Travel(CancellationToken cancellationToken)
         {
-            return Travel(new CargoManifest(), cancellationToken);
+            return TravelCoreAsync(new CargoManifest(), cancellationToken, synchronousOnly: true)
+                .GetAwaiter()
+                .GetResult();
         }
 
         /// <summary>
         /// Asynchronously executes the route from the specified manifest.
+        /// Prefer a seed station (() =&gt; new { … }) and <see cref="TravelAsync()"/> / <see cref="TravelAsync(CancellationToken)"/> instead.
         /// </summary>
+        [Obsolete("Pass input data via a seed station (() => new { … }) at the top of the route, then call TravelAsync(). Do not seed from CargoManifest.")]
         public Task<RouteReport> TravelAsync(CargoManifest manifest, CancellationToken cancellationToken = default(CancellationToken))
         {
             return TravelCoreAsync(manifest, cancellationToken, synchronousOnly: false);
@@ -816,7 +828,7 @@ namespace TrainOP
         /// </summary>
         public Task<RouteReport> TravelAsync()
         {
-            return TravelAsync(new CargoManifest(), CancellationToken.None);
+            return TravelCoreAsync(new CargoManifest(), CancellationToken.None, synchronousOnly: false);
         }
 
         /// <summary>
@@ -824,7 +836,7 @@ namespace TrainOP
         /// </summary>
         public Task<RouteReport> TravelAsync(CancellationToken cancellationToken)
         {
-            return TravelAsync(new CargoManifest(), cancellationToken);
+            return TravelCoreAsync(new CargoManifest(), cancellationToken, synchronousOnly: false);
         }
 
         /// <summary>

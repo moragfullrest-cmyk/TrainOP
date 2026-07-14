@@ -29,6 +29,7 @@ var route = new TrainRoute()
             ? RailwaySignals.Green(new { paymentId, amount })
             : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"));
 
+// Вход — только seed сверху; Travel() без манифеста
 var report = route.DispatchTrain().Travel();
 var paymentId = report.Get<string>("paymentId");
 var amount = report.Get<decimal>("amount");

@@ -57,7 +57,7 @@ namespace TrainOP.Generators
         public static readonly DiagnosticDescriptor OrphanDataHandler = new DiagnosticDescriptor(
             id: "TOP006",
             title: "Data-oriented handler is outside a TrainRoute chain",
-            messageFormat: "Data-oriented handler must be part of a TrainRoute chain starting with 'new TrainRoute()'",
+            messageFormat: "Data-oriented handler must be part of a TrainRoute chain starting with 'new TrainRoute()' (direct fluent chain or a local assigned from it)",
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
@@ -83,5 +83,17 @@ namespace TrainOP.Generators
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when forking TrainRoute branches cannot be joined before a downstream Station.
+        /// </summary>
+        public static readonly DiagnosticDescriptor RouteBranchJoinFailed = new DiagnosticDescriptor(
+            id: "TOP015",
+            title: "Route branch join failed",
+            messageFormat: "Cannot join route branches before station '{0}': {1}",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }
+

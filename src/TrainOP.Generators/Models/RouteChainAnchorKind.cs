@@ -14,5 +14,11 @@ namespace TrainOP.Generators.Models
         /// Anchor at a local variable assigned once from <c>new TrainRoute()</c>.
         /// </summary>
         LocalVariable,
+
+        /// <summary>
+        /// Synthetic anchor for a downstream chain after a forking receiver join.
+        /// </summary>
+        BranchJoin,
     }
 }
+

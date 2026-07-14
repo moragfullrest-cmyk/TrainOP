@@ -37,20 +37,49 @@ var route = new TrainRoute()
 
 Имена параметров handler'а = ключи вагонов. Первая станция без параметров — seed. Генератор создаёт адаптеры вызовов станций.
 
-### Запуск
+**Валидные формы сборки цепочки** (analyzer / chain-dispatch):
 
 ```csharp
+// 1) Прямая fluent-цепочка
+var route = new TrainRoute()
+    .Station("Seed", () => new { id = 1 })
+    .Station("Next", (int id) => new { id = id + 1 });
+
+// 2) Локальная после new TrainRoute()
+var route = new TrainRoute();
+route = route
+    .Station("Seed", () => new { id = 1 })
+    .Station("Next", (int id) => new { id = id + 1 });
+```
+
+Фабрика вроде `PaymentRoute.Build()` допустима, если **внутри** — один из двух паттернов, а снаружи только `Build().DispatchTrain().Travel()`. Вызов `Build().Station(...)` / `CreateSeed().Station(...)` пока **не** поддерживается (TOP006) — плохо стыкуется с генераторами; отдельное решение позже.
+
+### Запуск
+
+Входные данные задаются **seed-станцией** в начале маршрута (замыкание внешних переменных или параметры `Build(...)`). `Travel()` запускает поезд с пустым стартовым манифестом; seed загружает вагоны первой станцией.
+
+```csharp
+RouteReport Handle(string paymentId, decimal amount) =>
+    new TrainRoute()
+        .Station("Seed", () => new { paymentId, amount })
+        .Station("Discount", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m })
+        .DispatchTrain()
+        .Travel();
+
 var train = route.DispatchTrain();
-
-// Пустой стартовый манифест
 var report = train.Travel();
-
-// С начальным манифестом
-var report2 = train.Travel(new CargoManifest().LoadWagon("id", 1));
+var paymentId = report.Get<string>("paymentId");
+var amount = report.Get<decimal>("amount");
+// или report["paymentId"]
 
 // С отменой
-var report3 = train.Travel(cancellationToken);
+var reportWithCt = train.Travel(cancellationToken);
 ```
+
+`Travel(CargoManifest)` / `TravelAsync(CargoManifest, …)` помечены **obsolete**: публичный канон не передаёт манифест на запуске.
+
+Доступ к терминальным вагонам — через `RouteReport` (`Get<T>` / индексатор). Typed deconstruct (`var (a, b) = …Travel()`) **не** используется: при C# 15 и ниже конфликты декомпозиции кортежей на общем terminal-типе не решаются языком.
 
 ### Асинхронное выполнение
 
@@ -186,23 +215,25 @@ Async-вариант data-handler'а:
 
 TrainOP не имеет отдельного API «switch/fork». Вложенные маршруты и ветвление собираются **композицией**:
 
-1. **Подмаршруты** — отдельные `TrainRoute`, обычно в статических фабриках (`Build()`).
-2. **Станция ветвления** — data-oriented `.Station`, которая по данным вагонов выбирает подмаршрут и вызывает `subRoute.DispatchTrain().Travel(manifest)`.
+1. **Подмаршруты** — отдельные `TrainRoute`, обычно в статических фабриках `Build(...)` с собственной seed-станцией.
+2. **Станция ветвления** — data-oriented `.Station`, которая по данным вагонов выбирает подмаршрут (`Build(paymentId, amount, …)`) и вызывает `subRoute.DispatchTrain().Travel()`.
 3. **Красный сигнал** подмаршрута пробрасывается наверх как `TerminalSignal` родительского маршрута.
 
-Каждый подмаршрут с цепочкой `.Station(...)` анализируется генератором **независимо**. Станция ветвления входит в data-oriented граф родительского маршрута.
+Каждый подмаршрут с цепочкой `.Station(...)` анализируется генератором **независимо**. Станция ветвления входит в data-oriented граф родительского маршрута. Манифест в юзер-коде не собирают: данные уходят в seed дочернего маршрута.
 
 ```csharp
 internal static class PremiumBranchRoute
 {
-    public static TrainRoute Build() => new TrainRoute()
+    public static TrainRoute Build(string paymentId, decimal amount) => new TrainRoute()
+        .Station("Seed", () => new { paymentId, amount })
         .Station("ApplyPremiumDiscount", (string paymentId, decimal amount) =>
             new { paymentId = paymentId + "-premium", amount = amount * 0.8m, channel = "premium" });
 }
 
 internal static class StandardBranchRoute
 {
-    public static TrainRoute Build() => new TrainRoute()
+    public static TrainRoute Build(string paymentId, decimal amount) => new TrainRoute()
+        .Station("Seed", () => new { paymentId, amount })
         .Station("ApplyStandardFee", (string paymentId, decimal amount) =>
             new { paymentId = paymentId + "-standard", amount = amount + 2m, channel = "standard" });
 }
@@ -211,27 +242,21 @@ var route = new TrainRoute()
     .Station("Seed", () => new { paymentId = "pay-branch", amount = 100m, tier = "premium" })
     .Station("Branch", (string paymentId, decimal amount, string tier) =>
     {
-        var manifest = new CargoManifest()
-            .LoadWagon("paymentId", paymentId)
-            .LoadWagon("amount", amount)
-            .LoadWagon("tier", tier);
-
         var subRoute = tier == "premium"
-            ? PremiumBranchRoute.Build()
-            : StandardBranchRoute.Build();
+            ? PremiumBranchRoute.Build(paymentId, amount)
+            : StandardBranchRoute.Build(paymentId, amount);
 
-        var subReport = subRoute.DispatchTrain().Travel(manifest);
+        var subReport = subRoute.DispatchTrain().Travel();
         if (!subReport.ReachedDestination)
         {
             return subReport.TerminalSignal;
         }
 
-        var subManifest = subReport.TerminalSignal.Manifest;
         return new
         {
-            paymentId = subManifest.PullWagon<string>("paymentId"),
-            amount = subManifest.PullWagon<decimal>("amount"),
-            channel = subManifest.PullWagon<string>("channel"),
+            paymentId = subReport.Get<string>("paymentId"),
+            amount = subReport.Get<decimal>("amount"),
+            channel = subReport.Get<string>("channel"),
         };
     })
     .Station("Finalize", (string paymentId, decimal amount, string channel) =>

@@ -27,16 +27,16 @@ dotnet add package TrainOP.Generators
 Указать версию явно:
 
 ```bash
-dotnet add package TrainOP --version 0.2.0
-dotnet add package TrainOP.Generators --version 0.2.0
+dotnet add package TrainOP --version 0.3.0
+dotnet add package TrainOP.Generators --version 0.3.0
 ```
 
 ### PackageReference в `.csproj`
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.2.0" />
-  <PackageReference Include="TrainOP.Generators" Version="0.2.0" />
+  <PackageReference Include="TrainOP" Version="0.3.0" />
+  <PackageReference Include="TrainOP.Generators" Version="0.3.0" />
 </ItemGroup>
 ```
 
@@ -83,7 +83,7 @@ dotnet add package TrainOP.Generators --source trainop-local
 
 1. В **Solution Explorer** (Visual Studio) или в дереве зависимостей должны быть оба пакета.
 2. Data-oriented `.Station(...)` компилируется без ошибок «метод не найден».
-3. Вызов `route.DispatchTrain().Travel()` возвращает typed tuple — это признак работы генератора.
+3. Data-oriented `.Station(...)` компилируется; терминальные вагоны — `report.Get<T>("name")` / `report["name"]`.
 
 Минимальный потребительский проект:
 
@@ -97,8 +97,8 @@ dotnet add package TrainOP.Generators --source trainop-local
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="TrainOP" Version="0.2.0" />
-    <PackageReference Include="TrainOP.Generators" Version="0.2.0" />
+    <PackageReference Include="TrainOP" Version="0.3.0" />
+    <PackageReference Include="TrainOP.Generators" Version="0.3.0" />
   </ItemGroup>
 </Project>
 ```

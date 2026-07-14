@@ -252,20 +252,20 @@ namespace TrainOP.Tests.DataOriented
         }
 
         /// <summary>
-        /// Verifies that Travel with an external manifest seeds wagons for the first station.
+        /// Verifies that a seed station closing over outer variables provides input wagons.
         /// </summary>
         [Fact]
-        public void Station_TravelWithManifest_UsesExternalSeed()
+        public void Station_SeedFromOuterScope_ProvidesInputWagons()
         {
+            var paymentId = "external";
+            var amount = 5m;
+
             var route = new TrainRoute()
+                .Station("Seed", () => new { paymentId, amount })
                 .Station("Double", (string paymentId, decimal amount) =>
                     new { paymentId, amount = amount * 2m });
 
-            var start = new CargoManifest()
-                .LoadWagon("paymentId", "external")
-                .LoadWagon("amount", 5m);
-
-            var report = route.DispatchTrain().Travel(start);
+            var report = route.DispatchTrain().Travel();
 
             Assert.Equal("external", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
             Assert.Equal(10m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
