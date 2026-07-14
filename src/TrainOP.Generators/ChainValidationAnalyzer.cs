@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 
 namespace TrainOP.Generators
 {
@@ -24,6 +25,7 @@ namespace TrainOP.Generators
                 TrainRouteDiagnostics.OrphanDataHandler,
                 TrainRouteDiagnostics.UnusedSeedWagon,
                 TrainRouteDiagnostics.RouteBranchJoinFailed,
+                TrainRouteDiagnostics.UnsupportedStationHandler,
             ];
 
         /// <summary>
@@ -116,6 +118,24 @@ namespace TrainOP.Generators
                     modelContext.ReportDiagnostic(Diagnostic.Create(
                         TrainRouteDiagnostics.OrphanDataHandler,
                         orphan.ArgumentList.Arguments[1].GetLocation()));
+                }
+
+                foreach (var invocation in tree.GetRoot()
+                    .DescendantNodes()
+                    .OfType<InvocationExpressionSyntax>())
+                {
+                    if (!StationSyntaxHelper.TryGetUnsupportedStationHandler(
+                        invocation,
+                        semanticModel,
+                        out var handlerLocation)
+                        || handlerLocation == null)
+                    {
+                        continue;
+                    }
+
+                    modelContext.ReportDiagnostic(Diagnostic.Create(
+                        TrainRouteDiagnostics.UnsupportedStationHandler,
+                        handlerLocation));
                 }
             });
         }

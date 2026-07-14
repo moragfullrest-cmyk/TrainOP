@@ -547,6 +547,113 @@ public static class FailRoute
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
+        /// <summary>
+        /// Verifies that method-group handlers in the current compilation validate like lambdas.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_AcceptsStaticMethodGroupHandler()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class MethodGroupRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", Seed)
+        .Station(""Discount"", Discount);
+
+    private static object Seed() => new { paymentId = ""pay-1"", amount = 100m };
+
+    private static object Discount(string paymentId, decimal amount) =>
+        new { paymentId, amount = amount * 0.9m };
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP016");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that anonymous-method handlers are accepted.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_AcceptsAnonymousMethodHandler()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class AnonymousRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", delegate(string paymentId, decimal amount)
+        {
+            return new { paymentId, amount = amount * 0.9m };
+        });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP016");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that a Func variable handler is rejected with TOP016.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop016_ForFuncVariableHandler()
+        {
+            const string source = @"
+using System;
+using TrainOP;
+
+public static class FuncVariableRoute
+{
+    public static TrainRoute Build()
+    {
+        Func<string, decimal, object> discount = (paymentId, amount) =>
+            new { paymentId, amount = amount * 0.9m };
+
+        return new TrainRoute()
+            .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+            .Station(""Discount"", discount);
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP016");
+        }
+
+        /// <summary>
+        /// Verifies that an ambiguous method-group handler is rejected with TOP016.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop016_ForAmbiguousMethodGroup()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class AmbiguousRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", Discount);
+
+    private static object Discount(string paymentId, decimal amount) =>
+        new { paymentId, amount = amount * 0.9m };
+
+    private static object Discount(string paymentId) =>
+        new { paymentId, amount = 0m };
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP016");
+        }
+
         private static async Task<ImmutableArray<Diagnostic>> RunAnalyzerAsync(string source)
         {
             var syntaxTree = CSharpSyntaxTree.ParseText(source);

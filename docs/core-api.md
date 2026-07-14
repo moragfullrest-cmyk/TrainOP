@@ -37,6 +37,14 @@ var route = new TrainRoute()
 
 Имена параметров handler'а = ключи вагонов. Первая станция без параметров — seed. Генератор создаёт адаптеры вызовов станций.
 
+**Допустимые формы handler'а** (в текущей compilation, доступной генератору):
+
+- лямбда: `(string paymentId, decimal amount) => …`
+- anonymous method: `delegate(string paymentId, decimal amount) { … }`
+- method group / local function: `.Station("Discount", Discount)` где `Discount` объявлен в этом проекте
+
+Не поддерживаются: переменные/`Func<>` без dataflow, неоднозначные перегрузки, методы только из referenced DLL без исходников — analyzer сообщает **TOP016**.
+
 **Валидные формы сборки цепочки** (analyzer / chain-dispatch):
 
 ```csharp

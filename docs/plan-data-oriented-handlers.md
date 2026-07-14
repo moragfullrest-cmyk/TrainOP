@@ -324,7 +324,7 @@ Generator и analyzer работают по `compilation.SyntaxTrees` **теку
 | **D** | Runtime-merge маршрутов (`TrainRoute.Concat`) | ❌ | ✅ | Средняя | Две независимые цепочки склеиваются в runtime без единого графа |
 | **E** | Source-pack / shared project | ✅ как один проект | ✅ | Низкая | Не «скомпилированная сборка» в чистом виде |
 | **F** | Embedded sources в reference | ✅ теоретически | ✅ | Высокая | Нестандартно для NuGet; хрупко |
-| **G** | Станции как типизированные делегаты / handlers без lambda в consumer | Частично | ✅ | Высокая | Смена модели API; отдельное исследование |
+| **G** | Станции как типизированные делегаты / handlers без lambda в consumer | Частично | ✅ | Высокая | **Частично реализовано (same-compilation):** method group / local function / anonymous method → `TryResolveHandler` + `StationHandlerBinding`; cross-assembly по-прежнему через B-export |
 
 **Не цель фазы 8:** динамическая подгрузка станций из произвольных DLL без перекомпиляции (`Reflection.Emit`, `foreach` + plugin model).
 
@@ -711,6 +711,7 @@ Transparent peel (paren / `!` / cast / `await`) для приёмников на
 | `TOP007` | Info | Вагон из seed не используется downstream | `Wagon '{0}' produced at seed station '{1}' is never consumed by later stations` |
 | `TOP008` | Error | Конфликт имён вагонов для одной сигнатуры handler'а | `Handler wagon names ({0}) do not match the canonical names ({1})...` |
 | `TOP015` | Error | Нельзя соединить ветки маршрута перед downstream Station | `Cannot join route branches before station '{0}': {1}` |
+| `TOP016` | Error | Handler не лямбда/anonymous/однозначный method group текущей compilation | `Station handler must be a lambda, anonymous method, or method group / local function declared in the current compilation and uniquely resolvable` |
 
 ### 5.1. Диагностики фазы 7 (черновик)
 
@@ -939,3 +940,4 @@ tests/
 | 2026-07-14 | **§3.8.5 шаг 1:** `BranchRouteGraphDiscoverer` + `TryBuildChainEndingAt`; `TerminalWagons` на `ChainSimulationResult` (шаги 2–5 и снятие TOP006 — pending) |
 | 2026-07-14 | **§3.8.5 шаг 2:** `BranchRouteJoinSetFinder` + `BranchRouteJoinSet`; join sets по общему downstream `.Station` (шаги 3–5 и снятие TOP006 — pending) |
 | 2026-07-14 | **§3.8.5 шаги 3–5:** `BranchRouteJoinValidator` / `BranchRouteJoinMerger` / `TOP015`; `Simulate(chain, initialWagons)`; analyzer merge + подавление TOP006 на Join |
+| 2026-07-14 | **Non-lambda handlers (same-compilation):** `TryResolveHandler` — lambda / anonymous / method group / local function; `TOP016` для unsupported форм; пункт G частично |

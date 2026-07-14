@@ -201,23 +201,24 @@ namespace TrainOP.Generators
             }
 
             var handlerArgument = invocation.ArgumentList.Arguments[1].Expression;
-            if (!StationSyntaxHelper.TryGetLambda(handlerArgument, semanticModel, out var lambdaSyntax, out var lambdaSymbol))
+            if (!StationSyntaxHelper.TryResolveHandler(handlerArgument, semanticModel, out var resolved)
+                || resolved == null)
             {
                 return null;
             }
 
-            if (forServiceStation && IsLikelyBuiltinServiceStationHandler(lambdaSyntax, lambdaSymbol))
+            if (forServiceStation && StationSyntaxHelper.IsLikelyBuiltinServiceStationHandler(resolved))
             {
                 return null;
             }
 
-            var schema = HandlerInputSchemaBuilder.TryBuild(lambdaSyntax, lambdaSymbol, semanticModel, forServiceStation);
+            var schema = HandlerInputSchemaBuilder.TryBuild(resolved, semanticModel, forServiceStation);
             if (schema == null)
             {
                 return null;
             }
 
-            return new StationCallInfo(schema, lambdaSyntax.GetLocation(), invocation);
+            return new StationCallInfo(schema, resolved.Location, invocation);
         }
 
         /// <summary>
@@ -299,84 +300,6 @@ namespace TrainOP.Generators
                 && methodSymbol.ContainingType != null
                 && string.Equals(methodSymbol.ContainingType.ToDisplayString(), "TrainOP.TrainRoute", StringComparison.Ordinal)
                 && string.Equals(methodSymbol.Name, methodName, StringComparison.Ordinal);
-        }
-
-        /// <summary>
-        /// Heuristically detects built-in RedSignal-only service station handlers.
-        /// </summary>
-        private static bool IsLikelyBuiltinServiceStationHandler(
-            LambdaExpressionSyntax lambdaSyntax,
-            IMethodSymbol lambdaSymbol)
-        {
-            var parameters = lambdaSymbol.Parameters;
-            if (parameters.Length != 1)
-            {
-                return false;
-            }
-
-            var parameter = parameters[0];
-            if (IsRedSignal(parameter.Type))
-            {
-                return true;
-            }
-
-            if (parameter.Type == null
-                || parameter.Type.TypeKind == TypeKind.Error
-                || parameter.Type.TypeKind == TypeKind.Dynamic)
-            {
-                return UsesRedSignalSurface(lambdaSyntax, parameter.Name);
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Determines whether a lambda body uses RedSignal.Manifest or RedSignal.Issue surfaces.
-        /// </summary>
-        private static bool UsesRedSignalSurface(LambdaExpressionSyntax lambdaSyntax, string parameterName)
-        {
-            if (string.IsNullOrWhiteSpace(parameterName))
-            {
-                return false;
-            }
-
-            foreach (var memberAccess in lambdaSyntax.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
-            {
-                if (memberAccess.Expression is IdentifierNameSyntax identifier
-                    && string.Equals(identifier.Identifier.ValueText, parameterName, StringComparison.Ordinal)
-                    && (string.Equals(memberAccess.Name.Identifier.ValueText, "Manifest", StringComparison.Ordinal)
-                        || string.Equals(memberAccess.Name.Identifier.ValueText, "Issue", StringComparison.Ordinal)))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Determines whether a type symbol matches the given metadata name.
-        /// </summary>
-        private static bool IsNamedType(ITypeSymbol typeSymbol, string metadataName)
-        {
-            if (typeSymbol == null)
-            {
-                return false;
-            }
-
-            return string.Equals(typeSymbol.ToDisplayString(), metadataName, StringComparison.Ordinal)
-                || string.Equals(
-                    typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    "global::" + metadataName,
-                    StringComparison.Ordinal);
-        }
-
-        /// <summary>
-        /// Determines whether the type is RedSignal.
-        /// </summary>
-        private static bool IsRedSignal(ITypeSymbol typeSymbol)
-        {
-            return IsNamedType(typeSymbol, "TrainOP.RedSignal");
         }
 
         /// <summary>

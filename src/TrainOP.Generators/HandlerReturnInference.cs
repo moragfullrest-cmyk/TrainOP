@@ -9,20 +9,21 @@ using TrainOP.Generators.Models;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Infers the wagon return shape of a data-oriented station handler lambda.
+    /// Infers the wagon return shape of a data-oriented station handler.
     /// </summary>
     internal static class HandlerReturnInference
     {
         /// <summary>
-        /// Infers the return shape from a handler lambda symbol, body, and input wagons.
+        /// Infers the return shape from a handler symbol, optional body, and input wagons.
         /// </summary>
         public static ReturnShape Infer(
-            LambdaExpressionSyntax lambdaSyntax,
-            IMethodSymbol lambdaSymbol,
+            IMethodSymbol handlerSymbol,
+            CSharpSyntaxNode body,
+            Location handlerLocation,
             SemanticModel semanticModel,
             ImmutableArray<WagonBinding> inputWagons)
         {
-            var returnType = UnwrapReturnType(lambdaSymbol.ReturnType);
+            var returnType = UnwrapReturnType(handlerSymbol.ReturnType);
             if (IsVoidReturn(returnType))
             {
                 return ReturnShape.Void;
@@ -30,7 +31,7 @@ namespace TrainOP.Generators
 
             if (returnType == null || returnType.SpecialType == SpecialType.System_Object)
             {
-                returnType = InferBodyReturnType(GetLambdaBody(lambdaSyntax), semanticModel);
+                returnType = InferBodyReturnType(body, semanticModel);
             }
 
             returnType = UnwrapReturnType(returnType);
@@ -42,6 +43,8 @@ namespace TrainOP.Generators
 
             var returnTypeDisplay = ReturnTypeDisplayBuilder.BuildDisplay(returnType);
             var useGenericReturn = ReturnTypeDisplayBuilder.UseGenericReturn(returnType);
+            var fallbackLocation = handlerLocation
+                ?? (handlerSymbol.Locations.Length > 0 ? handlerSymbol.Locations[0] : null);
 
             if (returnType == null)
             {
@@ -70,17 +73,16 @@ namespace TrainOP.Generators
                     useGenericReturn: useGenericReturn);
             }
 
+            var bodyExpression = GetBodyExpression(body);
             if (IsGreenPayload(returnType, out var greenPayload))
             {
-                var bodyExpression = GetLambdaBodyExpression(lambdaSyntax);
                 return WithReturnType(
-                    InferFromGreenPayload(greenPayload, inputWagons, semanticModel, lambdaSyntax.GetLocation(), bodyExpression),
+                    InferFromGreenPayload(greenPayload, inputWagons, semanticModel, fallbackLocation, bodyExpression),
                     returnTypeDisplay,
                     useGenericReturn);
             }
 
-            var returnBodyExpression = GetLambdaBodyExpression(lambdaSyntax);
-            var shape = InferFromType(returnType, inputWagons, semanticModel, lambdaSyntax.GetLocation(), returnBodyExpression);
+            var shape = InferFromType(returnType, inputWagons, semanticModel, fallbackLocation, bodyExpression);
             if (!shape.IsCargoManifest && shape.Members.IsDefaultOrEmpty)
             {
                 if (returnType == null || returnType.SpecialType == SpecialType.System_Object)
@@ -92,6 +94,23 @@ namespace TrainOP.Generators
             }
 
             return WithReturnType(shape, returnTypeDisplay, useGenericReturn);
+        }
+
+        /// <summary>
+        /// Infers the return shape from a handler lambda symbol, body, and input wagons.
+        /// </summary>
+        public static ReturnShape Infer(
+            LambdaExpressionSyntax lambdaSyntax,
+            IMethodSymbol lambdaSymbol,
+            SemanticModel semanticModel,
+            ImmutableArray<WagonBinding> inputWagons)
+        {
+            return Infer(
+                lambdaSymbol,
+                lambdaSyntax?.Body,
+                lambdaSyntax?.GetLocation(),
+                semanticModel,
+                inputWagons);
         }
 
         /// <summary>
@@ -135,32 +154,18 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Extracts the body syntax node from a simple or parenthesized lambda.
+        /// Extracts the return expression from a handler body when it is a single expression or block return.
         /// </summary>
-        private static CSharpSyntaxNode GetLambdaBody(LambdaExpressionSyntax lambdaSyntax)
+        private static ExpressionSyntax GetBodyExpression(CSharpSyntaxNode body)
         {
-            if (lambdaSyntax is SimpleLambdaExpressionSyntax simpleLambda)
-            {
-                return simpleLambda.Body;
-            }
-
-            if (lambdaSyntax is ParenthesizedLambdaExpressionSyntax parenthesizedLambda)
-            {
-                return parenthesizedLambda.Body;
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// Extracts the return expression from a lambda body when it is a single expression or block return.
-        /// </summary>
-        private static ExpressionSyntax GetLambdaBodyExpression(LambdaExpressionSyntax lambdaSyntax)
-        {
-            var body = GetLambdaBody(lambdaSyntax);
             if (body is ExpressionSyntax expression)
             {
                 return expression;
+            }
+
+            if (body is ArrowExpressionClauseSyntax arrow)
+            {
+                return arrow.Expression;
             }
 
             if (body is BlockSyntax block)
@@ -176,7 +181,7 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Infers the return type from a lambda body expression or block.
+        /// Infers the return type from a handler body expression or block.
         /// </summary>
         private static ITypeSymbol InferBodyReturnType(CSharpSyntaxNode body, SemanticModel semanticModel)
         {
@@ -188,6 +193,11 @@ namespace TrainOP.Generators
             if (body is ExpressionSyntax expression)
             {
                 return InferExpressionReturnType(expression, semanticModel);
+            }
+
+            if (body is ArrowExpressionClauseSyntax arrow)
+            {
+                return InferExpressionReturnType(arrow.Expression, semanticModel);
             }
 
             if (body is BlockSyntax block)

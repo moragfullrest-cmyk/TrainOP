@@ -94,6 +94,17 @@ namespace TrainOP.Generators
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when a Station handler argument is not a supported resolvable form in the current compilation.
+        /// </summary>
+        public static readonly DiagnosticDescriptor UnsupportedStationHandler = new DiagnosticDescriptor(
+            id: "TOP016",
+            title: "Unsupported station handler form",
+            messageFormat: "Station handler must be a lambda, anonymous method, or method group / local function declared in the current compilation and uniquely resolvable",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }
 

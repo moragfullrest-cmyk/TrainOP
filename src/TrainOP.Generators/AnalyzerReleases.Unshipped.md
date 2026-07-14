@@ -10,3 +10,4 @@ TOP006 | TrainOP.Generators | Error | Data-oriented handler is outside a TrainRo
 TOP007 | TrainOP.Generators | Info | Seed wagon is never consumed
 TOP008 | TrainOP.Generators | Error | Conflicting wagon names for the same handler type signature
 TOP015 | TrainOP.Generators | Error | Cannot join route branches before a downstream station (unresolved arm, unknown terminals, or type conflict)
+TOP016 | TrainOP.Generators | Error | Station handler is not a supported resolvable form in the current compilation

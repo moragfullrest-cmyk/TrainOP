@@ -166,6 +166,215 @@ public static class LegacyAsyncRoute
         }
 
         /// <summary>
+        /// Verifies that the generator emits adapters for static method-group handlers.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsStationExtension_ForStaticMethodGroup()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class MethodGroupRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", Seed)
+        .Station(""Discount"", Discount);
+
+    private static object Seed() => new { paymentId = ""pay-1"", amount = 100m };
+
+    private static object Discount(string paymentId, decimal amount) =>
+        new { paymentId, amount = amount * 0.9m };
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("public static TrainRoute Station(this TrainRoute route", generated);
+            Assert.Contains("Func<global::System.Object>", generated);
+            Assert.Contains("Func<global::System.String, global::System.Decimal, global::System.Object>", generated);
+            Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
+            Assert.Contains("manifest.PullWagon<global::System.Decimal>(\"amount\")", generated);
+        }
+
+        /// <summary>
+        /// Verifies that the generator emits adapters for instance method-group handlers.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsStationExtension_ForInstanceMethodGroup()
+        {
+            const string source = @"
+using TrainOP;
+
+public sealed class InstanceMethodRoute
+{
+    public TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", Seed)
+        .Station(""Discount"", Discount);
+
+    private object Seed() => new { paymentId = ""pay-1"", amount = 100m };
+
+    private object Discount(string paymentId, decimal amount) =>
+        new { paymentId, amount = amount * 0.9m };
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("public static TrainRoute Station(this TrainRoute route", generated);
+            Assert.Contains("Func<global::System.String, global::System.Decimal, global::System.Object>", generated);
+            Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
+        }
+
+        /// <summary>
+        /// Verifies that the generator emits adapters for local-function handlers.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsStationExtension_ForLocalFunction()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class LocalFunctionRoute
+{
+    public static TrainRoute Build()
+    {
+        object Seed() => new { paymentId = ""pay-1"", amount = 100m };
+        object Discount(string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m };
+
+        return new TrainRoute()
+            .Station(""Seed"", Seed)
+            .Station(""Discount"", Discount);
+    }
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("public static TrainRoute Station(this TrainRoute route", generated);
+            Assert.Contains("Func<global::System.String, global::System.Decimal, global::System.Object>", generated);
+            Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
+        }
+
+        /// <summary>
+        /// Verifies that the generator emits adapters for anonymous-method handlers.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsStationExtension_ForAnonymousMethod()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class AnonymousMethodRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", delegate(string paymentId, decimal amount)
+        {
+            return new { paymentId, amount = amount * 0.9m };
+        });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("public static TrainRoute Station(this TrainRoute route", generated);
+            Assert.Contains("Func<global::System.String, global::System.Decimal, global::System.Object>", generated);
+            Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
+        }
+
+        /// <summary>
+        /// Verifies that async method-group handlers emit Task-aware Station adapters.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsAsyncStationExtension_ForAsyncMethodGroup()
+        {
+            const string source = @"
+using System.Threading;
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class AsyncMethodGroupRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { value = 1 })
+        .Station(""Fetch"", Fetch);
+
+    private static async Task<object> Fetch(int value, CancellationToken token)
+    {
+        await Task.Delay(1, token);
+        return new { value = value + 1 };
+    }
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("public static TrainRoute Station(this TrainRoute route", generated);
+            Assert.Contains("System.Threading.Tasks.Task", generated);
+        }
+
+        /// <summary>
+        /// Verifies that ServiceStation method-group handlers with ref wagons emit adapters.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsServiceStationExtension_ForMethodGroup()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class ServiceMethodGroupRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { value = 0 })
+        .Station(""Validate"", (int value) =>
+            value > 0 ? RailwaySignals.Green(new { value }) : RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", Recover)
+        .Station(""After"", (int value) => new { value = value + 1 });
+
+    private static object Recover(ref int value, RedSignal red)
+    {
+        if (red.Issue.Code == ""ERR"")
+        {
+            value = 1;
+            return RailwaySignals.Pass;
+        }
+
+        return RailwaySignals.Red(""NOPE"", ""skip"");
+    }
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("public static TrainRoute ServiceStation(this TrainRoute route", generated);
+            Assert.Contains("TrainServiceStationHandler_", generated);
+        }
+
+        /// <summary>
+        /// Verifies that a Func variable is not treated as a discoverable station handler.
+        /// </summary>
+        [Fact]
+        public void Generator_DoesNotEmit_ForFuncVariableHandler()
+        {
+            const string source = @"
+using System;
+using TrainOP;
+
+public static class FuncVariableRoute
+{
+    public static TrainRoute Build()
+    {
+        Func<string, decimal, object> discount = (paymentId, amount) =>
+            new { paymentId, amount = amount * 0.9m };
+
+        return new TrainRoute()
+            .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+            .Station(""Discount"", discount);
+    }
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.DoesNotContain("PullWagon(\"paymentId\"", generated);
+            Assert.DoesNotContain("PullWagon(\"amount\"", generated);
+        }
+
+        /// <summary>
         /// Verifies that the generator emits a ServiceStation extension for a data-oriented recovery handler.
         /// </summary>
         [Fact]

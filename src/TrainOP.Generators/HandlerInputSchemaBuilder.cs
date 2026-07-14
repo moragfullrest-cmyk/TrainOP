@@ -13,6 +13,28 @@ namespace TrainOP.Generators
     internal static class HandlerInputSchemaBuilder
     {
         /// <summary>
+        /// Builds a handler binding from a resolved handler symbol and optional body.
+        /// </summary>
+        public static StationHandlerBinding TryBuild(
+            ResolvedHandler resolved,
+            SemanticModel semanticModel,
+            bool forServiceStation = false)
+        {
+            if (resolved?.Symbol == null)
+            {
+                return null;
+            }
+
+            return TryBuild(
+                resolved.Symbol,
+                resolved.Body,
+                resolved.Location,
+                resolved.Expression,
+                semanticModel,
+                forServiceStation);
+        }
+
+        /// <summary>
         /// Builds a handler binding from a lambda and its semantic model symbols.
         /// </summary>
         public static StationHandlerBinding TryBuild(
@@ -21,13 +43,36 @@ namespace TrainOP.Generators
             SemanticModel semanticModel,
             bool forServiceStation = false)
         {
-            var parameters = lambdaSymbol.Parameters;
+            if (lambdaSyntax == null || lambdaSymbol == null)
+            {
+                return null;
+            }
+
+            return TryBuild(
+                lambdaSymbol,
+                lambdaSyntax.Body,
+                lambdaSyntax.GetLocation(),
+                lambdaSyntax,
+                semanticModel,
+                forServiceStation);
+        }
+
+        private static StationHandlerBinding TryBuild(
+            IMethodSymbol handlerSymbol,
+            CSharpSyntaxNode body,
+            Location handlerLocation,
+            ExpressionSyntax handlerExpression,
+            SemanticModel semanticModel,
+            bool forServiceStation)
+        {
+            var parameters = handlerSymbol.Parameters;
             var wagons = ImmutableArray.CreateBuilder<WagonBinding>();
             var includeManifest = false;
             var includeRedSignal = false;
             var includeSignalIssue = false;
             var hasCancellationToken = false;
             var hasRefWagons = false;
+            var fallbackLocation = handlerLocation ?? handlerExpression?.GetLocation();
 
             for (var i = 0; i < parameters.Length; i++)
             {
@@ -92,7 +137,7 @@ namespace TrainOP.Generators
                     return null;
                 }
 
-                var location = GetParameterLocation(lambdaSyntax, name) ?? lambdaSyntax.GetLocation();
+                var location = GetParameterLocation(handlerSymbol, handlerExpression, name) ?? fallbackLocation;
                 wagons.Add(new WagonBinding(
                     name,
                     typeDisplay,
@@ -132,11 +177,16 @@ namespace TrainOP.Generators
             }
 
             var inputWagons = wagons.ToImmutable();
-            var returnShape = HandlerReturnInference.Infer(lambdaSyntax, lambdaSymbol, semanticModel, inputWagons);
+            var returnShape = HandlerReturnInference.Infer(
+                handlerSymbol,
+                body,
+                fallbackLocation,
+                semanticModel,
+                inputWagons);
             return new StationHandlerBinding(
                 inputWagons,
                 includeManifest,
-                IsAsyncLambda(lambdaSyntax, lambdaSymbol),
+                IsAsyncHandler(handlerSymbol, handlerExpression),
                 hasCancellationToken,
                 returnShape,
                 forServiceStation,
@@ -146,17 +196,38 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Determines whether a lambda is async based on syntax or return type.
+        /// Determines whether a handler is async based on declaration syntax or return type.
         /// </summary>
-        private static bool IsAsyncLambda(LambdaExpressionSyntax lambdaSyntax, IMethodSymbol lambdaSymbol)
+        private static bool IsAsyncHandler(IMethodSymbol handlerSymbol, ExpressionSyntax handlerExpression)
         {
-            if (lambdaSyntax.AsyncKeyword != default)
+            if (handlerSymbol.IsAsync)
             {
                 return true;
             }
 
-            var returnType = lambdaSymbol.ReturnType;
-            return HandlerReturnInference.IsTask(returnType);
+            if (handlerExpression is AnonymousFunctionExpressionSyntax anonymousFunction
+                && anonymousFunction.AsyncKeyword != default)
+            {
+                return true;
+            }
+
+            foreach (var reference in handlerSymbol.DeclaringSyntaxReferences)
+            {
+                var node = reference.GetSyntax();
+                if (node is MethodDeclarationSyntax methodDeclaration
+                    && methodDeclaration.Modifiers.Any(SyntaxKind.AsyncKeyword))
+                {
+                    return true;
+                }
+
+                if (node is LocalFunctionStatementSyntax localFunction
+                    && localFunction.Modifiers.Any(SyntaxKind.AsyncKeyword))
+                {
+                    return true;
+                }
+            }
+
+            return HandlerReturnInference.IsTask(handlerSymbol.ReturnType);
         }
 
         /// <summary>
@@ -203,18 +274,21 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Locates the source position of a lambda parameter by name.
+        /// Locates the source position of a handler parameter by name.
         /// </summary>
-        private static Location GetParameterLocation(LambdaExpressionSyntax lambdaSyntax, string parameterName)
+        private static Location GetParameterLocation(
+            IMethodSymbol handlerSymbol,
+            ExpressionSyntax handlerExpression,
+            string parameterName)
         {
-            if (lambdaSyntax is SimpleLambdaExpressionSyntax simpleLambda)
+            if (handlerExpression is SimpleLambdaExpressionSyntax simpleLambda)
             {
                 return simpleLambda.Parameter.Identifier.ValueText == parameterName
                     ? simpleLambda.Parameter.Identifier.GetLocation()
                     : null;
             }
 
-            if (lambdaSyntax is ParenthesizedLambdaExpressionSyntax parenthesizedLambda)
+            if (handlerExpression is ParenthesizedLambdaExpressionSyntax parenthesizedLambda)
             {
                 foreach (var syntaxParameter in parenthesizedLambda.ParameterList.Parameters)
                 {
@@ -222,6 +296,31 @@ namespace TrainOP.Generators
                     {
                         return syntaxParameter.Identifier.GetLocation();
                     }
+                }
+            }
+
+            if (handlerExpression is AnonymousMethodExpressionSyntax anonymousMethod
+                && anonymousMethod.ParameterList != null)
+            {
+                foreach (var syntaxParameter in anonymousMethod.ParameterList.Parameters)
+                {
+                    if (string.Equals(syntaxParameter.Identifier.ValueText, parameterName, StringComparison.Ordinal))
+                    {
+                        return syntaxParameter.Identifier.GetLocation();
+                    }
+                }
+            }
+
+            foreach (var parameter in handlerSymbol.Parameters)
+            {
+                if (!string.Equals(parameter.Name, parameterName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (parameter.Locations.Length > 0)
+                {
+                    return parameter.Locations[0];
                 }
             }
 
