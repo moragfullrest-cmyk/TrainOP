@@ -60,7 +60,20 @@ route = route
     .Station("Next", (int id) => new { id = id + 1 });
 ```
 
-Фабрика вроде `PaymentRoute.Build()` допустима, если **внутри** — один из двух паттернов, а снаружи только `Build().DispatchTrain().Travel()`. Вызов `Build().Station(...)` / `CreateSeed().Station(...)` пока **не** поддерживается (TOP005) — плохо стыкуется с генераторами; отдельное решение позже.
+// 3) Private/internal factory extension
+var route = CreateSeed()
+    .Station("Next", (int id) => new { id = id + 1 });
+
+// 4) Public factory from referenced assembly (exported schema)
+var route = PaymentModule.Build()
+    .Station("Finalize", (string paymentId, decimal amount) => new { paymentId, status = "done" });
+```
+
+`PaymentRoute.Build()` с цепочкой **внутри** и вызовом только `.DispatchTrain().Travel()` снаружи по-прежнему поддерживается.
+
+`CreateSeed().Station(...)` поддерживается для **private/internal** factory (inter-procedural analysis). **Public** factory использует generated schema (`[RouteSchemaFor]`). См. [cross-assembly-routes.md](cross-assembly-routes.md).
+
+Параметр / поле / свойство как receiver (`baseRoute.Station(...)`) пока **не** поддерживаются (TOP005).
 
 ### Запуск
 
@@ -113,10 +126,6 @@ var report = await route.DispatchTrain().TravelAsync();
 
 Маршрут продолжается. Манифест из сигнала передаётся на следующую станцию.
 
-```csharp
-return RailwaySignals.Green(manifest);
-```
-
 ### Красный сигнал
 
 Маршрут останавливается на этой станции (последующие станции **не** выполняются).
@@ -139,7 +148,33 @@ return RailwaySignals.Green(manifest);
 | `RailwaySignals.Red(code, msg)` | красный сигнал, маршрут останавливается |
 | `RailwaySignals.Pass` | манифест без изменений → зелёный сигнал (в т.ч. `ref`-вагоны: мутации в handler не попадают в манифест) |
 | `void` (без return) | эквивалент `new { }` → partial merge: `ref`-вагоны обновляются, обычные входы выгружаются |
-| `GreenSignal` / `RedSignal` | возврат как есть (например, при пробросе сигнала из подмаршрута) |
+
+> **Не используйте** `GreenSignal` / `RedSignal` в возврате handler'а — это runtime-типы движка. Для остановки маршрута — `RailwaySignals.Red(code, msg)`; для успеха — данные или `RailwaySignals.Green(payload)`. Возврат runtime-сигнала диагностируется как **TOP010**.
+
+### Value tuple returns
+
+**Рекомендуется:** именованные кортежи — `(paymentId: id, amount: amt)` — merge по именам полей.
+
+**Избегать:**
+
+| Форма | Диагностика | Риск |
+|-------|-------------|------|
+| `(id, amt)` — все элементы без имён | **TOP006** (Warning, на tuple literal) | Ключи в манифесте = `Item1`, `Item2`, …; mapping зависит от порядка и может сломаться молча при перестановке элементов |
+| `(id, amount: amt)` — смешанные имена | **TOP014** (Warning, на tuple literal) | Часть вагонов по имени, часть по позиции; неоднозначный/хрупкий merge |
+
+```csharp
+// ✅
+.Station("Discount", (string paymentId, decimal amount) =>
+    (paymentId: paymentId + "-disc", amount: amount * 0.9m));
+
+// ⚠️ TOP006
+.Station("Discount", (string paymentId, decimal amount) =>
+    (paymentId + "-disc", amount * 0.9m));
+
+// ⚠️ TOP014
+.Station("Discount", (string paymentId, decimal amount) =>
+    (paymentId, amount: amount * 0.9m));
+```
 
 `RailwaySignals.Pass` пропускает merge целиком: следующая станция получит тот же манифест, что и до вызова handler'а. Изменения `ref`-параметров в теле handler'а при `Pass` **не сохраняются**. Чтобы записать новые значения `ref`-вагонов в манифест, используйте void (без `return`) или явный partial return (`new { }`, подмножество полей).
 
@@ -156,14 +191,11 @@ var report = route.DispatchTrain().Travel();
 
 if (report.ReachedDestination)
 {
-    // TerminalSignal — GreenSignal
-    var manifest = report.TerminalSignal.Manifest;
     var paymentId = report.Get<string>("paymentId");
 }
 else
 {
-    var red = (RedSignal)report.TerminalSignal;
-    Console.WriteLine(red.Issue.Code);
+    Console.WriteLine($"{report.FailureCode}: {report.FailureMessage}");
 }
 
 // История прохождения
@@ -173,7 +205,7 @@ foreach (var visit in report.Visits)
 }
 ```
 
-`RouteReport` поддерживает readonly индексатор `report["wagonName"]` и typed-метод `report.Get<T>("wagonName")` для чтения терминального вагона по имени.  
+`RouteReport` поддерживает readonly индексатор `report["wagonName"]`, typed-метод `report.Get<T>("wagonName")` и свойства `FailureCode` / `FailureMessage` для красного терминального сигнала.  
 Если вагона нет, бросается `KeyNotFoundException`.
 
 ## Станция техобслуживания (ServiceStation)
@@ -225,7 +257,7 @@ TrainOP не имеет отдельного API «switch/fork». Вложенн
 
 1. **Подмаршруты** — отдельные `TrainRoute`, обычно в статических фабриках `Build(...)` с собственной seed-станцией.
 2. **Станция ветвления** — data-oriented `.Station`, которая по данным вагонов выбирает подмаршрут (`Build(paymentId, amount, …)`) и вызывает `subRoute.DispatchTrain().Travel()`.
-3. **Красный сигнал** подмаршрута пробрасывается наверх как `TerminalSignal` родительского маршрута.
+3. **Результат подмаршрута** — родительская станция читает `RouteReport` подмаршрута и **сама** формирует возврат: данные (`new { … }`) или `RailwaySignals.Red(...)`. Проброс `TerminalSignal` / `GreenSignal` / `RedSignal` не используется.
 
 Каждый подмаршрут с цепочкой `.Station(...)` анализируется генератором **независимо**. Станция ветвления входит в data-oriented граф родительского маршрута. Манифест в юзер-коде не собирают: данные уходят в seed дочернего маршрута.
 
@@ -257,7 +289,7 @@ var route = new TrainRoute()
         var subReport = subRoute.DispatchTrain().Travel();
         if (!subReport.ReachedDestination)
         {
-            return subReport.TerminalSignal;
+            return RailwaySignals.Red("BRANCH_FAILED", $"tier '{tier}' did not complete");
         }
 
         return new
@@ -304,6 +336,27 @@ await route.DispatchTrain().TravelAsync(cts.Token);
 | `Issue.StationName` | имя станции |
 
 Аналогично для `ServiceStation` — код `SERVICE_STATION_EXCEPTION`.
+
+## Диагностики (analyzer)
+
+| ID | Severity | Условие |
+|----|----------|---------|
+| `TOP001` | Error | Станция требует вагон, не произведённый ранее |
+| `TOP002` | Error | Конфликт типов вагона между станциями |
+| `TOP003` | Error | Вагон удалён частичным возвратом, но нужен дальше |
+| `TOP004` | Warning | Handler вернул `CargoManifest` — полная замена манифеста |
+| `TOP005` | Error | Data-handler вне легитимного якоря `TrainRoute` |
+| `TOP006` | Warning | Неименованный value tuple (на literal) — order-dependent mapping |
+| `TOP007` | Error | Конфликт имён вагонов для одной сигнатуры handler'а |
+| `TOP008` | Error | Нельзя соединить ветки маршрута перед downstream Station |
+| `TOP009` | Error | Handler не лямбда / anonymous / однозначный method group |
+| `TOP010` | Error | Handler возвращает `GreenSignal` / `RedSignal` вместо data / `RailwaySignals` |
+| `TOP011` | Info | Public factory в referenced assembly без exported schema |
+| `TOP012` | Error | Return-paths factory имеют разное terminal-множество |
+| `TOP013` | Error | Return-path factory с unknown terminal state |
+| `TOP014` | Warning | Смешанный value tuple (на literal) — ambiguous/fragile mapping |
+
+Cross-assembly: [cross-assembly-routes.md](cross-assembly-routes.md). Release tracking: `AnalyzerReleases.Shipped.md`.
 
 ## Схема выполнения
 

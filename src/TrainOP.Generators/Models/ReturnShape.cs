@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Microsoft.CodeAnalysis;
 
 namespace TrainOP.Generators.Models
 {
@@ -31,7 +32,11 @@ namespace TrainOP.Generators.Models
             bool isVoid = false,
             string returnTypeDisplay = null,
             bool useGenericReturn = false,
-            bool isExplicitSignalReturn = false)
+            bool isExplicitSignalReturn = false,
+            bool isRuntimeSignalReturn = false,
+            bool isUnnamedTupleReturn = false,
+            bool isMixedTupleReturn = false,
+            ImmutableArray<Location> tupleReturnLocations = default)
         {
             Members = members;
             IsCargoManifest = isCargoManifest;
@@ -41,6 +46,12 @@ namespace TrainOP.Generators.Models
             ReturnTypeDisplay = returnTypeDisplay;
             UseGenericReturn = useGenericReturn;
             IsExplicitSignalReturn = isExplicitSignalReturn;
+            IsRuntimeSignalReturn = isRuntimeSignalReturn;
+            IsUnnamedTupleReturn = isUnnamedTupleReturn;
+            IsMixedTupleReturn = isMixedTupleReturn;
+            TupleReturnLocations = tupleReturnLocations.IsDefault
+                ? ImmutableArray<Location>.Empty
+                : tupleReturnLocations;
         }
 
         public ImmutableArray<WagonBinding> Members { get; }
@@ -58,5 +69,13 @@ namespace TrainOP.Generators.Models
         public bool UseGenericReturn { get; }
 
         public bool IsExplicitSignalReturn { get; }
+
+        public bool IsRuntimeSignalReturn { get; }
+
+        public bool IsUnnamedTupleReturn { get; }
+
+        public bool IsMixedTupleReturn { get; }
+
+        public ImmutableArray<Location> TupleReturnLocations { get; }
     }
 }

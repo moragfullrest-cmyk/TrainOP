@@ -34,6 +34,8 @@ namespace TrainOP.Generators
             context.RegisterSourceOutput(combined, static (productionContext, source) =>
             {
                 var compilation = source.Left;
+                RouteSchemaExporter.Emit(productionContext, compilation);
+
                 var calls = source.Right;
                 var chainIndex = ChainStationCallIndex.Build(compilation);
                 var groups = new Dictionary<string, TypeSignatureGroup>(StringComparer.Ordinal);

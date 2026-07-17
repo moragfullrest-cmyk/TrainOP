@@ -67,6 +67,12 @@ namespace TrainOP.Generators
             ITypeSymbol receiverType,
             SemanticModel semanticModel)
         {
+            receiverExpression = ReceiverExpressionPeel.UnwrapTransparent(receiverExpression);
+            if (receiverExpression == null)
+            {
+                return false;
+            }
+
             if (IsTrainRoute(receiverType))
             {
                 return true;
@@ -76,6 +82,52 @@ namespace TrainOP.Generators
             {
                 var typeInfo = semanticModel.GetTypeInfo(objectCreation);
                 return IsTrainRoute(typeInfo.Type) || IsTrainRoute(typeInfo.ConvertedType);
+            }
+
+            if (receiverExpression is ConditionalExpressionSyntax conditional)
+            {
+                return IsTrainRouteReceiver(
+                        conditional.WhenTrue,
+                        semanticModel.GetTypeInfo(conditional.WhenTrue).Type,
+                        semanticModel)
+                    && IsTrainRouteReceiver(
+                        conditional.WhenFalse,
+                        semanticModel.GetTypeInfo(conditional.WhenFalse).Type,
+                        semanticModel);
+            }
+
+            if (receiverExpression is BinaryExpressionSyntax binary
+                && binary.IsKind(SyntaxKind.CoalesceExpression))
+            {
+                return IsTrainRouteReceiver(
+                        binary.Left,
+                        semanticModel.GetTypeInfo(binary.Left).Type,
+                        semanticModel)
+                    && IsTrainRouteReceiver(
+                        binary.Right,
+                        semanticModel.GetTypeInfo(binary.Right).Type,
+                        semanticModel);
+            }
+
+            if (receiverExpression is SwitchExpressionSyntax switchExpression)
+            {
+                if (switchExpression.Arms.Count == 0)
+                {
+                    return false;
+                }
+
+                foreach (var arm in switchExpression.Arms)
+                {
+                    if (!IsTrainRouteReceiver(
+                            arm.Expression,
+                            semanticModel.GetTypeInfo(arm.Expression).Type,
+                            semanticModel))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
             }
 
             if (receiverExpression is InvocationExpressionSyntax invocation

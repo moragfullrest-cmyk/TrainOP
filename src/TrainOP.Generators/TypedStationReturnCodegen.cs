@@ -135,10 +135,7 @@ namespace TrainOP.Generators
             return returnTypeDisplay == ReturnTypeDisplayBuilder.SignalReturnTypeDisplay
                 || returnTypeDisplay == "global::TrainOP.RedFailure"
                 || returnTypeDisplay == "global::TrainOP.GreenPass"
-                || returnTypeDisplay == "global::TrainOP.CargoManifest"
-                || returnTypeDisplay == "global::TrainOP.Signal"
-                || returnTypeDisplay == "global::TrainOP.GreenSignal"
-                || returnTypeDisplay == "global::TrainOP.RedSignal";
+                || returnTypeDisplay == "global::TrainOP.CargoManifest";
         }
 
         private static bool IsGreenPayloadReturnType(string returnTypeDisplay)

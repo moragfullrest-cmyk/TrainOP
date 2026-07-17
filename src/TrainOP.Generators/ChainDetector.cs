@@ -190,6 +190,29 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
+        /// Determines whether <paramref name="expression"/> is a bare user-defined factory invocation
+        /// (e.g. <c>GetRoute()</c>) with no inline fluent stations at the call site.
+        /// </summary>
+        internal static bool IsBareUserDefinedFactoryInvocation(
+            ExpressionSyntax expression,
+            SemanticModel semanticModel)
+        {
+            expression = ReceiverExpressionPeel.UnwrapTransparent(expression);
+            if (expression == null)
+            {
+                return false;
+            }
+
+            return TryResolveFactoryRoot(
+                expression,
+                semanticModel,
+                out _,
+                out _,
+                out _,
+                out _);
+        }
+
+        /// <summary>
         /// Builds a <see cref="RouteChain"/> from a known chain root forward until
         /// <paramref name="endpoint"/> (inclusive), without continuing past a fork into an outer join.
         /// </summary>
@@ -210,7 +233,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (!TryFindChainRootEndingAt(target, semanticModel, out var root, out var anchorKind))
+            if (!TryFindChainRootEndingAt(target, semanticModel, out var root, out var anchorKind, out var factoryMethod, out var initialWagons))
             {
                 return false;
             }
@@ -219,7 +242,9 @@ namespace TrainOP.Generators
                 anchorKind,
                 root,
                 root.GetLocation(),
-                GetContainingMethod(root, semanticModel));
+                GetContainingMethod(root, semanticModel),
+                factoryMethod,
+                initialWagons);
 
             var stations = ImmutableArray.CreateBuilder<StationChainLink>();
             var current = root;
@@ -239,17 +264,59 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
+        /// Builds a factory extension chain ending at <paramref name="endpoint"/>.
+        /// </summary>
+        internal static bool TryBuildFactoryExtensionChain(
+            ExpressionSyntax endpoint,
+            SemanticModel semanticModel,
+            Compilation compilation,
+            out RouteChain chain,
+            out ImmutableArray<Diagnostic> diagnostics)
+        {
+            chain = null;
+            diagnostics = ImmutableArray<Diagnostic>.Empty;
+
+            if (!TryBuildChainEndingAt(endpoint, semanticModel, out chain))
+            {
+                return false;
+            }
+
+            if (chain.Anchor.Kind != RouteChainAnchorKind.MethodInvocation
+                && chain.Anchor.Kind != RouteChainAnchorKind.FactorySchema)
+            {
+                chain = null;
+                return false;
+            }
+
+            if (chain.Anchor.FactoryMethod != null)
+            {
+                RouteFactoryResolver.TryResolve(
+                    chain.Anchor.FactoryMethod,
+                    compilation,
+                    chain.Anchor.Location,
+                    out _,
+                    out diagnostics);
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// Walks backward from <paramref name="endpoint"/> through Station / ServiceStation
-        /// receivers until a <c>new TrainRoute()</c> or resolvable local root is found.
+        /// receivers until a resolvable chain root is found.
         /// </summary>
         private static bool TryFindChainRootEndingAt(
             ExpressionSyntax endpoint,
             SemanticModel semanticModel,
             out ExpressionSyntax root,
-            out RouteChainAnchorKind anchorKind)
+            out RouteChainAnchorKind anchorKind,
+            out IMethodSymbol factoryMethod,
+            out ImmutableArray<WagonBinding> initialWagons)
         {
             root = null;
             anchorKind = default;
+            factoryMethod = null;
+            initialWagons = ImmutableArray<WagonBinding>.Empty;
 
             var current = endpoint;
 
@@ -277,6 +344,11 @@ namespace TrainOP.Generators
                     return true;
                 }
 
+                if (TryResolveFactoryRoot(current, semanticModel, out root, out anchorKind, out factoryMethod, out initialWagons))
+                {
+                    return true;
+                }
+
                 if (!TryGetChainMethodReceiver(current, out var receiver))
                 {
                     return false;
@@ -286,6 +358,53 @@ namespace TrainOP.Generators
             }
 
             return false;
+        }
+
+        private static bool TryResolveFactoryRoot(
+            ExpressionSyntax current,
+            SemanticModel semanticModel,
+            out ExpressionSyntax root,
+            out RouteChainAnchorKind anchorKind,
+            out IMethodSymbol factoryMethod,
+            out ImmutableArray<WagonBinding> initialWagons)
+        {
+            root = null;
+            anchorKind = default;
+            factoryMethod = null;
+            initialWagons = ImmutableArray<WagonBinding>.Empty;
+
+            if (current is not InvocationExpressionSyntax factoryInvocation)
+            {
+                return false;
+            }
+
+            if (StationSyntaxHelper.IsCandidateStationInvocation(factoryInvocation)
+                || StationSyntaxHelper.IsCandidateServiceStationInvocation(factoryInvocation))
+            {
+                return false;
+            }
+
+            if (semanticModel.GetSymbolInfo(factoryInvocation).Symbol is not IMethodSymbol methodSymbol
+                || !StationSyntaxHelper.IsTrainRoute(methodSymbol.ReturnType)
+                || !IsUserDefinedRouteFactory(methodSymbol))
+            {
+                return false;
+            }
+
+            factoryMethod = methodSymbol;
+            anchorKind = FactoryAccessibilityHelper.RequiresSchemaLookup(methodSymbol, semanticModel.Compilation)
+                ? RouteChainAnchorKind.FactorySchema
+                : RouteChainAnchorKind.MethodInvocation;
+
+            RouteFactoryResolver.TryResolve(
+                methodSymbol,
+                semanticModel.Compilation,
+                factoryInvocation.GetLocation(),
+                out initialWagons,
+                out _);
+
+            root = factoryInvocation;
+            return true;
         }
 
         /// <summary>
@@ -369,6 +488,12 @@ namespace TrainOP.Generators
                 return true;
             }
 
+            if (node is InvocationExpressionSyntax factoryInvocation
+                && TryDetectFactoryInvocationAnchor(factoryInvocation, semanticModel, out anchor))
+            {
+                return true;
+            }
+
             return false;
         }
 
@@ -421,6 +546,63 @@ namespace TrainOP.Generators
                 identifier.GetLocation(),
                 GetContainingMethod(identifier, semanticModel));
             return true;
+        }
+
+        /// <summary>
+        /// Detects an anchor at a factory invocation that begins an extension chain.
+        /// </summary>
+        private static bool TryDetectFactoryInvocationAnchor(
+            InvocationExpressionSyntax factoryInvocation,
+            SemanticModel semanticModel,
+            out RouteChainAnchor anchor)
+        {
+            anchor = null;
+
+            if (!IsFactoryChainReceiver(factoryInvocation))
+            {
+                return false;
+            }
+
+            if (!TryResolveFactoryRoot(
+                factoryInvocation,
+                semanticModel,
+                out var root,
+                out var anchorKind,
+                out var factoryMethod,
+                out var initialWagons))
+            {
+                return false;
+            }
+
+            anchor = new RouteChainAnchor(
+                anchorKind,
+                root,
+                root.GetLocation(),
+                GetContainingMethod(root, semanticModel),
+                factoryMethod,
+                initialWagons);
+            return true;
+        }
+
+        /// <summary>
+        /// Determines whether the invocation is the receiver of a route handler member access.
+        /// </summary>
+        private static bool IsFactoryChainReceiver(InvocationExpressionSyntax factoryInvocation)
+        {
+            var receiver = ReceiverExpressionPeel.WrapTransparentOutermost(factoryInvocation);
+            if (receiver.Parent is not MemberAccessExpressionSyntax memberAccess)
+            {
+                return false;
+            }
+
+            if (!ReferenceEquals(memberAccess.Expression, receiver))
+            {
+                return false;
+            }
+
+            var methodName = memberAccess.Name.Identifier.ValueText;
+            return string.Equals(methodName, "Station", StringComparison.Ordinal)
+                || string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -744,6 +926,30 @@ namespace TrainOP.Generators
         private static bool IsTransparentRouteMethod(string methodName)
         {
             return string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Returns true for user-authored factory methods, excluding fluent route API and generated extensions.
+        /// </summary>
+        private static bool IsUserDefinedRouteFactory(IMethodSymbol methodSymbol)
+        {
+            if (methodSymbol == null)
+            {
+                return false;
+            }
+
+            var containingType = methodSymbol.ContainingType;
+            if (containingType == null)
+            {
+                return true;
+            }
+
+            if (StationSyntaxHelper.IsTrainRoute(containingType))
+            {
+                return false;
+            }
+
+            return !string.Equals(containingType.Name, "TrainRouteStationExtensions", StringComparison.Ordinal);
         }
     }
 }

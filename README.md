@@ -14,6 +14,7 @@
 | Установка через NuGet | [docs/nuget.md](docs/nuget.md) |
 | Начало работы | [docs/getting-started.md](docs/getting-started.md) |
 | Основной API | [docs/core-api.md](docs/core-api.md) |
+| Cross-assembly routes | [docs/cross-assembly-routes.md](docs/cross-assembly-routes.md) |
 
 ## Быстрый пример (data-oriented)
 
@@ -36,8 +37,7 @@ var amount = report.Get<decimal>("amount");
 
 if (!report.ReachedDestination)
 {
-    var red = (RedSignal)report.TerminalSignal;
-    Console.WriteLine($"{red.Issue.Code}: {red.Issue.Message}");
+    Console.WriteLine($"{report.FailureCode}: {report.FailureMessage}");
 }
 ```
 
@@ -63,7 +63,7 @@ dotnet add package TrainOP.Generators
 
 Генератор нужен для `.Station` data-oriented handlers.
 
-Лицензия: [MIT](LICENSE).
+Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.6.0** — см. [CHANGELOG.md](CHANGELOG.md).
 
 ### Локальная сборка пакетов
 
@@ -93,6 +93,6 @@ dotnet test TrainOP.sln
 | Манифест | `CargoManifest` | Неизменяемое хранилище вагонов между станциями |
 | Маршрут | `TrainRoute` | Цепочка станций |
 | Поезд | `Train` | Исполнитель (`DispatchTrain().Travel()`) |
-| Зелёный сигнал | `GreenSignal` | Продолжить маршрут |
-| Красный сигнал | `RedSignal` | Остановка с `SignalIssue` |
-| Отчёт | `RouteReport` | История визитов и финальный сигнал |
+| Зелёный сигнал | `RailwaySignals.Green` / данные | Продолжить маршрут (merge в манифест) |
+| Красный сигнал | `RailwaySignals.Red` | Остановка с `SignalIssue` |
+| Отчёт | `RouteReport` | История визитов, `FailureCode` / `FailureMessage`, терминальные вагоны |

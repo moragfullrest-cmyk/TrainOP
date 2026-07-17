@@ -82,6 +82,23 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal("keep", traceId);
         }
 
+        /// <summary>
+        /// Verifies that a red route exposes failure code and message on the report.
+        /// </summary>
+        [Fact]
+        public void Travel_ExposesFailureDetails_OnRedRoute()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { value = 0 })
+                .Station("Validate", (int value) => RailwaySignals.Red("ERR", "bad value"));
+
+            var report = route.DispatchTrain().Travel();
+
+            Assert.False(report.ReachedDestination);
+            Assert.Equal("ERR", report.FailureCode);
+            Assert.Equal("bad value", report.FailureMessage);
+        }
+
         private static class PaymentRoute
         {
             public static TrainRoute Build() => new TrainRoute()

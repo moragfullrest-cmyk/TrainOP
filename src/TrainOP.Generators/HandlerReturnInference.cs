@@ -33,6 +33,14 @@ namespace TrainOP.Generators
             {
                 returnType = InferBodyReturnType(body, semanticModel);
             }
+            else if (ReturnTypeDisplayBuilder.IsSignalBaseReturn(returnType))
+            {
+                var fromBody = UnwrapReturnType(InferBodyReturnType(body, semanticModel));
+                if (fromBody != null)
+                {
+                    returnType = fromBody;
+                }
+            }
 
             returnType = UnwrapReturnType(returnType);
 
@@ -49,6 +57,18 @@ namespace TrainOP.Generators
             if (returnType == null)
             {
                 return WithReturnType(ReturnShape.Unknown, returnTypeDisplay, useGenericReturn);
+            }
+
+            if (ReturnTypeDisplayBuilder.IsRuntimeSignalReturn(returnType))
+            {
+                return new ReturnShape(
+                    ImmutableArray<WagonBinding>.Empty,
+                    isCargoManifest: false,
+                    isValueTuple: false,
+                    isUnknown: true,
+                    returnTypeDisplay: returnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    useGenericReturn: false,
+                    isRuntimeSignalReturn: true);
             }
 
             if (ReturnTypeDisplayBuilder.IsExplicitSignalReturn(returnType))
@@ -114,7 +134,11 @@ namespace TrainOP.Generators
                 shape.IsVoid,
                 returnTypeDisplay,
                 useGenericReturn,
-                shape.IsExplicitSignalReturn);
+                shape.IsExplicitSignalReturn,
+                shape.IsRuntimeSignalReturn,
+                shape.IsUnnamedTupleReturn,
+                shape.IsMixedTupleReturn,
+                shape.TupleReturnLocations);
         }
 
         /// <summary>
@@ -289,10 +313,14 @@ namespace TrainOP.Generators
                     }
                 }
 
+                var memberBindings = members.ToImmutable();
                 return new ReturnShape(
-                    members.ToImmutable(),
+                    memberBindings,
                     isCargoManifest: false,
-                    isValueTuple: true);
+                    isValueTuple: true,
+                    isUnnamedTupleReturn: IsUnnamedValueTupleReturn(memberBindings),
+                    isMixedTupleReturn: IsMixedValueTupleReturn(memberBindings),
+                    tupleReturnLocations: CollectTupleReturnLocations(bodyExpression, fallbackLocation));
             }
 
             var bindings = ImmutableArray.CreateBuilder<WagonBinding>();
@@ -405,6 +433,115 @@ namespace TrainOP.Generators
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Determines whether a value-tuple return maps wagons only by default ItemN element names.
+        /// </summary>
+        private static bool IsUnnamedValueTupleReturn(ImmutableArray<WagonBinding> members)
+        {
+            if (members.IsDefaultOrEmpty)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < members.Length; i++)
+            {
+                if (!TupleElementNaming.IsDefaultName(members[i].Name, i))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Determines whether a value-tuple return mixes default ItemN names with explicit element names.
+        /// </summary>
+        private static bool IsMixedValueTupleReturn(ImmutableArray<WagonBinding> members)
+        {
+            if (members.IsDefaultOrEmpty)
+            {
+                return false;
+            }
+
+            var hasDefaultName = false;
+            var hasExplicitName = false;
+            for (var i = 0; i < members.Length; i++)
+            {
+                if (TupleElementNaming.IsDefaultName(members[i].Name, i))
+                {
+                    hasDefaultName = true;
+                }
+                else
+                {
+                    hasExplicitName = true;
+                }
+
+                if (hasDefaultName && hasExplicitName)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Collects source locations of value-tuple return expressions in a handler body.
+        /// </summary>
+        private static ImmutableArray<Location> CollectTupleReturnLocations(
+            ExpressionSyntax bodyExpression,
+            Location fallbackLocation)
+        {
+            if (bodyExpression == null)
+            {
+                return fallbackLocation != null
+                    ? ImmutableArray.Create(fallbackLocation)
+                    : ImmutableArray<Location>.Empty;
+            }
+
+            var locations = ImmutableArray.CreateBuilder<Location>();
+            CollectTupleExpressionLocations(bodyExpression, locations);
+            if (locations.Count == 0 && fallbackLocation != null)
+            {
+                locations.Add(fallbackLocation);
+            }
+
+            return locations.ToImmutable();
+        }
+
+        /// <summary>
+        /// Walks an expression tree and records locations of value-tuple literals.
+        /// </summary>
+        private static void CollectTupleExpressionLocations(
+            ExpressionSyntax expression,
+            ImmutableArray<Location>.Builder locations)
+        {
+            if (expression == null)
+            {
+                return;
+            }
+
+            if (expression is ConditionalExpressionSyntax conditional)
+            {
+                CollectTupleExpressionLocations(conditional.WhenTrue, locations);
+                CollectTupleExpressionLocations(conditional.WhenFalse, locations);
+                return;
+            }
+
+            var tupleExpression = UnwrapToTupleExpression(expression);
+            if (tupleExpression == null)
+            {
+                return;
+            }
+
+            var location = tupleExpression.GetLocation();
+            if (location != null)
+            {
+                locations.Add(location);
+            }
         }
 
         /// <summary>

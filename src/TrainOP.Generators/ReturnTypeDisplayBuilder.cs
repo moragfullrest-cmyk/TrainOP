@@ -19,21 +19,35 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Determines whether a handler returns an explicit route signal.
+        /// Determines whether a handler returns a data-oriented signal wrapper (RailwaySignals DSL).
         /// </summary>
         public static bool IsExplicitSignalReturn(ITypeSymbol returnType)
         {
-            if (returnType == null)
+            return IsRedFailure(returnType) || IsGreenPass(returnType);
+        }
+
+        /// <summary>
+        /// Determines whether a handler returns a runtime route signal (GreenSignal or RedSignal).
+        /// </summary>
+        public static bool IsRuntimeSignalReturn(ITypeSymbol returnType)
+        {
+            if (returnType == null || IsExplicitSignalReturn(returnType))
             {
                 return false;
             }
 
-            if (IsRedFailure(returnType) || IsGreenPass(returnType))
-            {
-                return true;
-            }
+            var display = returnType.ToDisplayString();
+            return string.Equals(display, "TrainOP.GreenSignal", StringComparison.Ordinal)
+                || string.Equals(display, "TrainOP.RedSignal", StringComparison.Ordinal);
+        }
 
-            return DerivesFromSignal(returnType);
+        /// <summary>
+        /// Determines whether the return type is the abstract route Signal base (delegate annotation).
+        /// </summary>
+        public static bool IsSignalBaseReturn(ITypeSymbol returnType)
+        {
+            return returnType != null
+                && string.Equals(returnType.ToDisplayString(), "TrainOP.Signal", StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -57,19 +71,6 @@ namespace TrainOP.Generators
             }
 
             return ManifestWagonTypes.ToReturnTypeDisplay(returnType);
-        }
-
-        private static bool DerivesFromSignal(ITypeSymbol typeSymbol)
-        {
-            for (var current = typeSymbol; current != null; current = current.BaseType)
-            {
-                if (string.Equals(current.ToDisplayString(), "TrainOP.Signal", StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private static bool IsRedFailure(ITypeSymbol typeSymbol)

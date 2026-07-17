@@ -25,10 +25,10 @@ internal static class ExampleOutput
         {
             WriteManifest("Final manifest", report.TerminalSignal.Manifest);
         }
-        else if (report.TerminalSignal is RedSignal red)
+        else
         {
-            Console.WriteLine($"Red signal: [{red.Issue.Code}] {red.Issue.Message} (at {red.Issue.StationName})");
-            WriteManifest("Manifest at stop", red.Manifest);
+            Console.WriteLine($"Red signal: [{report.FailureCode}] {report.FailureMessage}");
+            WriteManifest("Manifest at stop", report.TerminalSignal.Manifest);
         }
     }
 

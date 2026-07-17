@@ -29,6 +29,17 @@ namespace TrainOP.Generators
                 return methodFqn + "@" + assignedVariableName;
             }
 
+            if ((anchor.Kind == RouteChainAnchorKind.MethodInvocation
+                    || anchor.Kind == RouteChainAnchorKind.FactorySchema)
+                && anchor.FactoryMethod != null)
+            {
+                return methodFqn + "@"
+                    + anchor.FactoryMethod.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                        .Replace("global::", string.Empty)
+                    + "."
+                    + anchor.FactoryMethod.Name;
+            }
+
             return methodFqn;
         }
 

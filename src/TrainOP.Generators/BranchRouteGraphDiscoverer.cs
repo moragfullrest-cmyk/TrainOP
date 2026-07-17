@@ -58,6 +58,11 @@ namespace TrainOP.Generators
             ExpressionSyntax leaf,
             SemanticModel semanticModel)
         {
+            if (ChainDetector.IsBareUserDefinedFactoryInvocation(leaf, semanticModel))
+            {
+                return new BranchRouteGraph(leaf, isResolved: false, chain: null, simulation: null);
+            }
+
             if (ChainDetector.TryBuildChainEndingAt(leaf, semanticModel, out var chain))
             {
                 var simulation = ChainGraphSimulator.Simulate(chain);

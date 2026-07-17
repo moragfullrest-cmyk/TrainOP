@@ -18,6 +18,7 @@ namespace TrainOP.Generators
                 || returnShape.IsVoid
                 || returnShape.IsCargoManifest
                 || returnShape.IsExplicitSignalReturn
+                || returnShape.IsRuntimeSignalReturn
                 || returnShape.Members.IsDefaultOrEmpty)
             {
                 return null;

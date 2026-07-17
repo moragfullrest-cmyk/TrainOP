@@ -57,20 +57,64 @@ namespace TrainOP.Generators
         public static readonly DiagnosticDescriptor OrphanDataHandler = new DiagnosticDescriptor(
             id: "TOP005",
             title: "Data-oriented handler is outside a TrainRoute chain",
-            messageFormat: "Data-oriented handler must be part of a TrainRoute chain starting with 'new TrainRoute()' (direct fluent chain or a local assigned from it)",
+            messageFormat: "Data-oriented handler must be part of a TrainRoute chain (direct fluent chain, local assigned from 'new TrainRoute()', or factory extension with resolvable upstream schema)",
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
 
         /// <summary>
-        /// Informs that a seed station produced a wagon never consumed by downstream stations.
+        /// Reported when a public factory in a referenced assembly has no exported route schema.
         /// </summary>
-        public static readonly DiagnosticDescriptor UnusedSeedWagon = new DiagnosticDescriptor(
-            id: "TOP006",
-            title: "Seed wagon is never consumed",
-            messageFormat: "Wagon '{0}' produced at seed station '{1}' is never consumed by later stations",
+        public static readonly DiagnosticDescriptor ExternalFactorySchemaMissing = new DiagnosticDescriptor(
+            id: "TOP011",
+            title: "External route factory has no exported schema",
+            messageFormat: "Route factory '{0}' has no exported terminal schema; the join with downstream stations is not validated",
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Info,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when factory return paths produce different terminal wagon sets.
+        /// </summary>
+        public static readonly DiagnosticDescriptor FactoryReturnPathsDiverge = new DiagnosticDescriptor(
+            id: "TOP012",
+            title: "Factory return paths have divergent terminal manifest state",
+            messageFormat: "Route factory '{0}' has divergent terminal manifest across return paths: {1}",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when a factory return path has unknown terminal wagon state.
+        /// </summary>
+        public static readonly DiagnosticDescriptor FactoryReturnPathUnknown = new DiagnosticDescriptor(
+            id: "TOP013",
+            title: "Factory return path has unknown terminal state",
+            messageFormat: "Route factory '{0}' has a return path with unknown terminal wagon state; schema export and validation are not available",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// Warns that a value tuple return has no named elements and maps wagons by positional ItemN keys.
+        /// </summary>
+        public static readonly DiagnosticDescriptor UnnamedTupleReturn = new DiagnosticDescriptor(
+            id: "TOP006",
+            title: "Unnamed value tuple",
+            messageFormat: "Value tuple has no named elements; manifest wagons are bound to Item1, Item2, ... by position. This makes mapping order-dependent and can break silently if you reorder tuple elements. Name each element, e.g. (paymentId: id, amount: amt).",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// Warns that a value tuple return mixes named and unnamed elements with ambiguous wagon mapping.
+        /// </summary>
+        public static readonly DiagnosticDescriptor MixedTupleReturn = new DiagnosticDescriptor(
+            id: "TOP014",
+            title: "Mixed value tuple",
+            messageFormat: "Value tuple mixes named and unnamed elements; some manifest wagons use positional keys (Item1, Item2, ...). This creates ambiguous/fragile wagon mapping (especially across merges or reordering). Name every element, e.g. (paymentId: id, amount: amt).",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
 
         /// <summary>
@@ -91,6 +135,17 @@ namespace TrainOP.Generators
             id: "TOP008",
             title: "Route branch join failed",
             messageFormat: "Cannot join route branches before station '{0}': {1}",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when a data-oriented handler returns a runtime route signal instead of data or RailwaySignals DSL.
+        /// </summary>
+        public static readonly DiagnosticDescriptor RuntimeSignalReturn = new DiagnosticDescriptor(
+            id: "TOP010",
+            title: "Station returns runtime route signal",
+            messageFormat: "Station '{0}' returns '{1}'; use data returns or RailwaySignals.Green / Red / Pass instead of GreenSignal or RedSignal",
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);

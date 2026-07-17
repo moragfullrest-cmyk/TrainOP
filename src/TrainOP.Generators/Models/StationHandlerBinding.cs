@@ -55,8 +55,6 @@ namespace TrainOP.Generators.Models
 
         public string ExtensionMethodName { get; }
 
-        public bool IsSeed => InputWagons.Length == 0 && !IncludeManifest && !IsServiceStation;
-
         public bool RemoveOmittedRegularInputs => InputWagons.Length > 0;
 
         private static string ResolveDefaultExtensionMethodName(bool isServiceStation)

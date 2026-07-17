@@ -406,7 +406,7 @@ public static class AwaitLocalRoute
         /// Verifies that TOP005 is reported when a local is assigned from a non-creation source.
         /// </summary>
         [Fact]
-        public async Task Analyzer_ReportsTop006_WhenLocalIsNotAssignedFromCreation()
+        public async Task Analyzer_ReportsTop005_WhenLocalIsNotAssignedFromCreation()
         {
             const string source = @"
 using TrainOP;
@@ -428,15 +428,15 @@ public static class BrokenRoute
         }
 
         /// <summary>
-        /// Verifies that TOP005 is reported for Build().Station composition (deferred anchor).
+        /// Verifies that private factory extension chains are recognized without TOP005.
         /// </summary>
         [Fact]
-        public async Task Analyzer_ReportsTop006_WhenStationChainedOnBuildCall()
+        public async Task Analyzer_PrivateFactoryExtension_DoesNotReportTop005()
         {
             const string source = @"
 using TrainOP;
 
-public static class BrokenRoute
+public static class ExtensionRoute
 {
     public static TrainRoute Build() =>
         CreateSeed()
@@ -444,6 +444,27 @@ public static class BrokenRoute
 
     private static TrainRoute CreateSeed() =>
         new TrainRoute().Station(""Seed"", () => new { amount = 100m });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that TOP005 is reported when extension starts from an unsupported receiver.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop005_WhenExtensionUsesParameterReceiver()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class ParameterRoute
+{
+    public static TrainRoute Build(TrainRoute baseRoute) =>
+        baseRoute.Station(""Discount"", (decimal amount) => new { amount = amount * 0.9m });
 }";
 
             var diagnostics = await RunAnalyzerAsync(source);
@@ -525,6 +546,35 @@ public static class RecoveryRoute
         }
 
         /// <summary>
+        /// Verifies that ServiceStation handlers with Signal delegate return and RailwaySignals.Pass are allowed.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_AllowsServiceStation_WithRefWagonsAndPassReturn()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class RecoveryRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = -1m })
+        .Station(""Validate"", (string paymentId, decimal amount) =>
+            amount > 0 ? RailwaySignals.Green(new { paymentId, amount }) : RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", (ref string paymentId, ref decimal amount, RedSignal red) =>
+        {
+            paymentId = ""pay-fixed"";
+            amount = 50m;
+            return RailwaySignals.Pass;
+        })
+        .Station(""After"", (string paymentId, decimal amount) => new { paymentId, amount });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP010");
+        }
+
+        /// <summary>
         /// Verifies that a red return does not flag unreachable stations for removed wagon diagnostics.
         /// </summary>
         [Fact]
@@ -545,6 +595,119 @@ public static class FailRoute
             var diagnostics = await RunAnalyzerAsync(source);
 
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that returning an unnamed value tuple from a handler is reported as TOP006.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop006_WhenHandlerReturnsUnnamedTuple()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class UnnamedTupleRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            (paymentId + ""-disc"", amount * 0.9m));
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            var diagnostic = Assert.Single(diagnostics, d => d.Id == "TOP006");
+            Assert.Contains("(paymentId + \"-disc\", amount * 0.9m)", GetSourceTextAtLocation(source, diagnostic.Location));
+        }
+
+        /// <summary>
+        /// Verifies that returning a named value tuple from a handler does not report TOP006.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_DoesNotReportTop006_WhenHandlerReturnsNamedTuple()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class NamedTupleRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            (paymentId: paymentId + ""-disc"", amount: amount * 0.9m));
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+        }
+
+        /// <summary>
+        /// Verifies that returning a mixed value tuple from a handler is reported as TOP014.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop014_WhenHandlerReturnsMixedTuple()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class MixedTupleRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            (paymentId, amount: amount * 0.9m));
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            var diagnostic = Assert.Single(diagnostics, d => d.Id == "TOP014");
+            Assert.Contains("(paymentId, amount: amount * 0.9m)", GetSourceTextAtLocation(source, diagnostic.Location));
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
+        }
+
+        /// <summary>
+        /// Verifies that returning a fully named value tuple from a handler does not report TOP014.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_DoesNotReportTop014_WhenHandlerReturnsNamedTuple()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class NamedTupleRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            (paymentId: paymentId + ""-disc"", amount: amount * 0.9m));
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP014");
+        }
+
+        /// <summary>
+        /// Verifies that returning a runtime RedSignal from a handler is reported as TOP010.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop010_WhenHandlerReturnsRuntimeSignal()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class RuntimeSignalRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { value = 1 })
+        .Station(""Bad"", (int value) =>
+            new RedSignal(new CargoManifest(), new SignalIssue(""ERR"", ""fail"", ""Bad"")));
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP010");
         }
 
         /// <summary>
@@ -654,7 +817,7 @@ public static class AmbiguousRoute
             Assert.Contains(diagnostics, d => d.Id == "TOP009");
         }
 
-        private static async Task<ImmutableArray<Diagnostic>> RunAnalyzerAsync(string source)
+        internal static async Task<ImmutableArray<Diagnostic>> RunAnalyzerAsync(string source)
         {
             var syntaxTree = CSharpSyntaxTree.ParseText(source);
             var compilation = CSharpCompilation.Create(
@@ -668,7 +831,13 @@ public static class AmbiguousRoute
             return await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync();
         }
 
-        private static MetadataReference[] GetMetadataReferences()
+        private static string GetSourceTextAtLocation(string source, Location location)
+        {
+            var span = location.SourceSpan;
+            return source.Substring(span.Start, span.Length);
+        }
+
+        internal static MetadataReference[] GetMetadataReferences()
         {
             var coreDir = Path.GetDirectoryName(typeof(object).Assembly.Location);
             return new[]

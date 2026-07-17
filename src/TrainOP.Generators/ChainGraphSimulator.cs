@@ -60,10 +60,6 @@ namespace TrainOP.Generators
 
             public Dictionary<string, RemovedWagon> Removed { get; } = new(StringComparer.Ordinal);
 
-            public HashSet<string> SeedWagons { get; } = new(StringComparer.Ordinal);
-
-            public HashSet<string> ConsumedWagons { get; } = new(StringComparer.Ordinal);
-
             public bool HasUnknownReturn { get; set; }
         }
 
@@ -72,18 +68,17 @@ namespace TrainOP.Generators
         /// </summary>
         public static ChainSimulationResult Simulate(RouteChain chain)
         {
-            return SimulateCore(chain, hasInitial: false, initialWagons: default);
+            return SimulateCore(chain, initialWagons: default);
         }
 
         /// <summary>
         /// Walks the chain after seeding live wagons (e.g. merged terminals from a branch join).
-        /// Skips unused-seed reporting (seed wagons are not produced by a station-0 seed in this path).
         /// </summary>
         public static ChainSimulationResult Simulate(
             RouteChain chain,
             ImmutableArray<WagonBinding> initialWagons)
         {
-            return SimulateCore(chain, hasInitial: true, initialWagons);
+            return SimulateCore(chain, initialWagons);
         }
 
         /// <summary>
@@ -91,12 +86,11 @@ namespace TrainOP.Generators
         /// </summary>
         private static ChainSimulationResult SimulateCore(
             RouteChain chain,
-            bool hasInitial,
             ImmutableArray<WagonBinding> initialWagons)
         {
             var state = new SimulationState();
 
-            if (hasInitial && !initialWagons.IsDefaultOrEmpty)
+            if (!initialWagons.IsDefaultOrEmpty)
             {
                 foreach (var wagon in initialWagons)
                 {
@@ -119,23 +113,32 @@ namespace TrainOP.Generators
                     continue;
                 }
 
+                if (station.Handler.ReturnShape.IsUnnamedTupleReturn)
+                {
+                    ReportTupleReturnDiagnostics(
+                        state,
+                        station.Handler.ReturnShape.TupleReturnLocations,
+                        TrainRouteDiagnostics.UnnamedTupleReturn);
+                }
+                else if (station.Handler.ReturnShape.IsMixedTupleReturn)
+                {
+                    ReportTupleReturnDiagnostics(
+                        state,
+                        station.Handler.ReturnShape.TupleReturnLocations,
+                        TrainRouteDiagnostics.MixedTupleReturn);
+                }
+
                 ApplyReturn(
                     station,
                     station.Handler,
                     state.Live,
                     state.LiveOrder,
-                    state.Removed,
-                    state.SeedWagons);
+                    state.Removed);
 
                 if (!station.Handler.ReturnShape.IsUnknown)
                 {
                     state.HasUnknownReturn = false;
                 }
-            }
-
-            if (!hasInitial)
-            {
-                ReportUnusedSeedWagons(chain, state);
             }
 
             var terminalWagons = state.HasUnknownReturn
@@ -160,18 +163,11 @@ namespace TrainOP.Generators
         {
             if (state.HasUnknownReturn)
             {
-                foreach (var input in station.Handler.InputWagons)
-                {
-                    state.ConsumedWagons.Add(input.Name);
-                }
-
                 return;
             }
 
             foreach (var input in station.Handler.InputWagons)
             {
-                state.ConsumedWagons.Add(input.Name);
-
                 if (state.Removed.TryGetValue(input.Name, out var removedInfo))
                 {
                     state.Diagnostics.Add(Diagnostic.Create(
@@ -219,6 +215,17 @@ namespace TrainOP.Generators
         {
             var handler = station.Handler;
 
+            if (handler.ReturnShape.IsRuntimeSignalReturn)
+            {
+                state.Diagnostics.Add(Diagnostic.Create(
+                    TrainRouteDiagnostics.RuntimeSignalReturn,
+                    station.HandlerLocation,
+                    station.StationName,
+                    handler.ReturnShape.ReturnTypeDisplay ?? "TrainOP.Signal"));
+                state.HasUnknownReturn = true;
+                return true;
+            }
+
             if (handler.ReturnShape.IsUnknown)
             {
                 state.HasUnknownReturn = true;
@@ -248,30 +255,6 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Reports seed wagons that were produced but never consumed downstream.
-        /// </summary>
-        private static void ReportUnusedSeedWagons(RouteChain chain, SimulationState state)
-        {
-            if (chain.Stations.Length == 0)
-            {
-                return;
-            }
-
-            var seedStation = chain.Stations[0];
-            foreach (var seedWagon in state.SeedWagons)
-            {
-                if (!state.ConsumedWagons.Contains(seedWagon))
-                {
-                    state.Diagnostics.Add(Diagnostic.Create(
-                        TrainRouteDiagnostics.UnusedSeedWagon,
-                        seedStation.HandlerLocation,
-                        seedWagon,
-                        seedStation.StationName));
-                }
-            }
-        }
-
-        /// <summary>
         /// Applies void-return semantics: non-ref inputs are removed and no wagons are produced.
         /// </summary>
         private static void ApplyVoidReturn(
@@ -280,11 +263,6 @@ namespace TrainOP.Generators
             Dictionary<string, LiveWagon> live,
             Dictionary<string, RemovedWagon> removed)
         {
-            if (handler.IsSeed)
-            {
-                return;
-            }
-
             foreach (var input in handler.InputWagons)
             {
                 if (input.IsByReference)
@@ -305,8 +283,7 @@ namespace TrainOP.Generators
             StationHandlerBinding handler,
             Dictionary<string, LiveWagon> live,
             List<string> liveOrder,
-            Dictionary<string, RemovedWagon> removed,
-            HashSet<string> seedWagons)
+            Dictionary<string, RemovedWagon> removed)
         {
             if (handler.IsServiceStation)
             {
@@ -316,23 +293,6 @@ namespace TrainOP.Generators
             var returnedNames = new HashSet<string>(
                 handler.ReturnShape.Members.Select(m => m.Name),
                 StringComparer.Ordinal);
-
-            if (handler.IsSeed)
-            {
-                foreach (var member in handler.ReturnShape.Members)
-                {
-                    if (!live.ContainsKey(member.Name))
-                    {
-                        liveOrder.Add(member.Name);
-                    }
-
-                    live[member.Name] = new LiveWagon(member, station.StationName);
-                    seedWagons.Add(member.Name);
-                    removed.Remove(member.Name);
-                }
-
-                return;
-            }
 
             foreach (var input in handler.InputWagons)
             {
@@ -406,6 +366,31 @@ namespace TrainOP.Generators
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Reports tuple-return diagnostics at tuple literal locations.
+        /// </summary>
+        private static void ReportTupleReturnDiagnostics(
+            SimulationState state,
+            ImmutableArray<Location> tupleReturnLocations,
+            DiagnosticDescriptor descriptor)
+        {
+            if (tupleReturnLocations.IsDefaultOrEmpty)
+            {
+                return;
+            }
+
+            for (var i = 0; i < tupleReturnLocations.Length; i++)
+            {
+                var location = tupleReturnLocations[i];
+                if (location == null)
+                {
+                    continue;
+                }
+
+                state.Diagnostics.Add(Diagnostic.Create(descriptor, location));
+            }
         }
 
     }

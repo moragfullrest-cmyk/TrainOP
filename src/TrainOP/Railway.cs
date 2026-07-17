@@ -237,6 +237,7 @@ namespace TrainOP
         /// <summary>
         /// Creates a green signal for the provided manifest.
         /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
         public static GreenSignal Green(CargoManifest manifest)
         {
             return new GreenSignal(manifest);
@@ -259,6 +260,7 @@ namespace TrainOP
         /// <summary>
         /// Creates a red signal for the provided manifest and issue.
         /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
         public static RedSignal Red(CargoManifest manifest, SignalIssue issue)
         {
             return new RedSignal(manifest, issue);
@@ -327,6 +329,18 @@ namespace TrainOP
         /// Gets whether the route reached its destination with a green signal.
         /// </summary>
         public bool ReachedDestination => TerminalSignal.IsGreen;
+
+        /// <summary>
+        /// Gets the failure code when the route stopped with a red signal; otherwise null.
+        /// </summary>
+        public string FailureCode =>
+            TerminalSignal is RedSignal red ? red.Issue.Code : null;
+
+        /// <summary>
+        /// Gets the failure message when the route stopped with a red signal; otherwise null.
+        /// </summary>
+        public string FailureMessage =>
+            TerminalSignal is RedSignal red ? red.Issue.Message : null;
 
         /// <summary>
         /// Gets a terminal wagon value by name from the report manifest.

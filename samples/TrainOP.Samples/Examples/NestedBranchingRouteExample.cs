@@ -48,7 +48,7 @@ internal sealed class NestedBranchingRouteExample : IExample
         var subReport = subRoute.DispatchTrain().Travel();
         if (!subReport.ReachedDestination)
         {
-            return subReport.TerminalSignal;
+            return RailwaySignals.Red("BRANCH_FAILED", $"branch '{channel}' did not complete");
         }
 
         return new

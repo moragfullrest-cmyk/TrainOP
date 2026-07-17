@@ -19,6 +19,16 @@ namespace TrainOP.Generators.Models
         /// Synthetic anchor for a downstream chain after a forking receiver join.
         /// </summary>
         BranchJoin,
+
+        /// <summary>
+        /// Anchor at a private/internal factory invocation resolved inline.
+        /// </summary>
+        MethodInvocation,
+
+        /// <summary>
+        /// Anchor at a public/exported factory invocation resolved via exported schema.
+        /// </summary>
+        FactorySchema,
     }
 }
 

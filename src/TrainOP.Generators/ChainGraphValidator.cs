@@ -14,7 +14,10 @@ namespace TrainOP.Generators
         /// </summary>
         public static ImmutableArray<Diagnostic> Validate(RouteChain chain)
         {
-            return ChainGraphSimulator.Simulate(chain).Diagnostics;
+            var initial = chain.Anchor.InitialWagons;
+            return initial.IsDefaultOrEmpty
+                ? ChainGraphSimulator.Simulate(chain).Diagnostics
+                : ChainGraphSimulator.Simulate(chain, initial).Diagnostics;
         }
     }
 }

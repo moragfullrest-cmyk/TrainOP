@@ -27,16 +27,16 @@ dotnet add package TrainOP.Generators
 Указать версию явно:
 
 ```bash
-dotnet add package TrainOP --version 0.5.0
-dotnet add package TrainOP.Generators --version 0.5.0
+dotnet add package TrainOP --version 0.6.0
+dotnet add package TrainOP.Generators --version 0.6.0
 ```
 
 ### PackageReference в `.csproj`
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.5.0" />
-  <PackageReference Include="TrainOP.Generators" Version="0.5.0" />
+  <PackageReference Include="TrainOP" Version="0.6.0" />
+  <PackageReference Include="TrainOP.Generators" Version="0.6.0" />
 </ItemGroup>
 ```
 
@@ -97,8 +97,8 @@ dotnet add package TrainOP.Generators --source trainop-local
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="TrainOP" Version="0.5.0" />
-    <PackageReference Include="TrainOP.Generators" Version="0.5.0" />
+    <PackageReference Include="TrainOP" Version="0.6.0" />
+    <PackageReference Include="TrainOP.Generators" Version="0.6.0" />
   </ItemGroup>
 </Project>
 ```
@@ -132,9 +132,15 @@ var id = report.Get<int>("id");
 - Пересоберите проект (`dotnet build`); IDE иногда кэширует анализаторы — перезапуск может понадобиться.
 - Проверьте, что используется SDK-style проект, а не старый `packages.config` без analyzers.
 
-### Ошибки анализатора цепочки (TRNxxxx)
+### Ошибки анализатора цепочки (TOPxxxx)
 
-Генератор проверяет совместимость параметров и возвратов между станциями. Сообщения указывают на конкретную станцию в цепочке — исправьте сигнатуру handler'а или тип возврата. Подробнее — [Основной API](core-api.md).
+Генератор проверяет совместимость параметров и возвратов между станциями. Сообщения указывают на handler, tuple literal или станцию в цепочке — исправьте сигнатуру handler'а или тип возврата. Полный список — [Основной API → диагностики](core-api.md#диагностики-analyzer).
+
+## Маршруты в библиотеке и композиция в приложении
+
+Class library с `public static TrainRoute Build()` автоматически экспортирует terminal schema при сборке с `TrainOP.Generators`. Consumer добавляет `.Station(...)` после `ExternalModule.Build()` — analyzer проверяет стык по exported schema.
+
+Подробнее: [cross-assembly-routes.md](cross-assembly-routes.md).
 
 ## Следующие шаги
 

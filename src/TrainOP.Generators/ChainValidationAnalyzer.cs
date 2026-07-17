@@ -4,7 +4,6 @@ using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
-
 namespace TrainOP.Generators
 {
     /// <summary>
@@ -22,8 +21,13 @@ namespace TrainOP.Generators
                 TrainRouteDiagnostics.WagonTypeConflict,
                 TrainRouteDiagnostics.WagonRemovedButRequired,
                 TrainRouteDiagnostics.CargoManifestReplacement,
+                TrainRouteDiagnostics.UnnamedTupleReturn,
+                TrainRouteDiagnostics.MixedTupleReturn,
+                TrainRouteDiagnostics.RuntimeSignalReturn,
                 TrainRouteDiagnostics.OrphanDataHandler,
-                TrainRouteDiagnostics.UnusedSeedWagon,
+                TrainRouteDiagnostics.ExternalFactorySchemaMissing,
+                TrainRouteDiagnostics.FactoryReturnPathsDiverge,
+                TrainRouteDiagnostics.FactoryReturnPathUnknown,
                 TrainRouteDiagnostics.RouteBranchJoinFailed,
                 TrainRouteDiagnostics.UnsupportedStationHandler,
             ];
@@ -54,14 +58,33 @@ namespace TrainOP.Generators
 
                 var tree = modelContext.SemanticModel.SyntaxTree;
                 var semanticModel = modelContext.SemanticModel;
+                var compilation = semanticModel.Compilation;
                 var chains = ChainDetector.DetectChains(tree, semanticModel);
                 foreach (var chain in chains)
                 {
+                    if (chain.Anchor.FactoryMethod != null)
+                    {
+                        if (!RouteFactoryResolver.TryResolve(
+                            chain.Anchor.FactoryMethod,
+                            compilation,
+                            chain.Anchor.Location,
+                            out _,
+                            out var factoryDiagnostics))
+                        {
+                            foreach (var diagnostic in factoryDiagnostics)
+                            {
+                                modelContext.ReportDiagnostic(diagnostic);
+                            }
+                        }
+                    }
+
                     foreach (var diagnostic in ChainGraphValidator.Validate(chain))
                     {
                         modelContext.ReportDiagnostic(diagnostic);
                     }
                 }
+
+                ReportFactoryValidationDiagnostics(modelContext, compilation);
 
                 var joinDownstream = new HashSet<InvocationExpressionSyntax>();
                 var joinSets = BranchRouteJoinSetFinder.Find(tree, semanticModel);
@@ -138,6 +161,40 @@ namespace TrainOP.Generators
                         handlerLocation));
                 }
             });
+        }
+
+        private static void ReportFactoryValidationDiagnostics(
+            SemanticModelAnalysisContext modelContext,
+            Compilation compilation)
+        {
+            var tree = modelContext.SemanticModel.SyntaxTree;
+            if (tree.FilePath.EndsWith(".g.cs", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var processed = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+            foreach (var node in tree.GetRoot().DescendantNodes())
+            {
+                if (node is not MethodDeclarationSyntax methodDeclaration)
+                {
+                    continue;
+                }
+
+                var methodSymbol = modelContext.SemanticModel.GetDeclaredSymbol(methodDeclaration) as IMethodSymbol;
+                if (methodSymbol == null
+                    || !FactoryAccessibilityHelper.IsExportedFactoryContract(methodSymbol)
+                    || !StationSyntaxHelper.IsTrainRoute(methodSymbol.ReturnType)
+                    || !processed.Add(methodSymbol))
+                {
+                    continue;
+                }
+
+                foreach (var diagnostic in RouteFactoryPathValidator.Validate(methodSymbol, compilation).Diagnostics)
+                {
+                    modelContext.ReportDiagnostic(diagnostic);
+                }
+            }
         }
     }
 }

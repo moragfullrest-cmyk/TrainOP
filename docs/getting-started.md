@@ -15,8 +15,8 @@ dotnet add package TrainOP.Generators
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.5.0" />
-  <PackageReference Include="TrainOP.Generators" Version="0.5.0" />
+  <PackageReference Include="TrainOP" Version="0.6.0" />
+  <PackageReference Include="TrainOP.Generators" Version="0.6.0" />
 </ItemGroup>
 ```
 
@@ -60,8 +60,7 @@ var amount = report.Get<decimal>("amount");
 
 if (!report.ReachedDestination)
 {
-    var red = (RedSignal)report.TerminalSignal;
-    Console.WriteLine($"{red.Issue.Code}: {red.Issue.Message}");
+    Console.WriteLine($"{report.FailureCode}: {report.FailureMessage}");
 }
 ```
 
@@ -69,8 +68,8 @@ if (!report.ReachedDestination)
 
 ```
 CargoManifest (старт)
-    → Станция 1 → GreenSignal + новый манифест
-    → Станция 2 → GreenSignal + новый манифест
+    → Станция 1 → merge данных → продолжение
+    → Станция 2 → merge данных → продолжение
     → ...
     → RouteReport (визиты + финальный сигнал)
 ```
