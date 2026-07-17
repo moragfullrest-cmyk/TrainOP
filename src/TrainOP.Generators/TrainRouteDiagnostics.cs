@@ -96,23 +96,12 @@ namespace TrainOP.Generators
             isEnabledByDefault: true);
 
         /// <summary>
-        /// Warns that a value tuple return has no named elements and maps wagons by positional ItemN keys.
+        /// Warns that a value tuple return uses default ItemN element names (no explicit or inferred name).
         /// </summary>
-        public static readonly DiagnosticDescriptor UnnamedTupleReturn = new DiagnosticDescriptor(
+        public static readonly DiagnosticDescriptor DefaultItemNTupleReturn = new DiagnosticDescriptor(
             id: "TOP006",
-            title: "Unnamed value tuple",
-            messageFormat: "Value tuple has no named elements; manifest wagons are bound to Item1, Item2, ... by position. This makes mapping order-dependent and can break silently if you reorder tuple elements. Name each element, e.g. (paymentId: id, amount: amt).",
-            category: "TrainOP.Generators",
-            defaultSeverity: DiagnosticSeverity.Warning,
-            isEnabledByDefault: true);
-
-        /// <summary>
-        /// Warns that a value tuple return mixes named and unnamed elements with ambiguous wagon mapping.
-        /// </summary>
-        public static readonly DiagnosticDescriptor MixedTupleReturn = new DiagnosticDescriptor(
-            id: "TOP014",
-            title: "Mixed value tuple",
-            messageFormat: "Value tuple mixes named and unnamed elements; some manifest wagons use positional keys (Item1, Item2, ...). This creates ambiguous/fragile wagon mapping (especially across merges or reordering). Name every element, e.g. (paymentId: id, amount: amt).",
+            title: "Default ItemN value tuple element",
+            messageFormat: "Value tuple element uses default name ItemN (no explicit name and no name inference). Manifest mapping is positional and order-dependent. Prefer a named element, e.g. (paymentId: id, amount: amt), or an identifier so the name can be inferred.",
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);

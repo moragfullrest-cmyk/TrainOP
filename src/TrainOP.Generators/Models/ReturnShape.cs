@@ -34,8 +34,7 @@ namespace TrainOP.Generators.Models
             bool useGenericReturn = false,
             bool isExplicitSignalReturn = false,
             bool isRuntimeSignalReturn = false,
-            bool isUnnamedTupleReturn = false,
-            bool isMixedTupleReturn = false,
+            bool hasDefaultItemNTupleElements = false,
             ImmutableArray<Location> tupleReturnLocations = default)
         {
             Members = members;
@@ -47,8 +46,7 @@ namespace TrainOP.Generators.Models
             UseGenericReturn = useGenericReturn;
             IsExplicitSignalReturn = isExplicitSignalReturn;
             IsRuntimeSignalReturn = isRuntimeSignalReturn;
-            IsUnnamedTupleReturn = isUnnamedTupleReturn;
-            IsMixedTupleReturn = isMixedTupleReturn;
+            HasDefaultItemNTupleElements = hasDefaultItemNTupleElements;
             TupleReturnLocations = tupleReturnLocations.IsDefault
                 ? ImmutableArray<Location>.Empty
                 : tupleReturnLocations;
@@ -72,9 +70,11 @@ namespace TrainOP.Generators.Models
 
         public bool IsRuntimeSignalReturn { get; }
 
-        public bool IsUnnamedTupleReturn { get; }
-
-        public bool IsMixedTupleReturn { get; }
+        /// <summary>
+        /// True when at least one tuple element uses the compiler default ItemN name
+        /// without an explicit <c>NameColon</c> in source (inferred or explicit names do not count).
+        /// </summary>
+        public bool HasDefaultItemNTupleElements { get; }
 
         public ImmutableArray<Location> TupleReturnLocations { get; }
     }

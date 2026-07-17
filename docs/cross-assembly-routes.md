@@ -61,8 +61,8 @@ Unknown terminal state on any path reports **TOP013**.
 
 | ID | When | Why it matters |
 |----|------|----------------|
-| TOP006 | Tuple literal with no named elements, e.g. `(id, amt)` | Manifest keys become `Item1`, `Item2`, …; mapping is order-dependent and can break silently on reorder |
-| TOP014 | Tuple literal mixing named and unnamed elements, e.g. `(id, amount: amt)` | Some wagons map by name, others by position; fragile across merges and refactors |
+| TOP006 | Tuple element has default `ItemN` (no `NameColon` and no name inference), e.g. `(id + "-x", amount * 0.9m)` | Manifest keys become positional `Item1`, `Item2`, … |
+| — | Inferred `(paymentId, amount)` or explicit `(Item1: x, …)` | Treated as intentional names; no warning |
 
 Diagnostics are reported on the **tuple literal**, not on the handler method.
 

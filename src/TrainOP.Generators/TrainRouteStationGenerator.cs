@@ -19,6 +19,13 @@ namespace TrainOP.Generators
     public sealed class TrainRouteStationGenerator : IIncrementalGenerator
     {
         /// <summary>
+        /// Creates a generator instance (required for test hosts and MEF discovery).
+        /// </summary>
+        public TrainRouteStationGenerator()
+        {
+        }
+
+        /// <summary>
         /// Registers syntax-driven discovery of station handlers and emits grouped extension source code.
         /// </summary>
         public void Initialize(IncrementalGeneratorInitializationContext context)
@@ -29,14 +36,16 @@ namespace TrainOP.Generators
                     || StationSyntaxHelper.IsCandidateServiceStationInvocation(node),
                 static (generatorContext, _) => GetRouteHandlerCall(generatorContext));
 
-            var combined = context.CompilationProvider.Combine(stationCalls.Collect());
+            var combined = context.CompilationProvider
+                .Combine(stationCalls.Collect())
+                .Combine(context.AnalyzerConfigOptionsProvider);
 
             context.RegisterSourceOutput(combined, static (productionContext, source) =>
             {
-                var compilation = source.Left;
+                var compilation = source.Left.Left;
+                var calls = source.Left.Right;
+                var chainDispatchMode = ChainDispatchModeReader.Read(source.Right);
                 RouteSchemaExporter.Emit(productionContext, compilation);
-
-                var calls = source.Right;
                 var chainIndex = ChainStationCallIndex.Build(compilation);
                 var groups = new Dictionary<string, TypeSignatureGroup>(StringComparer.Ordinal);
                 var interceptorSites = new List<TrainRouteStationInterceptorsEmitter.InterceptorSite>();
@@ -94,43 +103,46 @@ namespace TrainOP.Generators
                     .OrderBy(x => x.DelegateTypeId, StringComparer.Ordinal)
                     .ToImmutableArray();
 
-                EmitExtensions(productionContext, mergedSchemas);
+                EmitExtensions(productionContext, mergedSchemas, chainDispatchMode);
 
-                foreach (var merged in mergedSchemas)
+                if (ChainDispatchModeReader.UsesInterceptors(chainDispatchMode))
                 {
-                    if (!merged.UsesChainDispatch)
+                    foreach (var merged in mergedSchemas)
                     {
-                        continue;
-                    }
-
-                    var schema = merged.Signature;
-                    var delegateName = (schema.IsServiceStation ? "TrainServiceStationHandler_" : "TrainStationHandler_") + merged.DelegateTypeId;
-                    var handlerTypeName = HandlerFuncTypeBuilder.BuildHandlerTypeName(schema, delegateName);
-                    if (HandlerFuncTypeBuilder.RequiresCustomDelegate(schema))
-                    {
-                        handlerTypeName = "global::TrainOP.TrainRouteStationExtensions." + delegateName;
-                    }
-
-                    var coreMethodName = "StationCore_" + merged.DelegateTypeId;
-                    foreach (var binding in merged.ChainBindings)
-                    {
-                        var interceptorKey = ChainStationCallIndex.BuildLocationKey(binding.InvocationLocation);
-                        if (interceptorKey.Length == 0 || !processedInterceptorKeys.Add(interceptorKey))
+                        if (!merged.UsesChainDispatch)
                         {
                             continue;
                         }
 
-                        interceptorSites.Add(new TrainRouteStationInterceptorsEmitter.InterceptorSite(
-                            binding.Invocation,
-                            schema.ExtensionMethodName,
-                            handlerTypeName,
-                            coreMethodName,
-                            binding.ChainId,
-                            binding.StationIndex));
-                    }
-                }
+                        var schema = merged.Signature;
+                        var delegateName = (schema.IsServiceStation ? "TrainServiceStationHandler_" : "TrainStationHandler_") + merged.DelegateTypeId;
+                        var handlerTypeName = HandlerFuncTypeBuilder.BuildHandlerTypeName(schema, delegateName);
+                        if (HandlerFuncTypeBuilder.RequiresCustomDelegate(schema))
+                        {
+                            handlerTypeName = "global::TrainOP.TrainRouteStationExtensions." + delegateName;
+                        }
 
-                TrainRouteStationInterceptorsEmitter.Emit(productionContext, compilation, interceptorSites);
+                        var coreMethodName = "StationCore_" + merged.DelegateTypeId;
+                        foreach (var binding in merged.ChainBindings)
+                        {
+                            var interceptorKey = ChainStationCallIndex.BuildLocationKey(binding.InvocationLocation);
+                            if (interceptorKey.Length == 0 || !processedInterceptorKeys.Add(interceptorKey))
+                            {
+                                continue;
+                            }
+
+                            interceptorSites.Add(new TrainRouteStationInterceptorsEmitter.InterceptorSite(
+                                binding.Invocation,
+                                schema.ExtensionMethodName,
+                                handlerTypeName,
+                                coreMethodName,
+                                binding.ChainId,
+                                binding.StationIndex));
+                        }
+                    }
+
+                    TrainRouteStationInterceptorsEmitter.Emit(productionContext, compilation, interceptorSites);
+                }
             });
         }
 
@@ -190,7 +202,10 @@ namespace TrainOP.Generators
         /// <summary>
         /// Emits the TrainRouteStationExtensions source file for all merged handler schemas.
         /// </summary>
-        private static void EmitExtensions(SourceProductionContext context, ImmutableArray<MergedStationSchema> schemas)
+        private static void EmitExtensions(
+            SourceProductionContext context,
+            ImmutableArray<MergedStationSchema> schemas,
+            ChainDispatchMode chainDispatchMode)
         {
             var source = new StringBuilder();
             var emittedSignatures = new HashSet<string>(StringComparer.Ordinal);
@@ -220,7 +235,7 @@ namespace TrainOP.Generators
                     source.AppendLine();
                 }
 
-                EmitSchemaMembers(source, merged, metadataConsolidation, emittedMetadataKeys);
+                EmitSchemaMembers(source, merged, metadataConsolidation, emittedMetadataKeys, chainDispatchMode);
                 emittedCount++;
             }
 
@@ -266,11 +281,20 @@ namespace TrainOP.Generators
             StringBuilder source,
             MergedStationSchema merged,
             IReadOnlyDictionary<string, MergedStationSchema> metadataConsolidation,
-            HashSet<string> emittedMetadataKeys)
+            HashSet<string> emittedMetadataKeys,
+            ChainDispatchMode chainDispatchMode)
         {
             if (merged.UsesChainDispatch)
             {
-                EmitChainAwareSchemaMembers(source, merged);
+                if (chainDispatchMode == ChainDispatchMode.Reflection)
+                {
+                    EmitReflectionChainAwareSchemaMembers(source, merged);
+                }
+                else
+                {
+                    EmitChainAwareSchemaMembers(source, merged);
+                }
+
                 return;
             }
 
@@ -428,6 +452,122 @@ namespace TrainOP.Generators
             EmitChainAwareStationReturnMerge(source, schema);
             source.AppendLine("            });");
             source.AppendLine("        }");
+        }
+
+        /// <summary>
+        /// Emits chain-dispatch adapters that resolve wagon names via ParameterInfo (no interceptors).
+        /// </summary>
+        private static void EmitReflectionChainAwareSchemaMembers(StringBuilder source, MergedStationSchema merged)
+        {
+            var schema = merged.Signature;
+            var delegateTypeId = merged.DelegateTypeId;
+            var delegateName = (schema.IsServiceStation ? "TrainServiceStationHandler_" : "TrainStationHandler_") + delegateTypeId;
+            if (HandlerFuncTypeBuilder.RequiresCustomDelegate(schema))
+            {
+                HandlerFuncTypeBuilder.EmitCustomDelegateDeclaration(source, schema, delegateName);
+                source.AppendLine();
+            }
+
+            var handlerTypeName = HandlerFuncTypeBuilder.BuildHandlerTypeName(schema, delegateName);
+            var routeMethodName = schema.ExtensionMethodName;
+            EmitOverloadResolutionPriority(source, schema);
+            source.Append("        public static TrainRoute ")
+                .Append(routeMethodName)
+                .Append("(this TrainRoute route, string stationName, ")
+                .Append(handlerTypeName)
+                .AppendLine(" handler)");
+            source.AppendLine("        {");
+            source.AppendLine("            if (route == null) throw new ArgumentNullException(nameof(route));");
+            source.AppendLine("            if (handler == null) throw new ArgumentNullException(nameof(handler));");
+            source.AppendLine("            var inputNames = StationHandlerParameterNames.GetWagonInputNames(handler);");
+            if (schema.HasRefWagons)
+            {
+                source.AppendLine("            var refFlags = StationHandlerParameterNames.GetWagonRefFlags(handler);");
+            }
+
+            if (schema.IsServiceStation)
+            {
+                if (schema.IsAsync)
+                {
+                    source.AppendLine("            return route.ServiceStation(stationName, async (red, token) =>");
+                    source.AppendLine("            {");
+                    source.AppendLine("                var manifest = red.Manifest;");
+                    ChainAwareStationCodegen.EmitPullWagonsFromNameArray(source, schema, "inputNames");
+                    EmitChainAwareHandlerInvocation(source, schema, tokenVariable: "token", redVariable: "red");
+                }
+                else
+                {
+                    source.AppendLine("            return route.ServiceStation(stationName, (red, token) =>");
+                    source.AppendLine("            {");
+                    source.AppendLine("                var manifest = red.Manifest;");
+                    ChainAwareStationCodegen.EmitPullWagonsFromNameArray(source, schema, "inputNames");
+                    EmitChainAwareHandlerInvocation(source, schema, tokenVariable: "token", redVariable: "red");
+                }
+            }
+            else if (schema.IsAsync)
+            {
+                source.AppendLine("            return route.RegisterStation(stationName, async (manifest, token) =>");
+                source.AppendLine("            {");
+                ChainAwareStationCodegen.EmitPullWagonsFromNameArray(source, schema, "inputNames");
+                EmitChainAwareHandlerInvocation(source, schema, tokenVariable: "token", redVariable: null);
+            }
+            else if (schema.HasCancellationToken)
+            {
+                source.AppendLine("            return route.RegisterStation(stationName, (manifest, token) =>");
+                source.AppendLine("            {");
+                ChainAwareStationCodegen.EmitPullWagonsFromNameArray(source, schema, "inputNames");
+                EmitChainAwareHandlerInvocation(source, schema, tokenVariable: "token", redVariable: null);
+            }
+            else
+            {
+                source.AppendLine("            return route.RegisterStation(stationName, manifest =>");
+                source.AppendLine("            {");
+                ChainAwareStationCodegen.EmitPullWagonsFromNameArray(source, schema, "inputNames");
+                EmitChainAwareHandlerInvocation(source, schema, tokenVariable: null, redVariable: null);
+            }
+
+            if (schema.HasRefWagons)
+            {
+                source.Append("                var refLocalValues = new object[] { ");
+                for (var i = 0; i < schema.Wagons.Length; i++)
+                {
+                    source.Append("wagon").Append(i);
+                    if (i < schema.Wagons.Length - 1)
+                    {
+                        source.Append(", ");
+                    }
+                }
+
+                source.AppendLine(" };");
+            }
+
+            EmitReflectionStationReturnMerge(source, schema);
+            source.AppendLine("            });");
+            source.AppendLine("        }");
+        }
+
+        private static void EmitReflectionStationReturnMerge(StringBuilder source, StationHandlerBinding schema)
+        {
+            if (schema.IsServiceStation)
+            {
+                source.Append("                return StationMerge.ToServiceSignal(manifest, stationReturn, stationName, inputNames, ")
+                    .Append(schema.HasRefWagons ? "refFlags" : "null")
+                    .Append(", ")
+                    .Append(schema.HasRefWagons ? "refLocalValues" : "null")
+                    .AppendLine(");");
+                return;
+            }
+
+            source.Append("                return StationMerge.ToSignal(manifest, stationReturn, stationName, inputNames, ")
+                .Append(schema.RemoveOmittedRegularInputs ? "true" : "false")
+                .Append(", (string[])null");
+
+            if (schema.HasRefWagons)
+            {
+                source.Append(", refFlags, refLocalValues");
+            }
+
+            source.AppendLine(");");
         }
 
         private static void EmitChainAwareHandlerInvocation(

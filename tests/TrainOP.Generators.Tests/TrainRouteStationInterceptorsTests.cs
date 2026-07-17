@@ -244,9 +244,54 @@ public static class ConflictingNameRoute
             Assert.Contains("throw new ArgumentNullException(nameof(handler));", interceptors);
         }
 
+        /// <summary>
+        /// Verifies reflection mode emits ParameterInfo binding and skips interceptors.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsReflectionBinding_WhenChainDispatchModeIsReflection()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class ConflictingNameRoute
+{
+    public static TrainRoute Payment() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m });
+
+    public static TrainRoute Order() => new TrainRoute()
+        .Station(""Seed"", () => new { orderId = ""ord-1"", total = 50m })
+        .Station(""Validate"", (string orderId, decimal total) =>
+            new { orderId, total = total + 1m });
+}";
+
+            var runResult = RunGeneratorDriver(source, mode: "reflection");
+            var extensions = GetExtensionsSource(runResult);
+            var interceptors = GetInterceptorsSource(runResult);
+
+            Assert.Contains("StationHandlerParameterNames.GetWagonInputNames", extensions);
+            Assert.DoesNotContain("StationCore_", extensions);
+            Assert.DoesNotContain("InterceptsLocation", interceptors);
+            Assert.DoesNotContain("class TrainRouteStationInterceptors", interceptors);
+        }
+
         private static string GetInterceptorsSource(string source, string path = "Test0.cs")
         {
             return GetInterceptorsSource(RunGeneratorDriver(source, path));
+        }
+
+        private static string GetExtensionsSource(GeneratorDriverRunResult runResult)
+        {
+            foreach (var generatedSource in runResult.Results.SelectMany(result => result.GeneratedSources))
+            {
+                if (generatedSource.HintName.Contains("Extensions", StringComparison.Ordinal))
+                {
+                    return generatedSource.SourceText.ToString();
+                }
+            }
+
+            return string.Empty;
         }
 
         private static string GetInterceptorsSource(GeneratorDriverRunResult runResult)
@@ -280,7 +325,10 @@ public static class ConflictingNameRoute
             return CountOccurrences("InterceptsLocation(1,", interceptorsSource);
         }
 
-        private static GeneratorDriverRunResult RunGeneratorDriver(string source, string path = "Test0.cs")
+        private static GeneratorDriverRunResult RunGeneratorDriver(
+            string source,
+            string path = "Test0.cs",
+            string mode = "stable")
         {
             var syntaxTree = CSharpSyntaxTree.ParseText(source, path: path);
             var compilation = CSharpCompilation.Create(
@@ -294,7 +342,18 @@ public static class ConflictingNameRoute
                 new TrainRouteStationGenerator().AsSourceGenerator(),
             };
 
-            GeneratorDriver driver = CSharpGeneratorDriver.Create(generators);
+            var namespaces = string.Equals(mode, "reflection", StringComparison.OrdinalIgnoreCase)
+                ? string.Empty
+                : "TrainOP.Generated";
+            var optionsProvider = TestAnalyzerConfigOptionsProvider.ForChainDispatchMode(
+                mode,
+                interceptorsNamespaces: namespaces);
+
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                generators,
+                additionalTexts: null,
+                parseOptions: null,
+                optionsProvider: optionsProvider);
             driver = driver.RunGenerators(compilation);
 
             return driver.GetRunResult();

@@ -113,19 +113,12 @@ namespace TrainOP.Generators
                     continue;
                 }
 
-                if (station.Handler.ReturnShape.IsUnnamedTupleReturn)
+                if (station.Handler.ReturnShape.HasDefaultItemNTupleElements)
                 {
                     ReportTupleReturnDiagnostics(
                         state,
                         station.Handler.ReturnShape.TupleReturnLocations,
-                        TrainRouteDiagnostics.UnnamedTupleReturn);
-                }
-                else if (station.Handler.ReturnShape.IsMixedTupleReturn)
-                {
-                    ReportTupleReturnDiagnostics(
-                        state,
-                        station.Handler.ReturnShape.TupleReturnLocations,
-                        TrainRouteDiagnostics.MixedTupleReturn);
+                        TrainRouteDiagnostics.DefaultItemNTupleReturn);
                 }
 
                 ApplyReturn(

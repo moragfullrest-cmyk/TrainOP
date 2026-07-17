@@ -126,11 +126,27 @@ namespace TrainOP.Generators
             string bindingVariable,
             string manifestVariable = "manifest")
         {
+            EmitPullWagonsFromNameArray(
+                source,
+                schema,
+                bindingVariable + ".InputNames",
+                manifestVariable);
+        }
+
+        /// <summary>
+        /// Emits manifest pull statements using a string[] variable of wagon names.
+        /// </summary>
+        public static void EmitPullWagonsFromNameArray(
+            StringBuilder source,
+            StationHandlerBinding schema,
+            string namesVariable,
+            string manifestVariable = "manifest")
+        {
             for (var i = 0; i < schema.Wagons.Length; i++)
             {
                 var wagon = schema.Wagons[i];
                 var localName = "wagon" + i;
-                var nameExpression = bindingVariable + ".InputNames[" + i + "]";
+                var nameExpression = namesVariable + "[" + i + "]";
                 if (wagon.IsOptional)
                 {
                     source.Append("                var ").Append(localName).Append(" = ").Append(manifestVariable).Append(".HasWagon(")

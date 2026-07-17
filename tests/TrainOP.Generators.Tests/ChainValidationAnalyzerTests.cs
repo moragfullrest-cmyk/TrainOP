@@ -453,6 +453,56 @@ public static class ExtensionRoute
         }
 
         /// <summary>
+        /// Verifies that parentheses around a factory extension receiver do not break chain detection.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ParenthesizedFactoryExtension_DoesNotReportTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class ParenFactoryRoute
+{
+    public static TrainRoute Build() =>
+        (CreateSeed())
+            .Station(""Discount"", (decimal amount) => new { amount = amount * 0.9m });
+
+    private static TrainRoute CreateSeed() =>
+        new TrainRoute().Station(""Seed"", () => new { amount = 100m });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that a cast around a factory extension receiver does not break chain detection.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_CastFactoryExtension_DoesNotReportTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class CastFactoryRoute
+{
+    public static TrainRoute Build() =>
+        ((TrainRoute)(object)CreateSeed())
+            .Station(""Discount"", (decimal amount) => new { amount = amount * 0.9m });
+
+    private static TrainRoute CreateSeed() =>
+        new TrainRoute().Station(""Seed"", () => new { amount = 100m });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
         /// Verifies that TOP005 is reported when extension starts from an unsupported receiver.
         /// </summary>
         [Fact]
@@ -465,6 +515,30 @@ public static class ParameterRoute
 {
     public static TrainRoute Build(TrainRoute baseRoute) =>
         baseRoute.Station(""Discount"", (decimal amount) => new { amount = amount * 0.9m });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP005");
+        }
+
+        /// <summary>
+        /// Verifies that TOP005 is reported when extension starts from a delegate invocation receiver.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop005_WhenExtensionUsesDelegateInvocationReceiver()
+        {
+            const string source = @"
+using System;
+using TrainOP;
+
+public static class DelegateRoute
+{
+    public static TrainRoute Build(Func<TrainRoute> buildRoute) =>
+        buildRoute().Station(""Discount"", (decimal amount) => new { amount = amount * 0.9m });
+
+    private static TrainRoute CreateSeed() =>
+        new TrainRoute().Station(""Seed"", () => new { amount = 100m });
 }";
 
             var diagnostics = await RunAnalyzerAsync(source);
@@ -598,15 +672,15 @@ public static class FailRoute
         }
 
         /// <summary>
-        /// Verifies that returning an unnamed value tuple from a handler is reported as TOP006.
+        /// Verifies that returning a value tuple with default ItemN names is reported as TOP006.
         /// </summary>
         [Fact]
-        public async Task Analyzer_ReportsTop006_WhenHandlerReturnsUnnamedTuple()
+        public async Task Analyzer_ReportsTop006_WhenHandlerReturnsDefaultItemNTuple()
         {
             const string source = @"
 using TrainOP;
 
-public static class UnnamedTupleRoute
+public static class DefaultItemNTupleRoute
 {
     public static TrainRoute Build() => new TrainRoute()
         .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
@@ -618,6 +692,28 @@ public static class UnnamedTupleRoute
 
             var diagnostic = Assert.Single(diagnostics, d => d.Id == "TOP006");
             Assert.Contains("(paymentId + \"-disc\", amount * 0.9m)", GetSourceTextAtLocation(source, diagnostic.Location));
+        }
+
+        /// <summary>
+        /// Verifies that identifier-inferred tuple names do not report TOP006.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_DoesNotReportTop006_WhenHandlerReturnsInferredTupleNames()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class InferredTupleRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            (paymentId, amount));
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
         }
 
         /// <summary>
@@ -643,49 +739,48 @@ public static class NamedTupleRoute
         }
 
         /// <summary>
-        /// Verifies that returning a mixed value tuple from a handler is reported as TOP014.
+        /// Verifies that explicit Item1:/Item2: names do not report TOP006.
         /// </summary>
         [Fact]
-        public async Task Analyzer_ReportsTop014_WhenHandlerReturnsMixedTuple()
+        public async Task Analyzer_DoesNotReportTop006_WhenHandlerReturnsExplicitItemNNames()
         {
             const string source = @"
 using TrainOP;
 
-public static class MixedTupleRoute
+public static class ExplicitItemNRoute
 {
     public static TrainRoute Build() => new TrainRoute()
         .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
         .Station(""Discount"", (string paymentId, decimal amount) =>
-            (paymentId, amount: amount * 0.9m));
+            (Item1: paymentId + ""-disc"", Item2: amount * 0.9m));
 }";
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            var diagnostic = Assert.Single(diagnostics, d => d.Id == "TOP014");
-            Assert.Contains("(paymentId, amount: amount * 0.9m)", GetSourceTextAtLocation(source, diagnostic.Location));
             Assert.DoesNotContain(diagnostics, d => d.Id == "TOP006");
         }
 
         /// <summary>
-        /// Verifies that returning a fully named value tuple from a handler does not report TOP014.
+        /// Verifies that a mixed literal with one default ItemN element reports TOP006.
         /// </summary>
         [Fact]
-        public async Task Analyzer_DoesNotReportTop014_WhenHandlerReturnsNamedTuple()
+        public async Task Analyzer_ReportsTop006_WhenHandlerReturnsTupleWithDefaultItemNElement()
         {
             const string source = @"
 using TrainOP;
 
-public static class NamedTupleRoute
+public static class PartialDefaultItemNRoute
 {
     public static TrainRoute Build() => new TrainRoute()
         .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
         .Station(""Discount"", (string paymentId, decimal amount) =>
-            (paymentId: paymentId + ""-disc"", amount: amount * 0.9m));
+            (paymentId + ""-disc"", amount: amount * 0.9m));
 }";
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP014");
+            var diagnostic = Assert.Single(diagnostics, d => d.Id == "TOP006");
+            Assert.Contains("(paymentId + \"-disc\", amount: amount * 0.9m)", GetSourceTextAtLocation(source, diagnostic.Location));
         }
 
         /// <summary>

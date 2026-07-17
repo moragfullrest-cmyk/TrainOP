@@ -73,7 +73,7 @@ var route = PaymentModule.Build()
 
 `CreateSeed().Station(...)` поддерживается для **private/internal** factory (inter-procedural analysis). **Public** factory использует generated schema (`[RouteSchemaFor]`). См. [cross-assembly-routes.md](cross-assembly-routes.md).
 
-Параметр / поле / свойство как receiver (`baseRoute.Station(...)`) пока **не** поддерживаются (TOP005).
+Параметр / поле / свойство / делегат как receiver (`baseRoute.Station(...)`, `buildRoute().Station(...)`) пока **не** поддерживаются (TOP005).
 
 ### Запуск
 
@@ -153,27 +153,29 @@ var report = await route.DispatchTrain().TravelAsync();
 
 ### Value tuple returns
 
-**Рекомендуется:** именованные кортежи — `(paymentId: id, amount: amt)` — merge по именам полей.
+**Рекомендуется:** именованные кортежи — `(paymentId: id, amount: amt)` — или идентификаторы с inference — `(paymentId, amount)`.
 
-**Избегать:**
+**Избегать default ItemN** (нет имени в исходнике и inference не сработал):
 
 | Форма | Диагностика | Риск |
 |-------|-------------|------|
-| `(id, amt)` — все элементы без имён | **TOP006** (Warning, на tuple literal) | Ключи в манифесте = `Item1`, `Item2`, …; mapping зависит от порядка и может сломаться молча при перестановке элементов |
-| `(id, amount: amt)` — смешанные имена | **TOP014** (Warning, на tuple literal) | Часть вагонов по имени, часть по позиции; неоднозначный/хрупкий merge |
+| `(paymentId + "-x", amount * 0.9m)` | **TOP006** (Warning, на tuple literal) | Элементы = `Item1`/`Item2`; mapping позиционный и хрупок при перестановке |
+| `(Item1: x, Item2: y)` | нет | Имена заданы явно (даже если это ItemN) |
+| `(paymentId, amount)` | нет | Имена выведены из идентификаторов |
+| `(paymentId, amount: amt)` | нет | Inference + явное имя |
 
 ```csharp
-// ✅
+// ✅ явное имя
 .Station("Discount", (string paymentId, decimal amount) =>
     (paymentId: paymentId + "-disc", amount: amount * 0.9m));
 
-// ⚠️ TOP006
+// ✅ inference
+.Station("Discount", (string paymentId, decimal amount) =>
+    (paymentId, amount));
+
+// ⚠️ TOP006 — default ItemN
 .Station("Discount", (string paymentId, decimal amount) =>
     (paymentId + "-disc", amount * 0.9m));
-
-// ⚠️ TOP014
-.Station("Discount", (string paymentId, decimal amount) =>
-    (paymentId, amount: amount * 0.9m));
 ```
 
 `RailwaySignals.Pass` пропускает merge целиком: следующая станция получит тот же манифест, что и до вызова handler'а. Изменения `ref`-параметров в теле handler'а при `Pass` **не сохраняются**. Чтобы записать новые значения `ref`-вагонов в манифест, используйте void (без `return`) или явный partial return (`new { }`, подмножество полей).
@@ -346,15 +348,24 @@ await route.DispatchTrain().TravelAsync(cts.Token);
 | `TOP003` | Error | Вагон удалён частичным возвратом, но нужен дальше |
 | `TOP004` | Warning | Handler вернул `CargoManifest` — полная замена манифеста |
 | `TOP005` | Error | Data-handler вне легитимного якоря `TrainRoute` |
-| `TOP006` | Warning | Неименованный value tuple (на literal) — order-dependent mapping |
-| `TOP007` | Error | Конфликт имён вагонов для одной сигнатуры handler'а |
+| `TOP006` | Warning | Value tuple с default ItemN (нет явного имени и нет inference) |
+| `TOP007` | Error | Конфликт имён вагонов для одной сигнатуры handler'а (вне цепочки; внутри цепочки — interceptors или reflection fallback) |
 | `TOP008` | Error | Нельзя соединить ветки маршрута перед downstream Station |
 | `TOP009` | Error | Handler не лямбда / anonymous / однозначный method group |
 | `TOP010` | Error | Handler возвращает `GreenSignal` / `RedSignal` вместо data / `RailwaySignals` |
 | `TOP011` | Info | Public factory в referenced assembly без exported schema |
 | `TOP012` | Error | Return-paths factory имеют разное terminal-множество |
 | `TOP013` | Error | Return-path factory с unknown terminal state |
-| `TOP014` | Warning | Смешанный value tuple (на literal) — ambiguous/fragile mapping |
+
+### Chain-dispatch
+
+При нескольких цепочках с одной сигнатурой типов, но разными именами вагонов:
+
+- SDK ≥ 9.0.200 — Roslyn interceptors (`stable`)
+- SDK ≥ 8.0.400 — interceptors + experimental `Features` (`experimental`)
+- старше — `StationHandlerParameterNames` (reflection) при регистрации
+
+NativeAOT: предпочтителен interceptor-режим (SDK ≥ 8.0.400). Reflection зависит от имён параметров в metadata.
 
 Cross-assembly: [cross-assembly-routes.md](cross-assembly-routes.md). Release tracking: `AnalyzerReleases.Shipped.md`.
 

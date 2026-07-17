@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>netstandard2.0;net8.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <RootNamespace>TrainOP</RootNamespace>
 
     <PackageId>TrainOP</PackageId>
-    <Version>0.6.0</Version>
+    <Version>0.7.0</Version>
     <Authors>Criperum</Authors>
     <Description>Railway Oriented Programming для .NET</Description>
     <PackageTags>railway;rop;functional;source-generator</PackageTags>

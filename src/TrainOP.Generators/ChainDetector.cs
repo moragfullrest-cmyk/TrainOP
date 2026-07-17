@@ -929,7 +929,7 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Returns true for user-authored factory methods, excluding fluent route API and generated extensions.
+        /// Returns true for user-authored factory methods, excluding fluent route API, generated extensions, and delegate Invoke.
         /// </summary>
         private static bool IsUserDefinedRouteFactory(IMethodSymbol methodSymbol)
         {
@@ -942,6 +942,11 @@ namespace TrainOP.Generators
             if (containingType == null)
             {
                 return true;
+            }
+
+            if (containingType.TypeKind == TypeKind.Delegate)
+            {
+                return false;
             }
 
             if (StationSyntaxHelper.IsTrainRoute(containingType))

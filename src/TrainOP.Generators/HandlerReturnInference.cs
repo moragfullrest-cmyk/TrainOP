@@ -136,8 +136,7 @@ namespace TrainOP.Generators
                 useGenericReturn,
                 shape.IsExplicitSignalReturn,
                 shape.IsRuntimeSignalReturn,
-                shape.IsUnnamedTupleReturn,
-                shape.IsMixedTupleReturn,
+                shape.HasDefaultItemNTupleElements,
                 shape.TupleReturnLocations);
         }
 
@@ -285,18 +284,35 @@ namespace TrainOP.Generators
             if (IsValueTuple(returnType))
             {
                 var members = ImmutableArray.CreateBuilder<WagonBinding>();
+                var hasDefaultItemN = false;
                 if (returnType is INamedTypeSymbol namedTuple)
                 {
                     var typeArguments = namedTuple.TypeArguments;
                     var elementNames = namedTuple.TupleElements;
-                    var usePositionalNames = ShouldUsePositionalTupleNames(bodyExpression);
+                    var tupleLiteral = UnwrapToTupleExpression(bodyExpression);
+                    var usePositionalNames = true;
+                    for (var i = 0; i < typeArguments.Length; i++)
+                    {
+                        var semanticName = elementNames != null && i < elementNames.Length
+                            ? elementNames[i].Name
+                            : TupleElementNaming.DefaultName(i);
+                        if (IsDefaultItemNElement(tupleLiteral, i, semanticName))
+                        {
+                            hasDefaultItemN = true;
+                        }
+                        else
+                        {
+                            usePositionalNames = false;
+                        }
+                    }
+
                     for (var i = 0; i < typeArguments.Length; i++)
                     {
                         string name;
                         if (!usePositionalNames
                             && elementNames != null
                             && i < elementNames.Length
-                            && !TupleElementNaming.IsDefaultName(elementNames[i].Name, i))
+                            && !string.IsNullOrEmpty(elementNames[i].Name))
                         {
                             name = elementNames[i].Name;
                         }
@@ -318,8 +334,8 @@ namespace TrainOP.Generators
                     memberBindings,
                     isCargoManifest: false,
                     isValueTuple: true,
-                    isUnnamedTupleReturn: IsUnnamedValueTupleReturn(memberBindings),
-                    isMixedTupleReturn: IsMixedValueTupleReturn(memberBindings),
+                    hasDefaultItemNTupleElements: hasDefaultItemN
+                        || (bodyExpression == null && HasOnlyDefaultItemNNames(memberBindings)),
                     tupleReturnLocations: CollectTupleReturnLocations(bodyExpression, fallbackLocation));
             }
 
@@ -436,9 +452,32 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Determines whether a value-tuple return maps wagons only by default ItemN element names.
+        /// True when the element is compiler-default ItemN and was not written as <c>ItemN:</c> in source.
+        /// Inferred names (e.g. <c>(paymentId, …)</c>) and explicit <c>Item1:</c> are not default.
         /// </summary>
-        private static bool IsUnnamedValueTupleReturn(ImmutableArray<WagonBinding> members)
+        private static bool IsDefaultItemNElement(
+            TupleExpressionSyntax tupleLiteral,
+            int index,
+            string semanticName)
+        {
+            if (!TupleElementNaming.IsDefaultName(semanticName, index))
+            {
+                return false;
+            }
+
+            if (tupleLiteral != null && index < tupleLiteral.Arguments.Count)
+            {
+                // Explicit NameColon (including Item1:) counts as intentional naming.
+                return tupleLiteral.Arguments[index].NameColon == null;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Fallback when no tuple literal is available: all members are ItemN.
+        /// </summary>
+        private static bool HasOnlyDefaultItemNNames(ImmutableArray<WagonBinding> members)
         {
             if (members.IsDefaultOrEmpty)
             {
@@ -454,38 +493,6 @@ namespace TrainOP.Generators
             }
 
             return true;
-        }
-
-        /// <summary>
-        /// Determines whether a value-tuple return mixes default ItemN names with explicit element names.
-        /// </summary>
-        private static bool IsMixedValueTupleReturn(ImmutableArray<WagonBinding> members)
-        {
-            if (members.IsDefaultOrEmpty)
-            {
-                return false;
-            }
-
-            var hasDefaultName = false;
-            var hasExplicitName = false;
-            for (var i = 0; i < members.Length; i++)
-            {
-                if (TupleElementNaming.IsDefaultName(members[i].Name, i))
-                {
-                    hasDefaultName = true;
-                }
-                else
-                {
-                    hasExplicitName = true;
-                }
-
-                if (hasDefaultName && hasExplicitName)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         /// <summary>
@@ -542,28 +549,6 @@ namespace TrainOP.Generators
             {
                 locations.Add(location);
             }
-        }
-
-        /// <summary>
-        /// When a tuple literal has no explicit element names in source, merge by ItemN ordinals.
-        /// </summary>
-        private static bool ShouldUsePositionalTupleNames(ExpressionSyntax bodyExpression)
-        {
-            var tupleExpression = UnwrapToTupleExpression(bodyExpression);
-            if (tupleExpression == null)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < tupleExpression.Arguments.Count; i++)
-            {
-                if (tupleExpression.Arguments[i].NameColon != null)
-                {
-                    return false;
-                }
-            }
-
-            return true;
         }
 
         /// <summary>

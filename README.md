@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/moragfullrest-cmyk/TrainOP/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/moragfullrest-cmyk/TrainOP/actions/workflows/ci.yml)
 
-Библиотека **Railway Oriented Programming** для `.NET Standard 2.0`: маршруты из станций, неизменяемый манифест данных и сигналы зелёный/красный. Source generator добавляет **data-oriented** `.Station` handlers.
+Библиотека **Railway Oriented Programming** для `.NET` (`netstandard2.0` / `net8.0`): маршруты из станций, неизменяемый манифест данных и сигналы зелёный/красный. Source generator добавляет **data-oriented** `.Station` handlers.
 
 ## Документация
 
@@ -63,7 +63,7 @@ dotnet add package TrainOP.Generators
 
 Генератор нужен для `.Station` data-oriented handlers.
 
-Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.6.0** — см. [CHANGELOG.md](CHANGELOG.md).
+Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.7.0** — см. [CHANGELOG.md](CHANGELOG.md).
 
 ### Локальная сборка пакетов
 

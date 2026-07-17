@@ -1,5 +1,34 @@
 <Project>
-  <PropertyGroup>
+  <!--
+    Chain-dispatch mode:
+      stable       — SDK 9.0.200+ (Roslyn interceptors)
+      experimental — SDK 8.0.400–9.0.199 (interceptors + Features=Interceptors)
+      reflection   — older SDK / forced (ParameterInfo wagon names at registration)
+  -->
+  <PropertyGroup Condition="'$(TrainOP_ChainDispatchMode)' == '' And $([MSBuild]::VersionGreaterThanOrEquals('$(NETCoreSdkVersion)', '9.0.200'))">
+    <TrainOP_ChainDispatchMode>stable</TrainOP_ChainDispatchMode>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TrainOP_ChainDispatchMode)' == '' And $([MSBuild]::VersionGreaterThanOrEquals('$(NETCoreSdkVersion)', '8.0.400'))">
+    <TrainOP_ChainDispatchMode>experimental</TrainOP_ChainDispatchMode>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TrainOP_ChainDispatchMode)' == ''">
+    <TrainOP_ChainDispatchMode>reflection</TrainOP_ChainDispatchMode>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TrainOP_ChainDispatchMode)' == 'experimental'">
+    <Features>$(Features);Interceptors</Features>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TrainOP_ChainDispatchMode)' == 'stable' Or '$(TrainOP_ChainDispatchMode)' == 'experimental'">
     <InterceptorsNamespaces>$(InterceptorsNamespaces);TrainOP.Generated</InterceptorsNamespaces>
   </PropertyGroup>
+
+  <!-- Flow mode + interceptor opt-in into the generator (avoids CS9137 when out of sync). -->
+  <ItemGroup>
+    <CompilerVisibleProperty Include="TrainOP_ChainDispatchMode" />
+    <CompilerVisibleProperty Include="InterceptorsNamespaces" />
+    <CompilerVisibleProperty Include="Features" />
+  </ItemGroup>
 </Project>

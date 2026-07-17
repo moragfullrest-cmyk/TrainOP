@@ -4,6 +4,24 @@ All notable changes to TrainOP are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-07-17
+
+### Added
+
+- Multi-target runtime package: `netstandard2.0` and `net8.0`.
+- SDK-conditional chain-dispatch via `TrainOP_ChainDispatchMode` (`stable` / `experimental` / `reflection`) in `TrainOP.Generators.targets`.
+- Reflection fallback for conflicting wagon names: `StationHandlerParameterNames` resolves input names from `ParameterInfo` when Roslyn interceptors are unavailable.
+- CI matrix for .NET SDK 8 / 9 / 10; `TrainOP.ReflectionDispatch.Tests` forces reflection mode.
+
+### Changed
+
+- **TOP006** warns only for default `ItemN` tuple elements (no `NameColon` and no name inference). Inferred names and explicit `Item1:` do not warn.
+- Documentation updated for TFM, chain-dispatch modes, and tuple naming policy.
+
+### Removed
+
+- **TOP014** (mixed named/unnamed tuple warning); superseded by the unified TOP006 default-ItemN rule.
+
 ## [0.6.0] - 2026-07-17
 
 ### Added

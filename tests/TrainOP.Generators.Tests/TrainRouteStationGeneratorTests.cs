@@ -470,10 +470,10 @@ public static class PaymentRoute
         }
 
         /// <summary>
-        /// Verifies that the generator emits ReturnMembers with ItemN names for an unnamed tuple return.
+        /// Verifies that the generator emits ReturnMembers with ItemN names for default ItemN tuple returns.
         /// </summary>
         [Fact]
-        public void Generator_EmitsItemNames_ForUnnamedTupleReturn()
+        public void Generator_EmitsItemNames_ForDefaultItemNTupleReturn()
         {
             const string source = @"
 using TrainOP;
@@ -483,7 +483,7 @@ public static class PaymentRoute
     public static TrainRoute Build() => new TrainRoute()
         .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
         .Station(""Discount"", (string paymentId, decimal amount) =>
-            (paymentId, amount * 0.9m));
+            (paymentId + ""-disc"", amount * 0.9m));
 }";
 
             var generated = RunGenerators(source);
@@ -491,6 +491,30 @@ public static class PaymentRoute
             Assert.Contains("\"Item1\"", generated);
             Assert.Contains("\"Item2\"", generated);
             Assert.DoesNotContain("TupleOrdinals_", generated);
+        }
+
+        /// <summary>
+        /// Verifies inferred tuple element names are emitted (not ItemN).
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsInferredNames_ForIdentifierTupleReturn()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class PaymentRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            (paymentId, amount));
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("\"paymentId\"", generated);
+            Assert.Contains("\"amount\"", generated);
+            Assert.DoesNotContain("\"Item1\"", generated);
         }
 
         /// <summary>
@@ -831,7 +855,15 @@ public static class MultiSeedRoute
                 new TrainRouteStationGenerator().AsSourceGenerator(),
             };
 
-            GeneratorDriver driver = CSharpGeneratorDriver.Create(generators);
+            var optionsProvider = TestAnalyzerConfigOptionsProvider.ForChainDispatchMode(
+                "stable",
+                interceptorsNamespaces: "TrainOP.Generated");
+
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                generators,
+                additionalTexts: null,
+                parseOptions: null,
+                optionsProvider: optionsProvider);
             driver = driver.RunGenerators(compilation);
 
             return driver.GetRunResult();

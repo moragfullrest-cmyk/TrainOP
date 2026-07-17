@@ -1,6 +1,6 @@
 # Чеклист готовности TrainOP к релизу
 
-Срез: **2026-07-17** · версия в csproj: **0.6.0** · целевой статус сейчас: **NuGet Preview (0.x)**
+Срез: **2026-07-17** · версия в csproj: **0.7.0** · целевой статус сейчас: **NuGet Preview (0.x)**
 
 | Показатель | Скор |
 |------------|------|
@@ -32,14 +32,14 @@
 
 | # | Пункт | % | Что осталось |
 |---|--------|---|--------------|
-| 1 | Согласовать TFM docs ↔ пакет | **10%** | Пакет `net10.0`; docs всё ещё пишут netstandard2.0 / пример net8.0. Нужно: multi-target **или** полностью переписать docs под .NET 10 |
-| 2 | CHANGELOG с историей 0.1 → 0.6 | **80%** | `CHANGELOG.md` добавлен для 0.6.0; ранние версии кратко |
-| 3 | Git-тег, согласованный с `Version` (например `v0.6.0`) | **50%** | Version=0.6.0 в csproj; теги `v0.1.0` / `v0.1.1` / `v0.6.0` |
+| 1 | Согласовать TFM docs ↔ пакет | **80%** | Multi-target `netstandard2.0;net8.0`; docs обновлены под TFM и chain-dispatch режимы |
+| 2 | CHANGELOG с историей 0.1 → 0.7 | **80%** | `CHANGELOG.md` добавлен для 0.7.0; ранние версии кратко |
+| 3 | Git-тег, согласованный с `Version` (например `v0.7.0`) | **50%** | Version=0.7.0 в csproj; теги `v0.1.0` / `v0.1.1` / `v0.6.0` (тег `v0.7.0` ещё не создан) |
 | 4 | CI: `dotnet pack` (артефакты `.nupkg`) | **0%** | В workflow только restore/build/test |
 | 5 | CI/ритуал publish (хотя бы ручной on tag) | **0%** | Нет release workflow / публикации |
-| 6 | Known limitations в пользовательских docs (7D / фаза 8) | **75%** | `core-api`, `cross-assembly-routes.md`, tuple warnings TOP006/TOP014 |
+| 6 | Known limitations в пользовательских docs (7D / фаза 8) | **75%** | `core-api`, `cross-assembly-routes.md`, tuple warning TOP006 (default ItemN) |
 | 7 | Исправить `TRNxxxx` → `TOPxxxx` в `docs/nuget.md` | **100%** | Исправлено |
-| 8 | Явный статус Preview для analyzer (или перенос правил в Shipped) | **70%** | TOP001–TOP014 перенесены в `AnalyzerReleases.Shipped.md` (0.6.0) |
+| 8 | Явный статус Preview для analyzer (или перенос правил в Shipped) | **70%** | TOP001–TOP013 перенесены в `AnalyzerReleases.Shipped.md` (0.7.0) |
 
 Среднее арифметическое по п. 1–8: **~13%**. Главный разрыв до публикации — блок B.
 
@@ -66,7 +66,7 @@
 | # | Пункт | % | Что осталось |
 |---|--------|---|--------------|
 | 9 | SourceLink + `.snupkg` | **0%** | Не настроено |
-| 10 | Перенос diagnostic IDs в `AnalyzerReleases.Shipped.md` | **70%** | TOP001–TOP014 shipped в 0.6.0 |
+| 10 | Перенос diagnostic IDs в `AnalyzerReleases.Shipped.md` | **70%** | TOP001–TOP013 shipped в 0.7.0 |
 | 11 | Заморозка / сужение публичной поверхности | **20%** | `EditorBrowsable` на `RegisterStation` есть; `StationMerge` / `WagonStationReturn` остаются публичными без политики 1.0 |
 | 12 | Политика nullable (`enable` или явный отказ) | **0%** | `Nullable` disable в обоих пакетах |
 | 13 | Dependabot / Renovate на Roslyn pin | **0%** | Нет |
