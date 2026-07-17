@@ -34,7 +34,7 @@ namespace TrainOP.Generators
                             continue;
                         }
 
-                        var returnMembers = StationReturnMetadataBuilder.BuildReturnMemberNames(
+                        var returnMembers = HandlerOutputParameters.BuildReturnMemberNames(
                             station.Handler.ReturnShape);
                         var binding = new ChainSiteBinding(
                             chainId,

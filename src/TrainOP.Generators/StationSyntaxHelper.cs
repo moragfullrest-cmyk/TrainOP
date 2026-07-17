@@ -29,6 +29,30 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
+        /// True when <paramref name="methodName"/> is <c>Station</c> or <c>ServiceStation</c>.
+        /// </summary>
+        public static bool IsStationOrServiceStationMethodName(string methodName)
+        {
+            return IsStationMethodName(methodName) || IsServiceStationMethodName(methodName);
+        }
+
+        /// <summary>
+        /// True when <paramref name="methodName"/> is <c>Station</c>.
+        /// </summary>
+        public static bool IsStationMethodName(string methodName)
+        {
+            return string.Equals(methodName, "Station", StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// True when <paramref name="methodName"/> is <c>ServiceStation</c>.
+        /// </summary>
+        public static bool IsServiceStationMethodName(string methodName)
+        {
+            return string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
+        }
+
+        /// <summary>
         /// Determines whether a syntax node is an invocation of the given route handler method name.
         /// </summary>
         private static bool IsCandidateRouteHandlerInvocation(SyntaxNode node, string methodName)
@@ -287,9 +311,9 @@ namespace TrainOP.Generators
             }
 
             var methodName = memberAccess.Name.Identifier.ValueText;
-            var forServiceStation = string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
+            var forServiceStation = StationSyntaxHelper.IsServiceStationMethodName(methodName);
             if (!forServiceStation
-                && !string.Equals(methodName, "Station", StringComparison.Ordinal))
+                && !StationSyntaxHelper.IsStationMethodName(methodName))
             {
                 return false;
             }
@@ -430,9 +454,9 @@ namespace TrainOP.Generators
         /// </summary>
         private static bool IsRouteExtensionMethodName(string methodName)
         {
-            return string.Equals(methodName, "Station", StringComparison.Ordinal)
+            return StationSyntaxHelper.IsStationMethodName(methodName)
                 || string.Equals(methodName, "RegisterStation", StringComparison.Ordinal)
-                || string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
+                || StationSyntaxHelper.IsServiceStationMethodName(methodName);
         }
 
         /// <summary>

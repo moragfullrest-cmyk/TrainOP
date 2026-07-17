@@ -4,6 +4,19 @@ All notable changes to TrainOP are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-07-17
+
+### Added
+
+- Architecture guide for generators, interceptors, and runtime (`docs/architecture-internals.md`).
+- Plan note: Caller*-based alternative to Station-interceptors (`docs/plan-data-oriented-handlers.md` §4.3).
+
+### Changed
+
+- **Runtime modularization:** extracted `StationPlan`, `ServiceStationPlan`, `StationAdapter`, `StationStepResult`, and related helpers from `Railway.cs`.
+- **Generator modularization:** split station codegen into focused types (`StationAdapterBodyEmitter`, handler I/O models, `MergedStationSchema`, `TypeSignatureGroup`, delegate signature helpers); removed `StationReturnMetadataBuilder`.
+- Documentation index links updated for the architecture guide.
+
 ## [0.8.0] - 2026-07-17
 
 ### Added

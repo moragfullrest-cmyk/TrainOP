@@ -248,8 +248,7 @@ namespace TrainOP.Generators
             }
 
             var methodName = memberAccess.Name.Identifier.ValueText;
-            return string.Equals(methodName, "Station", StringComparison.Ordinal)
-                || string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
+            return StationSyntaxHelper.IsStationOrServiceStationMethodName(methodName);
         }
 
         private static bool IsForkingExpression(ExpressionSyntax expression)

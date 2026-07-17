@@ -1,6 +1,6 @@
 # План: data-oriented handlers (только данные на вход и выход)
 
-> **Статус:** **выполнено** фазы 0–8 (включая factory anchors + schema export/import, merge ветвлений §3.8.5); **отложено** якоря параметр / поле / свойство / делегат; **снято** typed Travel (фазы 9–12).  
+> **Статус:** **выполнено** фазы 0–8 (включая factory anchors + schema export/import, merge ветвлений §3.8.5); **отложено** якоря параметр / поле / свойство / делегат; **идея** альтернатива Station-interceptors через Caller* (§4.3); **снято** typed Travel (фазы 9–12).  
 > **Терминалы:** `RouteReport` indexer / `Get<T>` (C# ≤15 — конфликты декомпозиции кортежей нерешаемы).  
 > **Цель:** handler станции = чистая функция над данными; `CargoManifest`, `LoadWagon`, `PullWagon`, `RailwaySignals` скрыты в сгенерированном адаптере.  
 > **Производительность Travel:** см. [`plan-performance.md`](plan-performance.md) (P0–P3 + P4a; P5 снято).  
@@ -180,7 +180,7 @@ PoC: `tests/TrainOP.RouteLib.Tests/`, `tests/TrainOP.RouteConsumer.Tests/`.
 
 Typed `var (a, b) = …Travel()` **не реализуется**: C# ≤15 не решает конфликты декомпозиции кортежей для общего `RouteReport`; interceptors не меняют bound return type `Travel()`.
 
-Station-interceptors для chain-dispatch (TOP007) сохранены.
+Station-interceptors для chain-dispatch (TOP007) сохранены. Возможная альтернатива без перехватчиков `.Station` — §4.3 (Caller* на `new TrainRoute`).
 
 ### 3.7. Branch merge (§3.8.5)
 
@@ -199,6 +199,7 @@ Station-interceptors для chain-dispatch (TOP007) сохранены.
 |-----------|------------|
 | **Выполнено** | Фазы **0–8** (см. §4.1) |
 | **Отложено** | Якоря параметр / поле / свойство / делегат |
+| **Идея** | Альтернатива Station-interceptors: Caller* + штамп на `new TrainRoute` (§4.3) |
 | **Снято** | Фазы **9–12** (typed Travel / deconstruct) |
 
 ### 4.1. Выполненное (сводка)
@@ -303,7 +304,72 @@ public class RouteHost
 
 **Статус:** возможное решение, **не реализовано**. При реализации обновить §3.2, `core-api.md`, правило §7 (атрибуты схемы на generated **и** opt-in upstream-маркеры).
 
-### 4.3. Снято с очереди (фазы 9–12)
+### 4.3. Идея: альтернатива Station-interceptors через Caller*
+
+**Статус:** идея, **не реализовано**. Текущий канон — Roslyn Station-interceptors (`stable` / `experimental`) или reflection-fallback (`TrainOP_ChainDispatchMode`).
+
+#### 4.3.1. Проблема, которую решают interceptors
+
+Одна CLR-сигнатура handler'а `(T1, T2, …)` → одна публичная `Station(...)`. Имена вагонов на разных call site могут отличаться (`paymentId`/`amount` vs `orderId`/`total`). Без site-specific identity overload берёт канонические имена группы или reflection по `ParameterInfo`.
+
+Сейчас identity доставляет `[InterceptsLocation]` → `StationCore_*(…, ChainBinding_*)`. Подмена **`new TrainRoute()` → `new TrainRoute(id)` генератором невозможна**: source generator не переписывает user source; Roslyn interceptors не перехватывают конструкторы (только вызовы методов).
+
+#### 4.3.2. Идея
+
+Протащить уникальность якоря цепочки в runtime через caller-info на конструкторе:
+
+```csharp
+public TrainRoute(
+    [CallerFilePath] string file = null,
+    [CallerLineNumber] int line = 0,
+    [CallerMemberName] string member = null)
+{
+    // ChainKey = стабильный ключ call site создания маршрута
+}
+```
+
+Компилятор сам подставляет path/line/member на call site `new TrainRoute()` — отдельный interceptor на `new` не нужен.
+
+При `.Station` резолв имён вагонов:
+
+1. `chainKey` с экземпляра `TrainRoute` (штамп ctor);
+2. `stationIndex =` число уже зарегистрированных станций (`_route.Count`);
+3. сгенерированный lookup / `switch` → `ChainStationBinding_*` (как сегодня `ResolveChainBinding_`, но ключ — caller location, не `RouteChainIdBuilder` FQN).
+
+Station-interceptors тогда не обязательны для доставки identity; таблицы binding'ов по-прежнему эмитит generator из `ChainStationCallIndex` / симуляции цепочки.
+
+#### 4.3.3. Предпочтительный штамп: ctor + Count, не Caller* на каждом `.Station`
+
+| Место Caller* | Оценка |
+|---------------|--------|
+| ctor `TrainRoute` + index = `_route.Count` | Предпочтительно: один штамп на цепочку; fluent one-liner `.Station().Station()` на одной строке безопасен |
+| каждый `.Station(..., [CallerFilePath], [CallerLineNumber])` | Плохо: нет `CallerColumnNumber` → коллизия нескольких вызовов на одной строке |
+
+#### 4.3.4. Плюсы / минусы
+
+| Плюсы | Минусы / риски |
+|-------|----------------|
+| Не нужны Station-interceptors и opt-in SDK interceptors | `CallerFilePath` абсолютный → хрупкость CI, разных машин, path mapping |
+| Не нужен перехват конструктора | Ключ ≠ текущий `RouteChainIdBuilder` (FQN / `@local` / `@Factory`) — новая схема таблиц |
+| AOT-friendly без reflection имён параметров | `#line` / generated sources могут разъехаться с путём analyzer'а |
+| Caller* на ctor — обычный C# | Factory continuation: `Build().Station(...)` в consumer — analyzer `chainId` = `Method@Factory`, а штамп ctor живёт внутри factory → нужен отдельный протокол continuation |
+| | IntelliSense может показывать optional caller-параметры ctor |
+
+**Не заменяет:** analyzer TOP*; reflection-режим как fallback; необходимость генератора эмитить lookup по ключу call site.
+
+#### 4.3.5. Ожидаемые изменения (если брать в работу)
+
+| Компонент | Изменение |
+|-----------|-----------|
+| `TrainRoute` | ctor с Caller*; хранение `ChainKey` (internal); `.Station` / `RegisterStation` использует key + Count |
+| Generator | Эмит lookup `(file, line[, member]) → bindings` по `ObjectCreation` якорям; согласовать path-нормализацию с `CallerFilePath` |
+| Chain-dispatch modes | Новый режим или замена `stable` interceptors; сохранить reflection |
+| Factory extension | Явная политика: наследование key / re-stamp / Caller* на первом consumer `.Station` только для continuation |
+| Docs / benchmarks | `architecture-internals.md`, `core-api.md`, `ChainDispatchBenchmarks` |
+
+**Критерий отказа:** если path-нормализация или factory-continuation окажутся дороже/хрупче Station-interceptors — оставить идею в бэклоге, канон не менять.
+
+### 4.4. Снято с очереди (фазы 9–12)
 
 | Что снято | Почему |
 |-----------|--------|
@@ -379,6 +445,7 @@ Release tracking: `AnalyzerReleases.Shipped.md`.
 - [x] Legacy API удалён
 - [x] Документация: `getting-started`, `core-api`, `cross-assembly-routes`, `nuget`
 - [ ] Якоря параметр / поле / свойство / делегат (отложено; возможное решение — §4.2.2)
+- [ ] Альтернатива Station-interceptors через Caller* (идея §4.3; канон пока interceptors / reflection)
 
 ---
 
@@ -408,3 +475,4 @@ Release tracking: `AnalyzerReleases.Shipped.md`.
 | 2026-07-16 | Factory anchors + schema export (§4.5) |
 | 2026-07-17 | Очистка плана: свёрнуты выполненные фазы, удалены spike-чеклисты и legacy baseline |
 | 2026-07-17 | Ссылка на план производительности Travel ([`plan-performance.md`](plan-performance.md)) |
+| 2026-07-17 | §4.3: идея альтернативы Station-interceptors через Caller* на `new TrainRoute` + index по Count |

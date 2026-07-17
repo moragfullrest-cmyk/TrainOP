@@ -11,6 +11,7 @@ TrainOP — библиотека Railway Oriented Programming (ROP) для .NET 
 | [Установка через NuGet](nuget.md) | Пакеты, CLI, локальный feed, отличия от ProjectReference |
 | [Начало работы](getting-started.md) | Подключение проекта, data-oriented пример |
 | [Основной API](core-api.md) | `CargoManifest`, `TrainRoute`, сигналы, `RailwaySignals.Green`/`Red`, async |
+| [Архитектура: generator, analyzer, interceptors, runtime](architecture-internals.md) | Как устроено внутри: пайплайн генератора, анализатор цепочек, перехватчики, Travel, merge, TOP* |
 | [Cross-assembly routes](cross-assembly-routes.md) | Route library + consumer extension, exported schema |
 | [Сравнение объёма кода](code-volume-comparison.md) | Manual vs TrainOP (токены, ошибки, recovery) |
 | [Benchmarks](../benchmarks/README.md) | Reflection vs interceptors; library vs manual |

@@ -7,11 +7,14 @@ namespace TrainOP
 {
     /// <summary>
     /// Reads wagon values from station handler return values using generator-provided names and ordinals.
+    /// Member discovery order matches the source generator (<c>HandlerReturnInference</c>):
+    /// value-tuple elements first when applicable; otherwise public instance properties, then public instance fields.
     /// </summary>
     public static class WagonStationReturn
     {
         /// <summary>
         /// Enumerates public instance member names exposed by a station return value.
+        /// Order: tuple fields (skipping Rest), else properties then fields — parity with generator inference.
         /// </summary>
         public static string[] GetMemberNames(object source)
         {

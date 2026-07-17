@@ -8,6 +8,7 @@ namespace TrainOP
     /// <summary>
     /// Resolves wagon parameter names from a station handler delegate via reflection.
     /// Used as chain-dispatch fallback when Roslyn interceptors are unavailable.
+    /// Classification mirrors generator <c>HandlerInputKind</c> / non-wagon skip rules.
     /// </summary>
     public static class StationHandlerParameterNames
     {
@@ -26,7 +27,7 @@ namespace TrainOP
             var names = new List<string>(parameters.Length);
             for (var i = 0; i < parameters.Length; i++)
             {
-                if (IsNonWagonParameter(parameters[i]))
+                if (Classify(parameters[i]) != HandlerInputKind.Wagon)
                 {
                     continue;
                 }
@@ -52,7 +53,7 @@ namespace TrainOP
             var flags = new List<bool>(parameters.Length);
             for (var i = 0; i < parameters.Length; i++)
             {
-                if (IsNonWagonParameter(parameters[i]))
+                if (Classify(parameters[i]) != HandlerInputKind.Wagon)
                 {
                     continue;
                 }
@@ -63,7 +64,10 @@ namespace TrainOP
             return flags.ToArray();
         }
 
-        private static bool IsNonWagonParameter(ParameterInfo parameter)
+        /// <summary>
+        /// Classifies a reflected parameter into the same kinds used by the source generator.
+        /// </summary>
+        internal static HandlerInputKind Classify(ParameterInfo parameter)
         {
             var type = parameter.ParameterType;
             if (type.IsByRef)
@@ -71,10 +75,27 @@ namespace TrainOP
                 type = type.GetElementType() ?? type;
             }
 
-            return type == typeof(CancellationToken)
-                || type == typeof(RedSignal)
-                || type == typeof(SignalIssue)
-                || type == typeof(CargoManifest);
+            if (type == typeof(CancellationToken))
+            {
+                return HandlerInputKind.CancellationToken;
+            }
+
+            if (type == typeof(RedSignal))
+            {
+                return HandlerInputKind.RedSignal;
+            }
+
+            if (type == typeof(SignalIssue))
+            {
+                return HandlerInputKind.SignalIssue;
+            }
+
+            if (type == typeof(CargoManifest))
+            {
+                return HandlerInputKind.CargoManifest;
+            }
+
+            return HandlerInputKind.Wagon;
         }
     }
 }

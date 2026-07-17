@@ -10,6 +10,8 @@ namespace TrainOP.Generators
 {
     /// <summary>
     /// Infers the wagon return shape of a data-oriented station handler.
+    /// Member discovery for object returns: public instance properties, then public instance fields
+    /// (parity with runtime <c>WagonStationReturn.GetMemberNames</c>).
     /// </summary>
     internal static class HandlerReturnInference
     {
@@ -340,6 +342,7 @@ namespace TrainOP.Generators
             }
 
             var bindings = ImmutableArray.CreateBuilder<WagonBinding>();
+            // Parity with WagonStationReturn.GetMemberNames: properties, then fields.
             foreach (var member in returnType.GetMembers())
             {
                 if (member is IPropertySymbol property
@@ -352,7 +355,11 @@ namespace TrainOP.Generators
                         property.Type,
                         fallbackLocation));
                 }
-                else if (member is IFieldSymbol field
+            }
+
+            foreach (var member in returnType.GetMembers())
+            {
+                if (member is IFieldSymbol field
                     && field.DeclaredAccessibility == Accessibility.Public
                     && !field.IsStatic)
                 {

@@ -148,7 +148,7 @@ namespace TrainOP.Generators
 
         private static string EscapeString(string value)
         {
-            return value?.Replace("\\", "\\\\").Replace("\"", "\\\"") ?? string.Empty;
+            return GeneratedSourceEscape.Escape(value) ?? string.Empty;
         }
     }
 }

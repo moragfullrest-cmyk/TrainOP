@@ -425,8 +425,7 @@ namespace TrainOP.Generators
             }
 
             var methodName = memberAccess.Name.Identifier.ValueText;
-            if (!string.Equals(methodName, "Station", StringComparison.Ordinal)
-                && !string.Equals(methodName, "ServiceStation", StringComparison.Ordinal))
+            if (!StationSyntaxHelper.IsStationOrServiceStationMethodName(methodName))
             {
                 return false;
             }
@@ -601,8 +600,7 @@ namespace TrainOP.Generators
             }
 
             var methodName = memberAccess.Name.Identifier.ValueText;
-            return string.Equals(methodName, "Station", StringComparison.Ordinal)
-                || string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
+            return StationSyntaxHelper.IsStationOrServiceStationMethodName(methodName);
         }
 
         /// <summary>
@@ -622,8 +620,7 @@ namespace TrainOP.Generators
             }
 
             var methodName = memberAccess.Name.Identifier.ValueText;
-            return string.Equals(methodName, "Station", StringComparison.Ordinal)
-                || string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
+            return StationSyntaxHelper.IsStationOrServiceStationMethodName(methodName);
         }
 
         /// <summary>
@@ -925,7 +922,7 @@ namespace TrainOP.Generators
         /// </summary>
         private static bool IsTransparentRouteMethod(string methodName)
         {
-            return string.Equals(methodName, "ServiceStation", StringComparison.Ordinal);
+            return StationSyntaxHelper.IsServiceStationMethodName(methodName);
         }
 
         /// <summary>

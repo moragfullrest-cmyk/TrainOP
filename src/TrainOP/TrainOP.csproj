@@ -6,7 +6,7 @@
     <RootNamespace>TrainOP</RootNamespace>
 
     <PackageId>TrainOP</PackageId>
-    <Version>0.8.0</Version>
+    <Version>0.9.0</Version>
     <Authors>Criperum</Authors>
     <Description>Railway Oriented Programming для .NET</Description>
     <PackageTags>railway;rop;functional;source-generator</PackageTags>

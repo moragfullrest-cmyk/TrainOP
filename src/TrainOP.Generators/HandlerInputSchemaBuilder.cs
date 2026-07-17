@@ -71,7 +71,6 @@ namespace TrainOP.Generators
             var includeRedSignal = false;
             var includeSignalIssue = false;
             var hasCancellationToken = false;
-            var hasRefWagons = false;
             var fallbackLocation = handlerLocation ?? handlerExpression?.GetLocation();
 
             for (var i = 0; i < parameters.Length; i++)
@@ -123,10 +122,6 @@ namespace TrainOP.Generators
                 }
 
                 var isByReference = WagonParameterAnalyzer.IsByReference(parameter);
-                if (isByReference)
-                {
-                    hasRefWagons = true;
-                }
 
                 var isOptional = WagonParameterAnalyzer.IsOptionalNullableValueType(parameterType, out var underlyingType);
                 var pullTypeDisplay = WagonParameterAnalyzer.GetPullTypeDisplay(parameterType, underlyingType, isOptional);
@@ -177,6 +172,14 @@ namespace TrainOP.Generators
             }
 
             var inputWagons = wagons.ToImmutable();
+            var input = new HandlerInputParameters(
+                inputWagons,
+                forServiceStation,
+                includeManifest,
+                includeRedSignal,
+                includeSignalIssue,
+                hasCancellationToken);
+
             var returnShape = HandlerReturnInference.Infer(
                 handlerSymbol,
                 body,
@@ -184,15 +187,9 @@ namespace TrainOP.Generators
                 semanticModel,
                 inputWagons);
             return new StationHandlerBinding(
-                inputWagons,
-                includeManifest,
-                IsAsyncHandler(handlerSymbol, handlerExpression),
-                hasCancellationToken,
-                returnShape,
-                forServiceStation,
-                includeRedSignal,
-                includeSignalIssue,
-                hasRefWagons);
+                input,
+                HandlerOutputParameters.From(returnShape),
+                IsAsyncHandler(handlerSymbol, handlerExpression));
         }
 
         /// <summary>

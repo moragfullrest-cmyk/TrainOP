@@ -81,11 +81,7 @@ namespace TrainOP
                 return MergeAllReturnMembers(manifest, stationReturn, returnMemberNames);
             }
 
-            if (byReferenceWagons != null && refLocalValues != null
-                && (byReferenceWagons.Length != wagonNames.Length || refLocalValues.Length != wagonNames.Length))
-            {
-                throw new ArgumentException("Ref wagon metadata arrays must match wagonNames length.");
-            }
+            ValidateRefWagonMetadata(wagonNames, byReferenceWagons, refLocalValues, requirePresent: false);
 
             for (var i = 0; i < wagonNames.Length; i++)
             {
@@ -224,20 +220,8 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(wagonNames));
             }
 
-            if (byReferenceWagons == null || refLocalValues == null
-                || byReferenceWagons.Length != wagonNames.Length || refLocalValues.Length != wagonNames.Length)
-            {
-                throw new ArgumentException("Ref wagon metadata arrays must match wagonNames length.");
-            }
-
-            for (var i = 0; i < wagonNames.Length; i++)
-            {
-                if (byReferenceWagons[i])
-                {
-                    manifest.LoadWagon(wagonNames[i], refLocalValues[i]);
-                }
-            }
-
+            ValidateRefWagonMetadata(wagonNames, byReferenceWagons, refLocalValues, requirePresent: true);
+            WritebackRefWagons(manifest, wagonNames, byReferenceWagons, refLocalValues);
             return manifest;
         }
 
@@ -259,6 +243,57 @@ namespace TrainOP
                 wagonNames,
                 byReferenceWagons,
                 refLocalValues);
+        }
+
+        /// <summary>
+        /// Writes by-ref wagon locals back into the manifest where the ref flag is set.
+        /// </summary>
+        internal static void WritebackRefWagons(
+            CargoManifest manifest,
+            string[] wagonNames,
+            bool[] byReferenceWagons,
+            object[] refLocalValues)
+        {
+            if (byReferenceWagons == null || refLocalValues == null)
+            {
+                return;
+            }
+
+            for (var i = 0; i < wagonNames.Length; i++)
+            {
+                if (byReferenceWagons[i])
+                {
+                    manifest.LoadWagon(wagonNames[i], refLocalValues[i]);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Validates that ref metadata arrays match <paramref name="wagonNames"/> length when present.
+        /// </summary>
+        internal static void ValidateRefWagonMetadata(
+            string[] wagonNames,
+            bool[] byReferenceWagons,
+            object[] refLocalValues,
+            bool requirePresent)
+        {
+            if (requirePresent)
+            {
+                if (byReferenceWagons == null || refLocalValues == null
+                    || byReferenceWagons.Length != wagonNames.Length
+                    || refLocalValues.Length != wagonNames.Length)
+                {
+                    throw new ArgumentException("Ref wagon metadata arrays must match wagonNames length.");
+                }
+
+                return;
+            }
+
+            if (byReferenceWagons != null && refLocalValues != null
+                && (byReferenceWagons.Length != wagonNames.Length || refLocalValues.Length != wagonNames.Length))
+            {
+                throw new ArgumentException("Ref wagon metadata arrays must match wagonNames length.");
+            }
         }
 
         /// <summary>
@@ -345,125 +380,6 @@ namespace TrainOP
             }
 
             return manifest;
-        }
-    }
-
-    /// <summary>
-    /// Converts station handler return values into route signals for generated adapters.
-    /// </summary>
-    internal static class StationAdapter
-    {
-        /// <summary>
-        /// Converts a station return value to a signal with return member names and ref wagon metadata.
-        /// </summary>
-        public static Signal ToSignal(
-            CargoManifest manifest,
-            object stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool removeOmittedRegularInputs,
-            string[] returnMemberNames,
-            bool[] byReferenceWagons,
-            object[] refLocalValues)
-        {
-            if (manifest == null)
-            {
-                throw new ArgumentNullException(nameof(manifest));
-            }
-
-            if (stationReturn is RedFailure fail)
-            {
-                return RailwaySignals.Red(
-                    manifest,
-                    new SignalIssue(fail.Code, fail.Message, stationName));
-            }
-
-            if (stationReturn is GreenPass)
-            {
-                return RailwaySignals.Green(manifest);
-            }
-
-            if (stationReturn is Signal signal)
-            {
-                return signal;
-            }
-
-            if (TryUnwrapGreenPayload(stationReturn, out var payload))
-            {
-                stationReturn = payload;
-            }
-
-            if (stationReturn is CargoManifest replacement)
-            {
-                return RailwaySignals.Green(replacement);
-            }
-
-            var merged = StationMerge.Apply(
-                manifest,
-                stationReturn,
-                wagonNames,
-                removeOmittedRegularInputs,
-                returnMemberNames,
-                byReferenceWagons,
-                refLocalValues);
-            return RailwaySignals.Green(merged);
-        }
-
-        /// <summary>
-        /// Converts a service-station return value to a signal using ref writeback only.
-        /// </summary>
-        public static Signal ToServiceSignal(
-            CargoManifest manifest,
-            object stationReturn,
-            string stationName,
-            string[] wagonNames,
-            bool[] byReferenceWagons,
-            object[] refLocalValues)
-        {
-            if (manifest == null)
-            {
-                throw new ArgumentNullException(nameof(manifest));
-            }
-
-            if (stationReturn is RedFailure fail)
-            {
-                return RailwaySignals.Red(
-                    manifest,
-                    new SignalIssue(fail.Code, fail.Message, stationName));
-            }
-
-            var merged = StationMerge.ApplyRefOnly(
-                manifest,
-                wagonNames,
-                byReferenceWagons,
-                refLocalValues);
-
-            if (stationReturn is GreenPass)
-            {
-                return RailwaySignals.Green(merged);
-            }
-
-            if (stationReturn is Signal signal)
-            {
-                return signal;
-            }
-
-            return RailwaySignals.Green(merged);
-        }
-
-        /// <summary>
-        /// Unwraps a green payload wrapper to its inner value.
-        /// </summary>
-        private static bool TryUnwrapGreenPayload(object stationReturn, out object payload)
-        {
-            if (stationReturn is IGreenPayload greenPayload)
-            {
-                payload = greenPayload.GetValue();
-                return true;
-            }
-
-            payload = stationReturn;
-            return false;
         }
     }
 }

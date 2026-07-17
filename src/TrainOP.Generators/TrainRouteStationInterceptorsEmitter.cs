@@ -117,11 +117,6 @@ namespace TrainOP.Generators
             return true;
         }
 
-        private static string Escape(string value)
-        {
-            return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
-        }
-
         /// <summary>
         /// Describes one legacy station call site that should be intercepted.
         /// </summary>

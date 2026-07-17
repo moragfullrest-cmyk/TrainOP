@@ -169,32 +169,6 @@ namespace TrainOP.Generators
             }
         }
 
-        /// <summary>
-        /// Emits handler call arguments using neutral wagon local names.
-        /// </summary>
-        public static void EmitNeutralWagonHandlerCallArguments(
-            StringBuilder source,
-            StationHandlerBinding schema,
-            ref bool needsComma)
-        {
-            for (var i = 0; i < schema.Wagons.Length; i++)
-            {
-                if (needsComma)
-                {
-                    source.Append(", ");
-                }
-
-                var wagon = schema.Wagons[i];
-                if (wagon.IsByReference)
-                {
-                    source.Append("ref ");
-                }
-
-                source.Append("wagon").Append(i);
-                needsComma = true;
-            }
-        }
-
         private static void EmitBindingConstant(
             StringBuilder source,
             string delegateTypeId,
@@ -209,11 +183,11 @@ namespace TrainOP.Generators
                 .Append(" = new ChainStationBinding_")
                 .Append(delegateTypeId)
                 .Append("(");
-            EmitStringArray(source, schema.Wagons, wagon => wagon.Name);
+            schema.Input.AppendWagonNamesArrayLiteral(source, Escape);
             source.Append(", ");
             EmitStringArray(source, returnMembers);
             source.Append(", ");
-            EmitBoolArray(source, schema.Wagons, wagon => wagon.IsByReference);
+            schema.Input.AppendRefFlagsArrayLiteral(source);
             source.AppendLine(");");
         }
 
@@ -270,45 +244,9 @@ namespace TrainOP.Generators
             source.Append(" }");
         }
 
-        private static void EmitStringArray(
-            StringBuilder source,
-            System.Collections.Immutable.ImmutableArray<WagonBinding> wagons,
-            System.Func<WagonBinding, string> selector)
-        {
-            source.Append("new string[] { ");
-            for (var i = 0; i < wagons.Length; i++)
-            {
-                source.Append("\"").Append(Escape(selector(wagons[i]))).Append("\"");
-                if (i < wagons.Length - 1)
-                {
-                    source.Append(", ");
-                }
-            }
-
-            source.Append(" }");
-        }
-
-        private static void EmitBoolArray(
-            StringBuilder source,
-            System.Collections.Immutable.ImmutableArray<WagonBinding> wagons,
-            System.Func<WagonBinding, bool> selector)
-        {
-            source.Append("new bool[] { ");
-            for (var i = 0; i < wagons.Length; i++)
-            {
-                source.Append(selector(wagons[i]) ? "true" : "false");
-                if (i < wagons.Length - 1)
-                {
-                    source.Append(", ");
-                }
-            }
-
-            source.Append(" }");
-        }
-
         private static string Escape(string value)
         {
-            return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            return GeneratedSourceEscape.Escape(value);
         }
     }
 }

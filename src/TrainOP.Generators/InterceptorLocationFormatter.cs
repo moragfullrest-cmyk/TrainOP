@@ -56,7 +56,7 @@ namespace TrainOP.Generators
 
         private static string Escape(string value)
         {
-            return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            return GeneratedSourceEscape.Escape(value);
         }
     }
 }

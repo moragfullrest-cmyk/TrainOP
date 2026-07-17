@@ -6,6 +6,7 @@ namespace TrainOP.Generators
 {
     /// <summary>
     /// Builds Func and Action type strings for generated station handler extension methods.
+    /// Parameter order comes from <see cref="HandlerInputParameters.CallOrder"/>.
     /// </summary>
     internal static class HandlerFuncTypeBuilder
     {
@@ -198,139 +199,76 @@ namespace TrainOP.Generators
 
         private static void AppendHandlerParameterTypes(StationHandlerBinding schema, List<string> parameters)
         {
-            if (schema.IsServiceStation)
+            var callOrder = schema.Input.CallOrder;
+            for (var i = 0; i < callOrder.Length; i++)
             {
-                AppendWagonParameterTypes(schema, parameters);
-
-                if (schema.IncludeRedSignal)
+                var slot = callOrder[i];
+                switch (slot.Kind)
                 {
-                    parameters.Add("global::TrainOP.RedSignal");
+                    case HandlerInputKind.Wagon:
+                        var wagon = slot.Wagon;
+                        var typeDisplay = wagon.TypeDisplay;
+                        if (wagon.IsByReference)
+                        {
+                            typeDisplay = "ref " + typeDisplay;
+                        }
+
+                        parameters.Add(typeDisplay);
+                        break;
+                    case HandlerInputKind.RedSignal:
+                        parameters.Add("global::TrainOP.RedSignal");
+                        break;
+                    case HandlerInputKind.SignalIssue:
+                        parameters.Add("global::TrainOP.SignalIssue");
+                        break;
+                    case HandlerInputKind.CargoManifest:
+                        parameters.Add("global::TrainOP.CargoManifest");
+                        break;
+                    case HandlerInputKind.CancellationToken:
+                        parameters.Add("CancellationToken");
+                        break;
                 }
-            }
-            else
-            {
-                if (schema.IncludeRedSignal)
-                {
-                    parameters.Add("global::TrainOP.RedSignal");
-                }
-
-                if (schema.IncludeSignalIssue)
-                {
-                    parameters.Add("global::TrainOP.SignalIssue");
-                }
-
-                if (schema.IncludeManifest)
-                {
-                    parameters.Add("global::TrainOP.CargoManifest");
-                }
-
-                AppendWagonParameterTypes(schema, parameters);
-            }
-
-            if (schema.HasCancellationToken)
-            {
-                parameters.Add("CancellationToken");
-            }
-        }
-
-        private static void AppendWagonParameterTypes(StationHandlerBinding schema, List<string> parameters)
-        {
-            for (var i = 0; i < schema.Wagons.Length; i++)
-            {
-                var wagon = schema.Wagons[i];
-                var typeDisplay = wagon.TypeDisplay;
-                if (wagon.IsByReference)
-                {
-                    typeDisplay = "ref " + typeDisplay;
-                }
-
-                parameters.Add(typeDisplay);
             }
         }
 
         private static void EmitDelegateParameters(StringBuilder source, StationHandlerBinding schema, bool useNeutralParameterNames)
         {
             var needsComma = false;
-            if (schema.IsServiceStation)
-            {
-                EmitWagonDelegateParameters(source, schema, useNeutralParameterNames, ref needsComma);
-
-                if (schema.IncludeRedSignal)
-                {
-                    if (needsComma)
-                    {
-                        source.Append(", ");
-                    }
-
-                    source.Append("RedSignal ").Append(useNeutralParameterNames ? "pRed" : "red");
-                    needsComma = true;
-                }
-            }
-            else
-            {
-                if (schema.IncludeRedSignal)
-                {
-                    source.Append("RedSignal ").Append(useNeutralParameterNames ? "pRed" : "red");
-                    needsComma = true;
-                }
-
-                if (schema.IncludeSignalIssue)
-                {
-                    if (needsComma)
-                    {
-                        source.Append(", ");
-                    }
-
-                    source.Append("SignalIssue ").Append(useNeutralParameterNames ? "pIssue" : "issue");
-                    needsComma = true;
-                }
-
-                if (schema.IncludeManifest)
-                {
-                    if (needsComma)
-                    {
-                        source.Append(", ");
-                    }
-
-                    source.Append("CargoManifest ").Append(useNeutralParameterNames ? "pManifest" : "manifest");
-                    needsComma = true;
-                }
-
-                EmitWagonDelegateParameters(source, schema, useNeutralParameterNames, ref needsComma);
-            }
-
-            if (schema.HasCancellationToken)
+            var callOrder = schema.Input.CallOrder;
+            for (var i = 0; i < callOrder.Length; i++)
             {
                 if (needsComma)
                 {
                     source.Append(", ");
                 }
 
-                source.Append("CancellationToken ").Append(useNeutralParameterNames ? "pToken" : "cancellationToken");
-            }
-        }
-
-        private static void EmitWagonDelegateParameters(
-            StringBuilder source,
-            StationHandlerBinding schema,
-            bool useNeutralParameterNames,
-            ref bool needsComma)
-        {
-            for (var i = 0; i < schema.Wagons.Length; i++)
-            {
-                if (needsComma)
+                var slot = callOrder[i];
+                switch (slot.Kind)
                 {
-                    source.Append(", ");
+                    case HandlerInputKind.Wagon:
+                        var wagon = slot.Wagon;
+                        if (wagon.IsByReference)
+                        {
+                            source.Append("ref ");
+                        }
+
+                        var parameterName = useNeutralParameterNames ? "p" + slot.WagonIndex : wagon.Name;
+                        source.Append(wagon.TypeDisplay).Append(" ").Append(parameterName);
+                        break;
+                    case HandlerInputKind.RedSignal:
+                        source.Append("RedSignal ").Append(useNeutralParameterNames ? "pRed" : "red");
+                        break;
+                    case HandlerInputKind.SignalIssue:
+                        source.Append("SignalIssue ").Append(useNeutralParameterNames ? "pIssue" : "issue");
+                        break;
+                    case HandlerInputKind.CargoManifest:
+                        source.Append("CargoManifest ").Append(useNeutralParameterNames ? "pManifest" : "manifest");
+                        break;
+                    case HandlerInputKind.CancellationToken:
+                        source.Append("CancellationToken ").Append(useNeutralParameterNames ? "pToken" : "cancellationToken");
+                        break;
                 }
 
-                var wagon = schema.Wagons[i];
-                if (wagon.IsByReference)
-                {
-                    source.Append("ref ");
-                }
-
-                var parameterName = useNeutralParameterNames ? "p" + i : wagon.Name;
-                source.Append(wagon.TypeDisplay).Append(" ").Append(parameterName);
                 needsComma = true;
             }
         }

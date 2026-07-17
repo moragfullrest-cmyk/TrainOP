@@ -35,6 +35,8 @@
 
 Рекомендация: **`TrainOP_ChainDispatchMode=stable`** (Roslyn interceptors) там, где SDK это поддерживает — ~20–25% быстрее reflection на chain-dispatch (`ChainDispatchBenchmarks`). Не отдельная фаза реализации.
 
+Идея альтернативы Station-interceptors (Caller* на `new TrainRoute` + resolve по key/Count) зафиксирована в [`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) §4.3 — **не в работе**, канон не менять без spike.
+
 ---
 
 ## 2. Baseline
@@ -245,3 +247,4 @@ flowchart LR
 | 2026-07-17 | P5: typed bags в `CargoManifest` (`decimal`/`int`/`long`/`bool`/`double`/`float` + object fallback); `LoadWagon<T>`; typed merge codegen → `LoadWagon<T>`; `InspectWagons` — combined snapshot |
 | 2026-07-17 | P5 hot-path fix: home-index вместо `Remove`/`Contains` по всем bags на каждый `LoadWagon`/`PullWagon` |
 | 2026-07-17 | **P5 снято:** откат typed bags → один `Dictionary<string,object>`; `LoadWagon<T>` удалён |
+| 2026-07-17 | Ссылка на идею Caller*-альтернативы Station-interceptors ([`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) §4.3) |

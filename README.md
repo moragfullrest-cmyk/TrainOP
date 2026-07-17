@@ -14,6 +14,7 @@
 | Установка через NuGet | [docs/nuget.md](docs/nuget.md) |
 | Начало работы | [docs/getting-started.md](docs/getting-started.md) |
 | Основной API | [docs/core-api.md](docs/core-api.md) |
+| Архитектура (generator / analyzer / interceptors / runtime) | [docs/architecture-internals.md](docs/architecture-internals.md) |
 | Cross-assembly routes | [docs/cross-assembly-routes.md](docs/cross-assembly-routes.md) |
 | Сравнение объёма кода | [docs/code-volume-comparison.md](docs/code-volume-comparison.md) |
 | Benchmarks | [benchmarks/README.md](benchmarks/README.md) |
@@ -65,7 +66,7 @@ dotnet add package TrainOP.Generators
 
 Генератор нужен для `.Station` data-oriented handlers.
 
-Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.8.0** — см. [CHANGELOG.md](CHANGELOG.md).
+Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.9.0** — см. [CHANGELOG.md](CHANGELOG.md).
 
 ### Локальная сборка пакетов
 

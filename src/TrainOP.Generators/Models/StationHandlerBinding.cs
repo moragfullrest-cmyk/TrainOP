@@ -3,59 +3,54 @@ using System.Collections.Immutable;
 namespace TrainOP.Generators.Models
 {
     /// <summary>
-    /// Describes a data-oriented station handler's inputs, flags, and inferred return shape.
+    /// Combined handler schema: <see cref="Input"/> parameters + <see cref="Output"/> return shape.
+    /// Start here when reading how a data-oriented Station / ServiceStation handler is described.
     /// </summary>
     internal sealed class StationHandlerBinding
     {
         /// <summary>
-        /// Creates a handler binding from wagon inputs, flags, and return shape metadata.
+        /// Creates a handler binding from explicit input/output components.
         /// </summary>
         public StationHandlerBinding(
-            ImmutableArray<WagonBinding> inputWagons,
-            bool includeManifest,
-            bool isAsync,
-            bool hasCancellationToken,
-            ReturnShape returnShape,
-            bool isServiceStation = false,
-            bool includeRedSignal = false,
-            bool includeSignalIssue = false,
-            bool hasRefWagons = false)
+            HandlerInputParameters input,
+            HandlerOutputParameters output,
+            bool isAsync)
         {
-            InputWagons = inputWagons;
-            IncludeManifest = includeManifest;
+            Input = input ?? throw new System.ArgumentNullException(nameof(input));
+            Output = output ?? throw new System.ArgumentNullException(nameof(output));
             IsAsync = isAsync;
-            HasCancellationToken = hasCancellationToken;
-            ReturnShape = returnShape;
-            IsServiceStation = isServiceStation;
-            IncludeRedSignal = includeRedSignal;
-            IncludeSignalIssue = includeSignalIssue;
-            HasRefWagons = hasRefWagons;
-            ExtensionMethodName = ResolveDefaultExtensionMethodName(isServiceStation);
+            ExtensionMethodName = ResolveDefaultExtensionMethodName(input.IsServiceStation);
         }
 
-        public ImmutableArray<WagonBinding> InputWagons { get; }
+        /// <summary>Handler inputs (wagons + framework slots) and call order.</summary>
+        public HandlerInputParameters Input { get; }
 
-        public ImmutableArray<WagonBinding> Wagons => InputWagons;
+        /// <summary>Handler output mode, members, and return shape.</summary>
+        public HandlerOutputParameters Output { get; }
 
-        public bool IncludeManifest { get; }
+        public ImmutableArray<WagonBinding> InputWagons => Input.Wagons;
+
+        public ImmutableArray<WagonBinding> Wagons => Input.Wagons;
+
+        public bool IncludeManifest => Input.IncludeManifest;
 
         public bool IsAsync { get; }
 
-        public bool HasCancellationToken { get; }
+        public bool HasCancellationToken => Input.HasCancellationToken;
 
-        public bool HasRefWagons { get; }
+        public bool HasRefWagons => Input.HasRefWagons;
 
-        public ReturnShape ReturnShape { get; }
+        public ReturnShape ReturnShape => Output.Shape;
 
-        public bool IsServiceStation { get; }
+        public bool IsServiceStation => Input.IsServiceStation;
 
-        public bool IncludeRedSignal { get; }
+        public bool IncludeRedSignal => Input.IncludeRedSignal;
 
-        public bool IncludeSignalIssue { get; }
+        public bool IncludeSignalIssue => Input.IncludeSignalIssue;
 
         public string ExtensionMethodName { get; }
 
-        public bool RemoveOmittedRegularInputs => InputWagons.Length > 0;
+        public bool RemoveOmittedRegularInputs => Input.Wagons.Length > 0;
 
         private static string ResolveDefaultExtensionMethodName(bool isServiceStation)
         {

@@ -13,25 +13,7 @@ namespace TrainOP.Generators
         /// </summary>
         public static string BuildCompileTimeReturnMembersExpression(StationHandlerBinding schema)
         {
-            var returnShape = schema.ReturnShape;
-            if (returnShape.Members.IsDefaultOrEmpty)
-            {
-                return null;
-            }
-
-            var builder = new StringBuilder();
-            builder.Append("new string[] { ");
-            for (var i = 0; i < returnShape.Members.Length; i++)
-            {
-                builder.Append("\"").Append(Escape(returnShape.Members[i].Name)).Append("\"");
-                if (i < returnShape.Members.Length - 1)
-                {
-                    builder.Append(", ");
-                }
-            }
-
-            builder.Append(" }");
-            return builder.ToString();
+            return schema.Output.BuildCompileTimeReturnMembersExpression(Escape);
         }
 
         /// <summary>
@@ -39,20 +21,7 @@ namespace TrainOP.Generators
         /// </summary>
         public static bool CanEmitTypedDataMerge(StationHandlerBinding schema, string returnMembersField)
         {
-            var returnShape = schema.ReturnShape;
-            if (schema.IsServiceStation
-                || returnShape.IsVoid
-                || returnShape.UseGenericReturn
-                || returnShape.IsCargoManifest
-                || returnShape.IsExplicitSignalReturn
-                || returnShape.IsUnknown
-                || returnShape.Members.IsDefaultOrEmpty
-                || returnMembersField == null)
-            {
-                return false;
-            }
-
-            return !IsSignalOnlyReturnType(returnShape.ReturnTypeDisplay);
+            return schema.Output.CanEmitTypedDataMerge(schema.IsServiceStation, returnMembersField);
         }
 
         /// <summary>
@@ -154,19 +123,6 @@ namespace TrainOP.Generators
             source.Append(indent).AppendLine("}");
         }
 
-        private static bool IsSignalOnlyReturnType(string returnTypeDisplay)
-        {
-            if (string.IsNullOrWhiteSpace(returnTypeDisplay))
-            {
-                return false;
-            }
-
-            return returnTypeDisplay == ReturnTypeDisplayBuilder.SignalReturnTypeDisplay
-                || returnTypeDisplay == "global::TrainOP.RedFailure"
-                || returnTypeDisplay == "global::TrainOP.GreenPass"
-                || returnTypeDisplay == "global::TrainOP.CargoManifest";
-        }
-
         private static bool IsGreenPayloadReturnType(string returnTypeDisplay)
         {
             return !string.IsNullOrWhiteSpace(returnTypeDisplay)
@@ -175,7 +131,7 @@ namespace TrainOP.Generators
 
         private static string Escape(string value)
         {
-            return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            return GeneratedSourceEscape.Escape(value);
         }
     }
 }
