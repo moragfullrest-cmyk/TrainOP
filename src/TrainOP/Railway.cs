@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,7 +7,7 @@ using System.Threading.Tasks;
 namespace TrainOP
 {
     /// <summary>
-    /// Immutable shared storage for wagon values between route stations.
+    /// Mutable shared storage for wagon values between route stations.
     /// </summary>
     public sealed class CargoManifest
     {
@@ -18,16 +17,8 @@ namespace TrainOP
         /// Creates an empty cargo manifest.
         /// </summary>
         public CargoManifest()
-            : this(new Dictionary<string, object>(StringComparer.Ordinal))
         {
-        }
-
-        /// <summary>
-        /// Creates a manifest from an existing wagon dictionary.
-        /// </summary>
-        private CargoManifest(Dictionary<string, object> wagons)
-        {
-            _wagons = wagons;
+            _wagons = new Dictionary<string, object>(StringComparer.Ordinal);
         }
 
         /// <summary>
@@ -41,6 +32,19 @@ namespace TrainOP
             }
 
             return _wagons.ContainsKey(wagonName);
+        }
+
+        /// <summary>
+        /// Tries to read a wagon value by name without throwing when the wagon is missing.
+        /// </summary>
+        public bool TryGetWagon(string wagonName, out object cargo)
+        {
+            if (string.IsNullOrWhiteSpace(wagonName))
+            {
+                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
+            }
+
+            return _wagons.TryGetValue(wagonName, out cargo);
         }
 
         /// <summary>
@@ -68,7 +72,7 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Adds or replaces a wagon value and returns a new manifest.
+        /// Adds or replaces a wagon value in place and returns this manifest.
         /// </summary>
         public CargoManifest LoadWagon(string wagonName, object cargo)
         {
@@ -77,13 +81,12 @@ namespace TrainOP
                 throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
             }
 
-            var cloned = CloneWagons();
-            cloned[wagonName] = cargo;
-            return new CargoManifest(cloned);
+            _wagons[wagonName] = cargo;
+            return this;
         }
 
         /// <summary>
-        /// Removes a wagon by name and returns a new manifest.
+        /// Removes a wagon by name in place and returns this manifest.
         /// </summary>
         public CargoManifest UnloadWagon(string wagonName)
         {
@@ -92,25 +95,16 @@ namespace TrainOP
                 throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
             }
 
-            var cloned = CloneWagons();
-            cloned.Remove(wagonName);
-            return new CargoManifest(cloned);
+            _wagons.Remove(wagonName);
+            return this;
         }
 
         /// <summary>
-        /// Returns a read-only snapshot of current wagon values.
+        /// Returns a read-only view of current wagon values (live; not a copy).
         /// </summary>
         public IReadOnlyDictionary<string, object> InspectWagons()
         {
-            return new ReadOnlyDictionary<string, object>(_wagons);
-        }
-
-        /// <summary>
-        /// Creates a shallow copy of the internal wagon dictionary.
-        /// </summary>
-        private Dictionary<string, object> CloneWagons()
-        {
-            return new Dictionary<string, object>(_wagons, StringComparer.Ordinal);
+            return _wagons;
         }
     }
 
@@ -277,17 +271,18 @@ namespace TrainOP
     }
 
     /// <summary>
-    /// Represents one executed station and the resulting signal.
+    /// Represents one executed station and whether it returned a green signal.
+    /// Failure details are available only from <see cref="RouteReport.TerminalSignal"/>.
     /// </summary>
-    public sealed class StationVisit
+    public readonly struct StationVisit
     {
         /// <summary>
         /// Creates station visit information.
         /// </summary>
-        public StationVisit(string stationName, Signal signal)
+        public StationVisit(string stationName, bool isGreen)
         {
             StationName = stationName ?? throw new ArgumentNullException(nameof(stationName));
-            Signal = signal ?? throw new ArgumentNullException(nameof(signal));
+            IsGreen = isGreen;
         }
 
         /// <summary>
@@ -296,9 +291,9 @@ namespace TrainOP
         public string StationName { get; }
 
         /// <summary>
-        /// Gets the signal returned by the station.
+        /// Gets whether the station returned a green signal on this hop.
         /// </summary>
-        public Signal Signal { get; }
+        public bool IsGreen { get; }
     }
 
     /// <summary>
@@ -366,12 +361,18 @@ namespace TrainOP
             }
 
             var manifest = TerminalSignal.Manifest;
-            if (!manifest.HasWagon(wagonName))
+            if (!manifest.TryGetWagon(wagonName, out var value))
             {
                 throw new KeyNotFoundException("Wagon '" + wagonName + "' was not found in the terminal report.");
             }
 
-            return manifest.PullWagon<T>(wagonName);
+            if (!(value is T typed))
+            {
+                throw new InvalidCastException(
+                    "Wagon '" + wagonName + "' contains '" + value.GetType().FullName + "', cannot cast to '" + typeof(T).FullName + "'.");
+            }
+
+            return typed;
         }
     }
 
@@ -784,13 +785,17 @@ namespace TrainOP
         }
 
         /// <summary>
+        /// Pre-sized visit journal capacity: one entry per route station, doubled when a service station may add recovery visits.
+        /// </summary>
+        private int VisitJournalCapacity =>
+            _serviceStation != null ? _route.Count * 2 : _route.Count;
+
+        /// <summary>
         /// Executes the route from an empty manifest.
         /// </summary>
         public RouteReport Travel()
         {
-            return TravelCoreAsync(new CargoManifest(), CancellationToken.None, synchronousOnly: true)
-                .GetAwaiter()
-                .GetResult();
+            return TravelCore(new CargoManifest(), CancellationToken.None);
         }
 
         /// <summary>
@@ -798,9 +803,7 @@ namespace TrainOP
         /// </summary>
         public RouteReport Travel(CancellationToken cancellationToken)
         {
-            return TravelCoreAsync(new CargoManifest(), cancellationToken, synchronousOnly: true)
-                .GetAwaiter()
-                .GetResult();
+            return TravelCore(new CargoManifest(), cancellationToken);
         }
 
         /// <summary>
@@ -808,7 +811,7 @@ namespace TrainOP
         /// </summary>
         public Task<RouteReport> TravelAsync()
         {
-            return TravelCoreAsync(new CargoManifest(), CancellationToken.None, synchronousOnly: false);
+            return TravelCoreAsync(new CargoManifest(), CancellationToken.None);
         }
 
         /// <summary>
@@ -816,28 +819,51 @@ namespace TrainOP
         /// </summary>
         public Task<RouteReport> TravelAsync(CancellationToken cancellationToken)
         {
-            return TravelCoreAsync(new CargoManifest(), cancellationToken, synchronousOnly: false);
+            return TravelCoreAsync(new CargoManifest(), cancellationToken);
         }
 
         /// <summary>
-        /// Executes all route stations and returns the final report.
+        /// Executes all route stations synchronously and returns the final report.
         /// </summary>
-        private async Task<RouteReport> TravelCoreAsync(
-            CargoManifest manifest,
-            CancellationToken cancellationToken,
-            bool synchronousOnly)
+        private RouteReport TravelCore(CargoManifest manifest, CancellationToken cancellationToken)
         {
             var current = manifest ?? throw new ArgumentNullException(nameof(manifest));
-            var visits = new List<StationVisit>();
+            var visits = new List<StationVisit>(VisitJournalCapacity);
 
             for (var i = 0; i < _route.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var plan = _route[i];
-                var signal = await ExecuteStationAsync(plan, current, cancellationToken, synchronousOnly)
-                    .ConfigureAwait(false);
-                var step = await ProcessStationStepAsync(signal, plan.StationName, visits, current, cancellationToken, synchronousOnly)
+                var signal = ExecuteStation(plan, current, cancellationToken);
+                var step = ProcessStationStep(signal, plan.StationName, visits, current, cancellationToken);
+
+                if (step.TerminalReport != null)
+                {
+                    return step.TerminalReport;
+                }
+
+                current = step.Current;
+            }
+
+            return new RouteReport(visits, RailwaySignals.Green(current));
+        }
+
+        /// <summary>
+        /// Executes all route stations asynchronously and returns the final report.
+        /// </summary>
+        private async Task<RouteReport> TravelCoreAsync(CargoManifest manifest, CancellationToken cancellationToken)
+        {
+            var current = manifest ?? throw new ArgumentNullException(nameof(manifest));
+            var visits = new List<StationVisit>(VisitJournalCapacity);
+
+            for (var i = 0; i < _route.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var plan = _route[i];
+                var signal = await ExecuteStationAsync(plan, current, cancellationToken).ConfigureAwait(false);
+                var step = await ProcessStationStepAsync(signal, plan.StationName, visits, current, cancellationToken)
                     .ConfigureAwait(false);
 
                 if (step.TerminalReport != null)
@@ -852,20 +878,58 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Invokes one station plan and returns its signal.
+        /// Invokes one synchronous station plan and returns its signal.
         /// </summary>
-        private static async Task<Signal> ExecuteStationAsync(
+        private static Signal ExecuteStation(
             StationPlan plan,
             CargoManifest current,
-            CancellationToken cancellationToken,
-            bool synchronousOnly)
+            CancellationToken cancellationToken)
         {
-            if (synchronousOnly && plan.IsAsync)
+            if (plan.IsAsync)
             {
                 throw new InvalidOperationException(
                     "Route contains async station '" + plan.StationName + "'. Use TravelAsync instead of Travel.");
             }
 
+            try
+            {
+                if (plan.ThroughStationWithToken != null)
+                {
+                    var nextManifest = plan.ThroughStationWithToken(current, cancellationToken);
+                    return RailwaySignals.Green(nextManifest ?? current);
+                }
+
+                if (plan.ThroughStation != null)
+                {
+                    var nextManifest = plan.ThroughStation(current);
+                    return RailwaySignals.Green(nextManifest ?? current);
+                }
+
+                if (plan.StationWithToken != null)
+                {
+                    return plan.StationWithToken(current, cancellationToken);
+                }
+
+                return plan.Station(current);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                return WrapStationException(plan, current, exception);
+            }
+        }
+
+        /// <summary>
+        /// Invokes one station plan and returns its signal.
+        /// </summary>
+        private static async Task<Signal> ExecuteStationAsync(
+            StationPlan plan,
+            CargoManifest current,
+            CancellationToken cancellationToken)
+        {
             try
             {
                 if (plan.ThroughAsyncStation != null)
@@ -904,13 +968,31 @@ namespace TrainOP
             }
             catch (Exception exception)
             {
-                var issue = new SignalIssue(
-                    StationExceptionCode,
-                    "Unhandled station exception: " + exception.Message,
-                    plan.StationName,
-                    exception);
-                return RailwaySignals.Red(current, issue);
+                return WrapStationException(plan, current, exception);
             }
+        }
+
+        /// <summary>
+        /// Records a station visit and handles red signals via the service station when configured.
+        /// </summary>
+        private StationStepResult ProcessStationStep(
+            Signal signal,
+            string stationName,
+            List<StationVisit> visits,
+            CargoManifest current,
+            CancellationToken cancellationToken)
+        {
+            EnsureStationSignal(signal, stationName);
+            visits.Add(new StationVisit(stationName, signal.IsGreen));
+            current = signal.Manifest;
+
+            if (signal.IsGreen)
+            {
+                return new StationStepResult(current, null);
+            }
+
+            var handled = InvokeServiceStation((RedSignal)signal, cancellationToken);
+            return CompleteRedSignalStep(signal, handled, visits, current);
         }
 
         /// <summary>
@@ -921,15 +1003,10 @@ namespace TrainOP
             string stationName,
             List<StationVisit> visits,
             CargoManifest current,
-            CancellationToken cancellationToken,
-            bool synchronousOnly)
+            CancellationToken cancellationToken)
         {
-            if (signal == null)
-            {
-                throw new InvalidOperationException("Station '" + stationName + "' returned null signal.");
-            }
-
-            visits.Add(new StationVisit(stationName, signal));
+            EnsureStationSignal(signal, stationName);
+            visits.Add(new StationVisit(stationName, signal.IsGreen));
             current = signal.Manifest;
 
             if (signal.IsGreen)
@@ -937,21 +1014,39 @@ namespace TrainOP
                 return new StationStepResult(current, null);
             }
 
-            var red = (RedSignal)signal;
-            var handled = await InvokeServiceStationAsync(red, cancellationToken, synchronousOnly).ConfigureAwait(false);
-            if (handled != null)
-            {
-                visits.Add(new StationVisit(_serviceStation.StationName, handled));
-                current = handled.Manifest;
-                if (handled.IsGreen)
-                {
-                    return new StationStepResult(current, null);
-                }
+            var handled = await InvokeServiceStationAsync((RedSignal)signal, cancellationToken).ConfigureAwait(false);
+            return CompleteRedSignalStep(signal, handled, visits, current);
+        }
 
-                return new StationStepResult(current, new RouteReport(visits, handled));
+        /// <summary>
+        /// Invokes the configured synchronous service station for a red signal, if present.
+        /// </summary>
+        private Signal InvokeServiceStation(RedSignal redSignal, CancellationToken cancellationToken)
+        {
+            if (_serviceStation == null)
+            {
+                return null;
             }
 
-            return new StationStepResult(current, new RouteReport(visits, signal));
+            if (_serviceStation.AsyncHandler != null)
+            {
+                throw new InvalidOperationException(
+                    "Route contains async service station '" + _serviceStation.StationName + "'. Use TravelAsync instead of Travel.");
+            }
+
+            try
+            {
+                var handled = _serviceStation.SyncHandler(redSignal, cancellationToken);
+                return handled ?? redSignal;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                return WrapServiceStationException(_serviceStation, redSignal, exception);
+            }
         }
 
         /// <summary>
@@ -959,18 +1054,11 @@ namespace TrainOP
         /// </summary>
         private async Task<Signal> InvokeServiceStationAsync(
             RedSignal redSignal,
-            CancellationToken cancellationToken,
-            bool synchronousOnly)
+            CancellationToken cancellationToken)
         {
             if (_serviceStation == null)
             {
                 return null;
-            }
-
-            if (synchronousOnly && _serviceStation.AsyncHandler != null)
-            {
-                throw new InvalidOperationException(
-                    "Route contains async service station '" + _serviceStation.StationName + "'. Use TravelAsync instead of Travel.");
             }
 
             try
@@ -993,13 +1081,72 @@ namespace TrainOP
             }
             catch (Exception exception)
             {
-                var issue = new SignalIssue(
-                    ServiceStationExceptionCode,
-                    "Unhandled service station exception: " + exception.Message,
-                    _serviceStation.StationName,
-                    exception);
-                return RailwaySignals.Red(redSignal.Manifest, issue);
+                return WrapServiceStationException(_serviceStation, redSignal, exception);
             }
+        }
+
+        /// <summary>
+        /// Validates that a station returned a non-null signal.
+        /// </summary>
+        private static void EnsureStationSignal(Signal signal, string stationName)
+        {
+            if (signal == null)
+            {
+                throw new InvalidOperationException("Station '" + stationName + "' returned null signal.");
+            }
+        }
+
+        /// <summary>
+        /// Converts an unhandled station exception into a red signal.
+        /// </summary>
+        private static Signal WrapStationException(StationPlan plan, CargoManifest current, Exception exception)
+        {
+            var issue = new SignalIssue(
+                StationExceptionCode,
+                "Unhandled station exception: " + exception.Message,
+                plan.StationName,
+                exception);
+            return RailwaySignals.Red(current, issue);
+        }
+
+        /// <summary>
+        /// Converts an unhandled service-station exception into a red signal.
+        /// </summary>
+        private static Signal WrapServiceStationException(
+            ServiceStationPlan serviceStation,
+            RedSignal redSignal,
+            Exception exception)
+        {
+            var issue = new SignalIssue(
+                ServiceStationExceptionCode,
+                "Unhandled service station exception: " + exception.Message,
+                serviceStation.StationName,
+                exception);
+            return RailwaySignals.Red(redSignal.Manifest, issue);
+        }
+
+        /// <summary>
+        /// Applies service-station handling after a red signal, or returns a terminal report.
+        /// </summary>
+        private StationStepResult CompleteRedSignalStep(
+            Signal originalSignal,
+            Signal handled,
+            List<StationVisit> visits,
+            CargoManifest currentAfterRed)
+        {
+            if (handled != null)
+            {
+                visits.Add(new StationVisit(_serviceStation.StationName, handled.IsGreen));
+                currentAfterRed = handled.Manifest;
+                if (handled.IsGreen)
+                {
+                    return new StationStepResult(currentAfterRed, null);
+                }
+
+                return new StationStepResult(currentAfterRed, new RouteReport(visits, handled));
+            }
+
+            return new StationStepResult(currentAfterRed, new RouteReport(visits, originalSignal));
         }
 
         /// <summary>

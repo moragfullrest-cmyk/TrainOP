@@ -9,6 +9,32 @@ namespace TrainOP.Generators
     internal static class TypedStationReturnCodegen
     {
         /// <summary>
+        /// Builds an inline compile-time <c>string[]</c> literal for return member names when the return shape is known.
+        /// </summary>
+        public static string BuildCompileTimeReturnMembersExpression(StationHandlerBinding schema)
+        {
+            var returnShape = schema.ReturnShape;
+            if (returnShape.Members.IsDefaultOrEmpty)
+            {
+                return null;
+            }
+
+            var builder = new StringBuilder();
+            builder.Append("new string[] { ");
+            for (var i = 0; i < returnShape.Members.Length; i++)
+            {
+                builder.Append("\"").Append(Escape(returnShape.Members[i].Name)).Append("\"");
+                if (i < returnShape.Members.Length - 1)
+                {
+                    builder.Append(", ");
+                }
+            }
+
+            builder.Append(" }");
+            return builder.ToString();
+        }
+
+        /// <summary>
         /// Determines whether typed data merge can be emitted for a merged handler schema.
         /// </summary>
         public static bool CanEmitTypedDataMerge(StationHandlerBinding schema, string returnMembersField)
@@ -55,20 +81,22 @@ namespace TrainOP.Generators
             source.AppendLine("                {");
             source.Append("                    var wagonName = ").Append(wagonNamesField).AppendLine("[i];");
             source.AppendLine("                    var mapped = false;");
-            EmitTypedMemberMatch(source, returnShape, dataVariable, "wagonName", "wagonValue");
-            source.AppendLine("                    if (mapped)");
-            source.AppendLine("                    {");
-            source.AppendLine("                        merged = merged.LoadWagon(wagonName, wagonValue);");
-            source.AppendLine("                    }");
+            EmitTypedMemberLoad(source, returnShape, dataVariable, "wagonName", "merged", trackMapped: true);
             if (refFlagsField != null)
             {
-                source.Append("                    else if (").Append(refFlagsField).AppendLine("[i])");
+                source.Append("                    if (!mapped && ").Append(refFlagsField).AppendLine("[i])");
                 source.Append("                    { merged = merged.LoadWagon(wagonName, ").Append(refLocalValuesExpression).AppendLine("[i]); }");
+                if (schema.RemoveOmittedRegularInputs)
+                {
+                    source.AppendLine("                    else if (!mapped)");
+                    source.AppendLine("                    {");
+                    source.AppendLine("                        merged = merged.UnloadWagon(wagonName);");
+                    source.AppendLine("                    }");
+                }
             }
-
-            if (schema.RemoveOmittedRegularInputs)
+            else if (schema.RemoveOmittedRegularInputs)
             {
-                source.AppendLine("                    else");
+                source.AppendLine("                    if (!mapped)");
                 source.AppendLine("                    {");
                 source.AppendLine("                        merged = merged.UnloadWagon(wagonName);");
                 source.AppendLine("                    }");
@@ -91,34 +119,35 @@ namespace TrainOP.Generators
             source.AppendLine();
             source.AppendLine("                    if (!isInputWagon)");
             source.AppendLine("                    {");
-            source.AppendLine("                        var mapped = false;");
-            EmitTypedMemberMatch(source, returnShape, dataVariable, "memberName", "extraValue", indent: "                        ");
-            source.AppendLine("                        if (mapped)");
-            source.AppendLine("                        {");
-            source.AppendLine("                            merged = merged.LoadWagon(memberName, extraValue);");
-            source.AppendLine("                        }");
+            EmitTypedMemberLoad(source, returnShape, dataVariable, "memberName", "merged", indent: "                        ", trackMapped: false);
             source.AppendLine("                    }");
             source.AppendLine("                }");
             source.AppendLine("                return RailwaySignals.Green(merged);");
         }
 
-        private static void EmitTypedMemberMatch(
+        private static void EmitTypedMemberLoad(
             StringBuilder source,
             ReturnShape returnShape,
             string dataVariable,
             string nameVariable,
-            string valueVariable,
-            string indent = "                    ")
+            string manifestVariable,
+            string indent = "                    ",
+            bool trackMapped = true)
         {
-            source.Append(indent).Append("object ").Append(valueVariable).AppendLine(" = null;");
             source.Append(indent).AppendLine("switch (" + nameVariable + ")");
             source.Append(indent).AppendLine("{");
             for (var i = 0; i < returnShape.Members.Length; i++)
             {
                 var member = returnShape.Members[i];
                 source.Append(indent).Append("    case \"").Append(Escape(member.Name)).AppendLine("\":");
-                source.Append(indent).Append("        ").Append(valueVariable).Append(" = ").Append(dataVariable).Append('.').Append(member.Name).AppendLine(";");
-                source.Append(indent).AppendLine("        mapped = true;");
+                source.Append(indent).Append("        ").Append(manifestVariable).Append(" = ").Append(manifestVariable).Append(".LoadWagon(")
+                    .Append(nameVariable).Append(", ").Append(dataVariable).Append('.')
+                    .Append(member.Name).AppendLine(");");
+                if (trackMapped)
+                {
+                    source.Append(indent).AppendLine("        mapped = true;");
+                }
+
                 source.Append(indent).AppendLine("        break;");
             }
 

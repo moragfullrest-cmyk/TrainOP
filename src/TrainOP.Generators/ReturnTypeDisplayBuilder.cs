@@ -11,11 +11,12 @@ namespace TrainOP.Generators
         public const string SignalReturnTypeDisplay = "global::TrainOP.Signal";
 
         /// <summary>
-        /// Determines whether the return type must be expressed as a generic type parameter.
+        /// Determines whether the return type must be expressed as <c>object</c>
+        /// (anonymous types and constructed types that mention them cannot appear in generated C#).
         /// </summary>
         public static bool UseGenericReturn(ITypeSymbol returnType)
         {
-            return returnType != null && returnType.IsAnonymousType;
+            return ContainsAnonymousType(returnType);
         }
 
         /// <summary>
@@ -60,17 +61,48 @@ namespace TrainOP.Generators
                 return SignalReturnTypeDisplay;
             }
 
-            if (returnType == null || returnType.SpecialType == SpecialType.System_Object)
+            if (returnType == null
+                || returnType.SpecialType == SpecialType.System_Object
+                || ContainsAnonymousType(returnType))
             {
                 return "global::System.Object";
             }
 
-            if (returnType.IsAnonymousType)
+            return ManifestWagonTypes.ToReturnTypeDisplay(returnType);
+        }
+
+        /// <summary>
+        /// Returns true when <paramref name="typeSymbol"/> is anonymous or nests an anonymous type argument.
+        /// </summary>
+        private static bool ContainsAnonymousType(ITypeSymbol typeSymbol)
+        {
+            if (typeSymbol == null)
             {
-                return null;
+                return false;
             }
 
-            return ManifestWagonTypes.ToReturnTypeDisplay(returnType);
+            if (typeSymbol.IsAnonymousType)
+            {
+                return true;
+            }
+
+            if (typeSymbol is INamedTypeSymbol named && named.TypeArguments.Length > 0)
+            {
+                for (var i = 0; i < named.TypeArguments.Length; i++)
+                {
+                    if (ContainsAnonymousType(named.TypeArguments[i]))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            if (typeSymbol is IArrayTypeSymbol array)
+            {
+                return ContainsAnonymousType(array.ElementType);
+            }
+
+            return false;
         }
 
         private static bool IsRedFailure(ITypeSymbol typeSymbol)

@@ -25,7 +25,7 @@ namespace TrainOP.Generators
                 .ThenBy(binding => binding.StationIndex)
                 .ToList();
 
-            source.Append("        private readonly struct ChainStationBinding_")
+            source.Append("        internal readonly struct ChainStationBinding_")
                 .Append(delegateTypeId)
                 .AppendLine();
             source.AppendLine("        {");
@@ -202,7 +202,7 @@ namespace TrainOP.Generators
             StationHandlerBinding schema,
             string[] returnMembers)
         {
-            source.Append("        private static readonly ChainStationBinding_")
+            source.Append("        internal static readonly ChainStationBinding_")
                 .Append(delegateTypeId)
                 .Append(" ")
                 .Append(fieldName)
@@ -217,9 +217,20 @@ namespace TrainOP.Generators
             source.AppendLine(");");
         }
 
-        private static string BuildBindingFieldName(string delegateTypeId, ChainSiteBinding binding)
+        /// <summary>
+        /// Builds the static binding field name for one chain call site.
+        /// </summary>
+        internal static string BuildBindingFieldName(string delegateTypeId, ChainSiteBinding binding)
         {
-            return "ChainBinding_" + delegateTypeId + "_" + Sanitize(binding.ChainId) + "_" + binding.StationIndex;
+            return BuildBindingFieldName(delegateTypeId, binding.ChainId, binding.StationIndex);
+        }
+
+        /// <summary>
+        /// Builds the static binding field name from chain id and station index.
+        /// </summary>
+        internal static string BuildBindingFieldName(string delegateTypeId, string chainId, int stationIndex)
+        {
+            return "ChainBinding_" + delegateTypeId + "_" + Sanitize(chainId) + "_" + stationIndex;
         }
 
         private static string Sanitize(string value)

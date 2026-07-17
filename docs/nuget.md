@@ -27,6 +27,8 @@ TrainOP поставляется двумя пакетами:
 
 Для NativeAOT / aggressive trimming предпочтителен SDK ≥ 8.0.400 (interceptors), потому что reflection-fallback зависит от сохранённых имён параметров.
 
+Сравнение скорости режимов: [`benchmarks/README.md`](../benchmarks/README.md).
+
 ## Установка из nuget.org
 
 ### CLI
@@ -39,16 +41,16 @@ dotnet add package TrainOP.Generators
 Указать версию явно:
 
 ```bash
-dotnet add package TrainOP --version 0.7.0
-dotnet add package TrainOP.Generators --version 0.7.0
+dotnet add package TrainOP --version 0.8.0
+dotnet add package TrainOP.Generators --version 0.8.0
 ```
 
 ### PackageReference в `.csproj`
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.7.0" />
-  <PackageReference Include="TrainOP.Generators" Version="0.7.0" />
+  <PackageReference Include="TrainOP" Version="0.8.0" />
+  <PackageReference Include="TrainOP.Generators" Version="0.8.0" />
 </ItemGroup>
 ```
 
@@ -109,8 +111,8 @@ dotnet add package TrainOP.Generators --source trainop-local
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="TrainOP" Version="0.7.0" />
-    <PackageReference Include="TrainOP.Generators" Version="0.7.0" />
+    <PackageReference Include="TrainOP" Version="0.8.0" />
+    <PackageReference Include="TrainOP.Generators" Version="0.8.0" />
   </ItemGroup>
 </Project>
 ```

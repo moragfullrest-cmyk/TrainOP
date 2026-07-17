@@ -2,22 +2,23 @@
 
 ## CargoManifest
 
-Неизменяемый контейнер вагонов. Любая мутация возвращает **новый** экземпляр.
+Мутабельный контейнер вагонов. `LoadWagon` / `UnloadWagon` изменяют экземпляр **на месте** и возвращают `this` (удобно для fluent-цепочек).
 
 | Метод | Описание |
 |-------|----------|
 | `HasWagon(string wagonName)` | Проверка наличия вагона |
+| `TryGetWagon(string wagonName, out object cargo)` | Чтение без исключения, если вагона нет |
 | `PullWagon<T>(string wagonName)` | Чтение типизированного значения (бросает, если вагон отсутствует или тип не совпадает) |
-| `LoadWagon(string wagonName, object cargo)` | Добавить или заменить вагон |
-| `UnloadWagon(string wagonName)` | Удалить вагон |
-| `InspectWagons()` | Снимок всех вагонов (`IReadOnlyDictionary<string, object>`) |
+| `LoadWagon(string wagonName, object cargo)` | Добавить или заменить вагон (in-place) |
+| `UnloadWagon(string wagonName)` | Удалить вагон (in-place) |
+| `InspectWagons()` | Live view вагонов (`IReadOnlyDictionary<string, object>`) |
 
 ```csharp
 var manifest = new CargoManifest()
     .LoadWagon("id", "pay-1")
     .LoadWagon("amount", 100m);
 
-var next = manifest
+manifest
     .LoadWagon("amount", 90m)   // замена
     .UnloadWagon("temporary");  // удаление
 ```
@@ -203,7 +204,7 @@ else
 // История прохождения
 foreach (var visit in report.Visits)
 {
-    Console.WriteLine($"{visit.StationName}: {(visit.Signal.IsGreen ? "green" : "red")}");
+    Console.WriteLine($"{visit.StationName}: {(visit.IsGreen ? "green" : "red")}");
 }
 ```
 

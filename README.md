@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/moragfullrest-cmyk/TrainOP/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/moragfullrest-cmyk/TrainOP/actions/workflows/ci.yml)
 
-Библиотека **Railway Oriented Programming** для `.NET` (`netstandard2.0` / `net8.0`): маршруты из станций, неизменяемый манифест данных и сигналы зелёный/красный. Source generator добавляет **data-oriented** `.Station` handlers.
+Библиотека **Railway Oriented Programming** для `.NET` (`netstandard2.0` / `net8.0`): маршруты из станций, мутабельный манифест данных и сигналы зелёный/красный. Source generator добавляет **data-oriented** `.Station` handlers.
 
 ## Документация
 
@@ -15,6 +15,8 @@
 | Начало работы | [docs/getting-started.md](docs/getting-started.md) |
 | Основной API | [docs/core-api.md](docs/core-api.md) |
 | Cross-assembly routes | [docs/cross-assembly-routes.md](docs/cross-assembly-routes.md) |
+| Сравнение объёма кода | [docs/code-volume-comparison.md](docs/code-volume-comparison.md) |
+| Benchmarks | [benchmarks/README.md](benchmarks/README.md) |
 
 ## Быстрый пример (data-oriented)
 
@@ -63,7 +65,7 @@ dotnet add package TrainOP.Generators
 
 Генератор нужен для `.Station` data-oriented handlers.
 
-Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.7.0** — см. [CHANGELOG.md](CHANGELOG.md).
+Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.8.0** — см. [CHANGELOG.md](CHANGELOG.md).
 
 ### Локальная сборка пакетов
 
@@ -75,10 +77,11 @@ dotnet pack -c Release
 
 ## Структура решения
 
-- `src/TrainOP` — библиотека (`netstandard2.0`)
+- `src/TrainOP` — библиотека (`netstandard2.0` / `net8.0`)
 - `src/TrainOP.Generators` — инкрементальные generators и анализатор цепочки
 - `samples/TrainOP.Samples` — консольные примеры (в т.ч. вложенные маршруты и ветвление)
 - `tests/` — xUnit-тесты (сквозной data-oriented sample: `DataOrientedPaymentRouteEndToEndTests`)
+- `benchmarks/` — BenchmarkDotNet: reflection vs interceptors chain-dispatch
 
 ## Тесты
 
@@ -86,11 +89,21 @@ dotnet pack -c Release
 dotnet test TrainOP.sln
 ```
 
+## Бенчмарки
+
+Сравнение `TrainOP_ChainDispatchMode=reflection` и interceptors (`stable`):
+
+```bash
+dotnet run -c Release --project benchmarks/TrainOP.Benchmarks
+```
+
+Подробности: [`benchmarks/README.md`](benchmarks/README.md).
+
 ## Концепции
 
 | Термин | Тип | Роль |
 |--------|-----|------|
-| Манифест | `CargoManifest` | Неизменяемое хранилище вагонов между станциями |
+| Манифест | `CargoManifest` | Мутабельное хранилище вагонов между станциями |
 | Маршрут | `TrainRoute` | Цепочка станций |
 | Поезд | `Train` | Исполнитель (`DispatchTrain().Travel()`) |
 | Зелёный сигнал | `RailwaySignals.Green` / данные | Продолжить маршрут (merge в манифест) |

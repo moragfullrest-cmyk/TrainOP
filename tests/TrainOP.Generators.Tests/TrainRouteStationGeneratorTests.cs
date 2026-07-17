@@ -575,9 +575,13 @@ public static class ConflictingNameRoute
             Assert.Contains("InterceptsLocation", generated);
             Assert.Contains("StationCore_", generated);
             Assert.Contains("ResolveChainBinding_", generated);
+            Assert.Contains("var inputNames = binding.InputNames;", generated);
+            Assert.Contains("var returnMembers = binding.ReturnMembers;", generated);
+            Assert.Contains("ChainStationBinding_", generated);
+            Assert.DoesNotContain("binding.InputNames[0]", generated);
             Assert.Contains("ConflictingNameRoute.Payment", generated);
             Assert.Contains("ConflictingNameRoute.Order", generated);
-            Assert.Contains("manifest.PullWagon<global::System.String>(binding.InputNames[0])", generated);
+            Assert.Contains("manifest.PullWagon<global::System.String>(inputNames[0])", generated);
         }
 
         /// <summary>

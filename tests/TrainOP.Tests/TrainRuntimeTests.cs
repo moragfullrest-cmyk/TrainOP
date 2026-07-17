@@ -199,9 +199,13 @@ namespace TrainOP.Tests
             Assert.True(report.ReachedDestination);
             Assert.Equal(4, report.Visits.Count);
             Assert.Equal("Seed", report.Visits[0].StationName);
+            Assert.True(report.Visits[0].IsGreen);
             Assert.Equal("Boom", report.Visits[1].StationName);
+            Assert.False(report.Visits[1].IsGreen);
             Assert.Equal("SignalControlAsync", report.Visits[2].StationName);
+            Assert.True(report.Visits[2].IsGreen);
             Assert.Equal("AfterRecovery", report.Visits[3].StationName);
+            Assert.True(report.Visits[3].IsGreen);
             Assert.True(report.TerminalSignal.Manifest.PullWagon<bool>("marker"));
             Assert.Equal("ok", report.TerminalSignal.Manifest.PullWagon<string>("after"));
         }

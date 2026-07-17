@@ -20,6 +20,7 @@ internal static class ExampleRunner
             new DataOrientedRedSignalExample(),
             new LongRouteServiceStationExample(),
             new NestedBranchingRouteExample(),
+            new CodeVolumeComparisonExample(),
         };
 
         for (var i = 0; i < examples.Length; i++)

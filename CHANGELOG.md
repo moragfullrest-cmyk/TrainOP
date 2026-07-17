@@ -4,6 +4,26 @@ All notable changes to TrainOP are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-07-17
+
+### Added
+
+- BenchmarkDotNet suite (`benchmarks/`): reflection vs interceptor chain-dispatch; library vs hand-written pipelines.
+- Sample + docs for code-volume comparison (`docs/code-volume-comparison.md`, checkout pipeline with tokens/failures/recovery).
+- Performance roadmap (`docs/plan-performance.md`).
+
+### Changed
+
+- **`CargoManifest` is mutable:** `LoadWagon` / `UnloadWagon` update in place and return `this` (no per-wagon dictionary clone). Added `TryGetWagon`. `InspectWagons` returns a live view of the internal dictionary.
+- **`Travel()` sync path:** dedicated `TravelCore` loop without `async`/`await` per hop or blocking on `TravelCoreAsync`.
+- **Chain-dispatch typed merge:** chain-aware generated adapters emit compile-time return merge when return shape is known (interceptor: `binding.ReturnMembers`; reflection: inline member array), same gates as non-chain adapters.
+- **Chain binding cache (P3):** chain-aware adapters hoist `inputNames` / `returnMembers` / `refFlags` at station registration; interceptors pass static `ChainBinding_*` fields directly to `StationCore_*` (no `ResolveChainBinding_*` on interceptor path).
+- **`StationVisit` slim journal (P4a):** `StationVisit` is now a `readonly struct` with `StationName` and `IsGreen` only; removed `Signal` property. Full signal details remain on `RouteReport.TerminalSignal` / `FailureCode` / `FailureMessage`. Visit list is pre-sized (`route.Count`, or `×2` when a service station is configured) to avoid resize allocations.
+
+### Notes
+
+- Typed multi-bag storage (attempted as P5) was **not** shipped: CPU regression vs single `Dictionary<string, object>` on short routes.
+
 ## [0.7.0] - 2026-07-17
 
 ### Added

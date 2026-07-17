@@ -110,10 +110,8 @@ namespace TrainOP.Generators
             source.AppendLine("            if (handler == null) throw new ArgumentNullException(nameof(handler));");
             source.Append("            return global::TrainOP.TrainRouteStationExtensions.")
                 .Append(site.CoreMethodName)
-                .Append("(route, stationName, handler, \"")
-                .Append(Escape(site.ChainId))
-                .Append("\", ")
-                .Append(site.StationIndex)
+                .Append("(route, stationName, handler, global::TrainOP.TrainRouteStationExtensions.")
+                .Append(site.BindingFieldName)
                 .AppendLine(");");
             source.AppendLine("        }");
             return true;
@@ -134,15 +132,13 @@ namespace TrainOP.Generators
                 string routeMethodName,
                 string handlerTypeName,
                 string coreMethodName,
-                string chainId,
-                int stationIndex)
+                string bindingFieldName)
             {
                 Invocation = invocation;
                 RouteMethodName = routeMethodName;
                 HandlerTypeName = handlerTypeName;
                 CoreMethodName = coreMethodName;
-                ChainId = chainId;
-                StationIndex = stationIndex;
+                BindingFieldName = bindingFieldName;
             }
 
             public InvocationExpressionSyntax Invocation { get; }
@@ -153,9 +149,7 @@ namespace TrainOP.Generators
 
             public string CoreMethodName { get; }
 
-            public string ChainId { get; }
-
-            public int StationIndex { get; }
+            public string BindingFieldName { get; }
         }
     }
 }

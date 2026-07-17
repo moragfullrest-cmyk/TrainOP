@@ -3,6 +3,7 @@
 > **Статус:** **выполнено** фазы 0–8 (включая factory anchors + schema export/import, merge ветвлений §3.8.5); **отложено** якоря параметр / поле / свойство / делегат; **снято** typed Travel (фазы 9–12).  
 > **Терминалы:** `RouteReport` indexer / `Get<T>` (C# ≤15 — конфликты декомпозиции кортежей нерешаемы).  
 > **Цель:** handler станции = чистая функция над данными; `CargoManifest`, `LoadWagon`, `PullWagon`, `RailwaySignals` скрыты в сгенерированном адаптере.  
+> **Производительность Travel:** см. [`plan-performance.md`](plan-performance.md) (P0–P3 + P4a; P5 снято).  
 > **Аудитория:** разработчики и AI-агенты, продолжающие работу над TrainOP.
 
 ---
@@ -394,6 +395,7 @@ Release tracking: `AnalyzerReleases.Shipped.md`.
 | `tests/TrainOP.Tests/DataOrientedPaymentRouteEndToEndTests.cs` | Сквозной payment flow |
 | `tests/TrainOP.RouteConsumer.Tests/` | Cross-assembly PoC |
 | `docs/cross-assembly-routes.md` | Межсборочная композиция |
+| `docs/plan-performance.md` | Roadmap оптимизаций Travel (P0–P3 + P4a; P5 снято) |
 
 ---
 
@@ -405,3 +407,4 @@ Release tracking: `AnalyzerReleases.Shipped.md`.
 | 2026-07-06–14 | Фазы 0–7, branch merge §3.8.5, снятие typed Travel (9–12) |
 | 2026-07-16 | Factory anchors + schema export (§4.5) |
 | 2026-07-17 | Очистка плана: свёрнуты выполненные фазы, удалены spike-чеклисты и legacy baseline |
+| 2026-07-17 | Ссылка на план производительности Travel ([`plan-performance.md`](plan-performance.md)) |

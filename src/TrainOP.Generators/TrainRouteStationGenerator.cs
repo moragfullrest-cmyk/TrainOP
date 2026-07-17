@@ -136,8 +136,7 @@ namespace TrainOP.Generators
                                 schema.ExtensionMethodName,
                                 handlerTypeName,
                                 coreMethodName,
-                                binding.ChainId,
-                                binding.StationIndex));
+                                ChainAwareStationCodegen.BuildBindingFieldName(merged.DelegateTypeId, binding)));
                         }
                     }
 
@@ -387,12 +386,37 @@ namespace TrainOP.Generators
                 .Append(handlerTypeName)
                 .AppendLine(" handler, string chainKey, int chainStationIndex)");
             source.AppendLine("        {");
+            source.Append("            return ")
+                .Append(coreMethodName)
+                .Append("(route, stationName, handler, ResolveChainBinding_")
+                .Append(delegateTypeId)
+                .AppendLine("(chainKey, chainStationIndex));");
+            source.AppendLine("        }");
+            source.AppendLine();
+
+            source.Append("        internal static TrainRoute ")
+                .Append(coreMethodName)
+                .Append("(this TrainRoute route, string stationName, ")
+                .Append(handlerTypeName)
+                .Append(" handler, ChainStationBinding_")
+                .Append(delegateTypeId)
+                .AppendLine(" binding)");
+            source.AppendLine("        {");
             source.AppendLine("            if (route == null) throw new ArgumentNullException(nameof(route));");
             source.AppendLine("            if (handler == null) throw new ArgumentNullException(nameof(handler));");
-            source.Append("            var binding = ResolveChainBinding_")
-                .Append(delegateTypeId)
-                .AppendLine("(chainKey, chainStationIndex);");
+            source.AppendLine("            var inputNames = binding.InputNames;");
+            source.AppendLine("            var returnMembers = binding.ReturnMembers;");
+            source.AppendLine("            var refFlags = binding.RefFlags;");
 
+            EmitChainAwareStationRegistration(source, schema);
+            source.AppendLine("        }");
+        }
+
+        /// <summary>
+        /// Emits RegisterStation/ServiceStation registration using hoisted inputNames, returnMembers, and refFlags.
+        /// </summary>
+        private static void EmitChainAwareStationRegistration(StringBuilder source, StationHandlerBinding schema)
+        {
             if (schema.IsServiceStation)
             {
                 if (schema.IsAsync)
@@ -400,7 +424,7 @@ namespace TrainOP.Generators
                     source.AppendLine("            return route.ServiceStation(stationName, async (red, token) =>");
                     source.AppendLine("            {");
                     source.AppendLine("                var manifest = red.Manifest;");
-                    ChainAwareStationCodegen.EmitPullWagonsFromBinding(source, schema, "binding");
+                    ChainAwareStationCodegen.EmitPullWagonsFromNameArray(source, schema, "inputNames");
                     EmitChainAwareHandlerInvocation(source, schema, tokenVariable: "token", redVariable: "red");
                 }
                 else
@@ -408,7 +432,7 @@ namespace TrainOP.Generators
                     source.AppendLine("            return route.ServiceStation(stationName, (red, token) =>");
                     source.AppendLine("            {");
                     source.AppendLine("                var manifest = red.Manifest;");
-                    ChainAwareStationCodegen.EmitPullWagonsFromBinding(source, schema, "binding");
+                    ChainAwareStationCodegen.EmitPullWagonsFromNameArray(source, schema, "inputNames");
                     EmitChainAwareHandlerInvocation(source, schema, tokenVariable: "token", redVariable: "red");
                 }
             }
@@ -416,21 +440,21 @@ namespace TrainOP.Generators
             {
                 source.AppendLine("            return route.RegisterStation(stationName, async (manifest, token) =>");
                 source.AppendLine("            {");
-                ChainAwareStationCodegen.EmitPullWagonsFromBinding(source, schema, "binding");
+                ChainAwareStationCodegen.EmitPullWagonsFromNameArray(source, schema, "inputNames");
                 EmitChainAwareHandlerInvocation(source, schema, tokenVariable: "token", redVariable: null);
             }
             else if (schema.HasCancellationToken)
             {
                 source.AppendLine("            return route.RegisterStation(stationName, (manifest, token) =>");
                 source.AppendLine("            {");
-                ChainAwareStationCodegen.EmitPullWagonsFromBinding(source, schema, "binding");
+                ChainAwareStationCodegen.EmitPullWagonsFromNameArray(source, schema, "inputNames");
                 EmitChainAwareHandlerInvocation(source, schema, tokenVariable: "token", redVariable: null);
             }
             else
             {
                 source.AppendLine("            return route.RegisterStation(stationName, manifest =>");
                 source.AppendLine("            {");
-                ChainAwareStationCodegen.EmitPullWagonsFromBinding(source, schema, "binding");
+                ChainAwareStationCodegen.EmitPullWagonsFromNameArray(source, schema, "inputNames");
                 EmitChainAwareHandlerInvocation(source, schema, tokenVariable: null, redVariable: null);
             }
 
@@ -451,7 +475,6 @@ namespace TrainOP.Generators
 
             EmitChainAwareStationReturnMerge(source, schema);
             source.AppendLine("            });");
-            source.AppendLine("        }");
         }
 
         /// <summary>
@@ -558,16 +581,13 @@ namespace TrainOP.Generators
                 return;
             }
 
-            source.Append("                return StationMerge.ToSignal(manifest, stationReturn, stationName, inputNames, ")
-                .Append(schema.RemoveOmittedRegularInputs ? "true" : "false")
-                .Append(", (string[])null");
-
-            if (schema.HasRefWagons)
-            {
-                source.Append(", refFlags, refLocalValues");
-            }
-
-            source.AppendLine(");");
+            EmitStationReturnMerge(
+                source,
+                schema,
+                "inputNames",
+                TypedStationReturnCodegen.BuildCompileTimeReturnMembersExpression(schema),
+                schema.HasRefWagons ? "refFlags" : null,
+                schema.HasRefWagons ? "refLocalValues" : null);
         }
 
         private static void EmitChainAwareHandlerInvocation(
@@ -678,22 +698,19 @@ namespace TrainOP.Generators
         {
             if (schema.IsServiceStation)
             {
-                source.Append("                return StationMerge.ToServiceSignal(manifest, stationReturn, stationName, binding.InputNames, binding.RefFlags, ")
+                source.Append("                return StationMerge.ToServiceSignal(manifest, stationReturn, stationName, inputNames, refFlags, ")
                     .Append(schema.HasRefWagons ? "refLocalValues" : "null")
                     .AppendLine(");");
                 return;
             }
 
-            source.Append("                return StationMerge.ToSignal(manifest, stationReturn, stationName, binding.InputNames, ")
-                .Append(schema.RemoveOmittedRegularInputs ? "true" : "false")
-                .Append(", binding.ReturnMembers");
-
-            if (schema.HasRefWagons)
-            {
-                source.Append(", binding.RefFlags, refLocalValues");
-            }
-
-            source.AppendLine(");");
+            EmitStationReturnMerge(
+                source,
+                schema,
+                "inputNames",
+                "returnMembers",
+                schema.HasRefWagons ? "refFlags" : null,
+                schema.HasRefWagons ? "refLocalValues" : null);
         }
 
         /// <summary>
@@ -836,7 +853,6 @@ namespace TrainOP.Generators
                 EmitStationReturnMerge(
                     source,
                     schema,
-                    merged,
                     wagonNamesField,
                     returnMembersField,
                     refFlagsField,
@@ -847,7 +863,6 @@ namespace TrainOP.Generators
                 EmitStationReturnMerge(
                     source,
                     schema,
-                    merged,
                     wagonNamesField,
                     returnMembersField,
                     refFlagsField,
@@ -858,7 +873,6 @@ namespace TrainOP.Generators
                 EmitStationReturnMerge(
                     source,
                     schema,
-                    merged,
                     wagonNamesField,
                     returnMembersField,
                     null,
@@ -915,7 +929,6 @@ namespace TrainOP.Generators
         private static void EmitStationReturnMerge(
             StringBuilder source,
             StationHandlerBinding schema,
-            MergedStationSchema merged,
             string wagonNamesField,
             string returnMembersField,
             string refFlagsField,

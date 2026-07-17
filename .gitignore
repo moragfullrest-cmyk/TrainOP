@@ -25,6 +25,9 @@ coverage/
 *.coverage
 *.coveragexml
 
+## BenchmarkDotNet
+BenchmarkDotNet.Artifacts/
+
 ## OS
 Thumbs.db
 .DS_Store

@@ -96,8 +96,9 @@ public static class ConflictingNameRoute
             Assert.Equal(2, CountInterceptorAttributes(interceptors));
             Assert.Contains("ConflictingNameRoute.Payment", interceptors);
             Assert.Contains("ConflictingNameRoute.Order", interceptors);
-            Assert.Equal(2, CountOccurrences(", 1);", interceptors));
+            Assert.Equal(2, CountOccurrences("ChainBinding_", interceptors));
             Assert.Contains("StationCore_", interceptors);
+            Assert.DoesNotContain("ResolveChainBinding_", interceptors);
         }
 
         /// <summary>
@@ -178,8 +179,8 @@ public static class MixedNameRoute
 
             Assert.Equal(2, CountInterceptorAttributes(interceptors));
             Assert.Contains("MixedNameRoute.Build", interceptors);
-            Assert.Contains(", 1);", interceptors);
-            Assert.Contains(", 2);", interceptors);
+            Assert.Contains("ChainBinding_", interceptors);
+            Assert.DoesNotContain("ResolveChainBinding_", interceptors);
         }
 
         /// <summary>
@@ -211,8 +212,9 @@ public static class LocalChainRoute
 
             var interceptors = GetInterceptorsSource(source);
 
-            Assert.Contains("LocalChainRoute.Build@payment", interceptors);
-            Assert.Contains("LocalChainRoute.Build@order", interceptors);
+            Assert.Contains("LocalChainRoute_Build_payment", interceptors);
+            Assert.Contains("LocalChainRoute_Build_order", interceptors);
+            Assert.Contains("ChainBinding_", interceptors);
             Assert.Equal(2, CountInterceptorAttributes(interceptors));
         }
 

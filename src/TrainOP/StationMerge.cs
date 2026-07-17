@@ -99,45 +99,37 @@ namespace TrainOP
                     out wagonValue);
                 if (!found
                     && WagonStationReturn.IsValueTuple(stationReturn)
-                    && manifest.HasWagon(wagonName))
+                    && manifest.TryGetWagon(wagonName, out var missingMatchValue)
+                    && missingMatchValue != null)
                 {
-                    var existingWagons = manifest.InspectWagons();
-                    if (existingWagons.TryGetValue(wagonName, out var existingValue)
-                        && existingValue != null)
-                    {
-                        found = WagonStationReturn.TryGetUniqueTupleElementByType(
-                            stationReturn,
-                            existingValue.GetType(),
-                            out wagonValue);
-                    }
+                    found = WagonStationReturn.TryGetUniqueTupleElementByType(
+                        stationReturn,
+                        missingMatchValue.GetType(),
+                        out wagonValue);
                 }
                 else if (found
                     && WagonStationReturn.IsValueTuple(stationReturn)
-                    && manifest.HasWagon(wagonName)
-                    && wagonValue != null)
+                    && wagonValue != null
+                    && manifest.TryGetWagon(wagonName, out var existingValue)
+                    && existingValue != null
+                    && !WagonStationReturn.TypesCompatible(existingValue.GetType(), wagonValue.GetType()))
                 {
-                    var existingWagons = manifest.InspectWagons();
-                    if (existingWagons.TryGetValue(wagonName, out var existingValue)
-                        && existingValue != null
-                        && !WagonStationReturn.TypesCompatible(existingValue.GetType(), wagonValue.GetType()))
-                    {
-                        found = WagonStationReturn.TryGetUniqueTupleElementByType(
-                            stationReturn,
-                            existingValue.GetType(),
-                            out wagonValue);
-                    }
+                    found = WagonStationReturn.TryGetUniqueTupleElementByType(
+                        stationReturn,
+                        existingValue.GetType(),
+                        out wagonValue);
                 }
                 if (found)
                 {
-                    manifest = manifest.LoadWagon(wagonName, wagonValue);
+                    manifest.LoadWagon(wagonName, wagonValue);
                 }
                 else if (byReferenceWagons != null && byReferenceWagons[i])
                 {
-                    manifest = manifest.LoadWagon(wagonName, refLocalValues[i]);
+                    manifest.LoadWagon(wagonName, refLocalValues[i]);
                 }
                 else if (removeOmittedRegularInputs)
                 {
-                    manifest = manifest.UnloadWagon(wagonName);
+                    manifest.UnloadWagon(wagonName);
                 }
             }
 
@@ -159,7 +151,7 @@ namespace TrainOP
                     if (!isInputWagon
                         && WagonStationReturn.TryGetMemberValue(stationReturn, memberName, out var extraValue))
                     {
-                        manifest = manifest.LoadWagon(memberName, extraValue);
+                        manifest.LoadWagon(memberName, extraValue);
                     }
                 }
             }
@@ -242,7 +234,7 @@ namespace TrainOP
             {
                 if (byReferenceWagons[i])
                 {
-                    manifest = manifest.LoadWagon(wagonNames[i], refLocalValues[i]);
+                    manifest.LoadWagon(wagonNames[i], refLocalValues[i]);
                 }
             }
 
@@ -348,7 +340,7 @@ namespace TrainOP
             {
                 if (WagonStationReturn.TryGetMemberValue(stationReturn, memberName, out var value))
                 {
-                    manifest = manifest.LoadWagon(memberName, value);
+                    manifest.LoadWagon(memberName, value);
                 }
             }
 
