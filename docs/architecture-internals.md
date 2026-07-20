@@ -228,7 +228,7 @@ flowchart TB
 
 ---
 
-## 4. Зачем interceptors (и почему без них ломается)
+## 4. Зачем caller dispatch (и почему без него ломается)
 
 ### Проблема CLR-сигнатур
 
@@ -260,17 +260,14 @@ public static TrainRoute Station_0(
 }
 ```
 
-Эмиттер: `TrainRouteStationInterceptorsEmitter` → namespace `TrainOP.Generated`.
-
-### Режимы ChainDispatch (MSBuild)
+### Режимы ChainDispatch (TrainOP_ChainDispatchMode)
 
 Настраивается через targets генератора (`TrainOP.Generators.targets`):
 
 | Режим | Когда |
 |-------|--------|
-| `stable` | SDK ≥ 9.0.200 — нормальный interceptor pipeline |
-| `experimental` | SDK ≥ 8.0.400 + `Features=Interceptors` |
-| `reflection` | Fallback: имена читаются через `StationHandlerParameterNames` в runtime (медленнее, для старых SDK) |
+| `caller` (default) | ctor+ordinal dispatch: идентичность цепочки штампуется на `new TrainRoute()` и дальше resolve идёт по `ChainKey` + `chainStationIndex` |
+| `reflection` | явный opt-out: имена вагонов читаются через `StationHandlerParameterNames` в runtime |
 
 Бенчмарки: [`benchmarks/README.md`](../benchmarks/README.md).
 

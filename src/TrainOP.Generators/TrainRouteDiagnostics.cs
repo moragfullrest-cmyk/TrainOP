@@ -149,5 +149,16 @@ namespace TrainOP.Generators
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when more than one TrainRoute creation is detected on the same source line inside a method.
+        /// </summary>
+        public static readonly DiagnosticDescriptor MultipleTrainRouteNewSameLine = new DiagnosticDescriptor(
+            id: "TOP014",
+            title: "More than one TrainRoute() call on the same line",
+            messageFormat: "Method '{0}' contains more than one new TrainRoute() call on the same source line {1}; split TrainRoute creations across different lines in caller mode",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }

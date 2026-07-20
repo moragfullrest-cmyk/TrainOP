@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/moragfullrest-cmyk/TrainOP/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/moragfullrest-cmyk/TrainOP/actions/workflows/ci.yml)
 
-Библиотека **Railway Oriented Programming** для `.NET` (`netstandard2.0` / `net8.0`): маршруты из станций, мутабельный манифест данных и сигналы зелёный/красный. Source generator добавляет **data-oriented** `.Station` handlers.
+Библиотека **Railway Oriented Programming** для `.NET` (`netstandard2.0`): маршруты из станций, мутабельный манифест данных и сигналы зелёный/красный. Source generator добавляет **data-oriented** `.Station` handlers.
 
 ## Документация
 
@@ -14,7 +14,7 @@
 | Установка через NuGet | [docs/nuget.md](docs/nuget.md) |
 | Начало работы | [docs/getting-started.md](docs/getting-started.md) |
 | Основной API | [docs/core-api.md](docs/core-api.md) |
-| Архитектура (generator / analyzer / interceptors / runtime) | [docs/architecture-internals.md](docs/architecture-internals.md) |
+| Архитектура (generator / analyzer / caller / runtime) | [docs/architecture-internals.md](docs/architecture-internals.md) |
 | Cross-assembly routes | [docs/cross-assembly-routes.md](docs/cross-assembly-routes.md) |
 | Сравнение объёма кода | [docs/code-volume-comparison.md](docs/code-volume-comparison.md) |
 | Benchmarks | [benchmarks/README.md](benchmarks/README.md) |
@@ -66,7 +66,7 @@ dotnet add package TrainOP.Generators
 
 Генератор нужен для `.Station` data-oriented handlers.
 
-Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.9.0** — см. [CHANGELOG.md](CHANGELOG.md).
+Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.10.0** — см. [CHANGELOG.md](CHANGELOG.md).
 
 ### Локальная сборка пакетов
 
@@ -78,11 +78,11 @@ dotnet pack -c Release
 
 ## Структура решения
 
-- `src/TrainOP` — библиотека (`netstandard2.0` / `net8.0`)
+- `src/TrainOP` — библиотека (`netstandard2.0`)
 - `src/TrainOP.Generators` — инкрементальные generators и анализатор цепочки
 - `samples/TrainOP.Samples` — консольные примеры (в т.ч. вложенные маршруты и ветвление)
 - `tests/` — xUnit-тесты (сквозной data-oriented sample: `DataOrientedPaymentRouteEndToEndTests`)
-- `benchmarks/` — BenchmarkDotNet: reflection vs interceptors chain-dispatch
+- `benchmarks/` — BenchmarkDotNet: reflection vs caller chain-dispatch
 
 ## Тесты
 
@@ -92,7 +92,7 @@ dotnet test TrainOP.sln
 
 ## Бенчмарки
 
-Сравнение `TrainOP_ChainDispatchMode=reflection` и interceptors (`stable`):
+Сравнение `TrainOP_ChainDispatchMode=reflection` и caller (default):
 
 ```bash
 dotnet run -c Release --project benchmarks/TrainOP.Benchmarks

@@ -1,6 +1,6 @@
 # Чеклист готовности TrainOP к релизу
 
-Срез: **2026-07-17** · версия в csproj: **0.9.0** · целевой статус сейчас: **NuGet Preview (0.x)**
+Срез: **2026-07-20** · версия в csproj: **0.10.0** · целевой статус сейчас: **NuGet Preview (0.x)**
 
 | Показатель | Скор |
 |------------|------|
@@ -21,7 +21,7 @@
 | A3 | Документация пользователя (`getting-started`, `core-api`, `nuget`, samples) | 75% | Сильная база; ложный TFM и опечатка diagnostic ID |
 | A4 | Тесты runtime + generators + analyzer (~138 Fact/Theory) | 85% | Хорошо; нет coverage-отчёта и автоматического прогона samples |
 | A5 | CI build + test (ubuntu/windows, .NET 10) | 100% | Готово для compile/test |
-| A6 | Упаковка Generators (`analyzers/dotnet/cs` + `.targets` / InterceptorsNamespaces) | 80% | Схема верная; нет PackageReadme у Generators |
+| A6 | Упаковка Generators (`analyzers/dotnet/cs` + `.targets`) | 80% | Схема верная; нет PackageReadme у Generators |
 | A7 | Seed-only вход (`Travel()` без манифеста) | 100% | Канон зафиксирован; публичного `Travel(CargoManifest)` нет |
 
 **По блоку A (среднее):** ~90%
@@ -32,9 +32,9 @@
 
 | # | Пункт | % | Что осталось |
 |---|--------|---|--------------|
-| 1 | Согласовать TFM docs ↔ пакет | **80%** | Multi-target `netstandard2.0;net8.0`; docs обновлены под TFM и chain-dispatch режимы |
-| 2 | CHANGELOG с историей 0.1 → 0.9 | **80%** | `CHANGELOG.md` обновлён для 0.9.0; ранние версии кратко |
-| 3 | Git-тег, согласованный с `Version` (например `v0.9.0`) | **50%** | Version=0.9.0 в csproj; теги `v0.1.0` / `v0.1.1` / `v0.6.0` (тег `v0.9.0` ещё не создан) |
+| 1 | Согласовать TFM docs ↔ пакет | **80%** | Single-TFM `netstandard2.0`; docs обновлены под TFM и chain-dispatch режимы |
+| 2 | CHANGELOG с историей 0.1 → 0.10 | **80%** | `CHANGELOG.md` обновлён для 0.10.0; ранние версии кратко |
+| 3 | Git-тег, согласованный с `Version` (например `v0.10.0`) | **50%** | Version=0.10.0 в csproj; теги `v0.1.0` / `v0.1.1` / `v0.6.0` (тег `v0.10.0` ещё не создан) |
 | 4 | CI: `dotnet pack` (артефакты `.nupkg`) | **0%** | В workflow только restore/build/test |
 | 5 | CI/ритуал publish (хотя бы ручной on tag) | **0%** | Нет release workflow / публикации |
 | 6 | Known limitations в пользовательских docs (7D / фаза 8) | **75%** | `core-api`, `cross-assembly-routes.md`, tuple warning TOP006 (default ItemN) |

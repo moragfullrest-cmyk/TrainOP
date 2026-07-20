@@ -1,7 +1,7 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using TrainOP;
-using InterceptorScenarios = TrainOP.Benchmarks.Interceptors.ChainDispatchScenarios;
+using CallerScenarios = TrainOP.Benchmarks.Caller.ChainDispatchScenarios;
 using ReflectionScenarios = TrainOP.Benchmarks.Reflection.ChainDispatchScenarios;
 
 namespace TrainOP.Benchmarks
@@ -15,9 +15,9 @@ namespace TrainOP.Benchmarks
     public class ChainDispatchBenchmarks
     {
         private Train _reflectionPaymentTrain;
-        private Train _interceptorPaymentTrain;
+        private Train _callerPaymentTrain;
         private Train _reflectionLongPaymentTrain;
-        private Train _interceptorLongPaymentTrain;
+        private Train _callerLongPaymentTrain;
 
         /// <summary>
         /// Pre-builds trains so travel-only benchmarks exclude Station registration.
@@ -26,9 +26,9 @@ namespace TrainOP.Benchmarks
         public void GlobalSetup()
         {
             _reflectionPaymentTrain = ReflectionScenarios.CreatePaymentTrain();
-            _interceptorPaymentTrain = InterceptorScenarios.CreatePaymentTrain();
+            _callerPaymentTrain = CallerScenarios.CreatePaymentTrain();
             _reflectionLongPaymentTrain = ReflectionScenarios.CreateLongPaymentTrain();
-            _interceptorLongPaymentTrain = InterceptorScenarios.CreateLongPaymentTrain();
+            _callerLongPaymentTrain = CallerScenarios.CreateLongPaymentTrain();
         }
 
         [Benchmark(Baseline = true)]
@@ -38,8 +38,8 @@ namespace TrainOP.Benchmarks
 
         [Benchmark]
         [BenchmarkCategory("BuildAndTravel_Payment")]
-        public decimal Interceptors_BuildAndTravel_Payment() =>
-            InterceptorScenarios.BuildAndTravelPayment();
+        public decimal Caller_BuildAndTravel_Payment() =>
+            CallerScenarios.BuildAndTravelPayment();
 
         [Benchmark(Baseline = true)]
         [BenchmarkCategory("BuildAndTravel_BothChains")]
@@ -48,8 +48,8 @@ namespace TrainOP.Benchmarks
 
         [Benchmark]
         [BenchmarkCategory("BuildAndTravel_BothChains")]
-        public decimal Interceptors_BuildAndTravel_BothChains() =>
-            InterceptorScenarios.BuildAndTravelBothChains();
+        public decimal Caller_BuildAndTravel_BothChains() =>
+            CallerScenarios.BuildAndTravelBothChains();
 
         [Benchmark(Baseline = true)]
         [BenchmarkCategory("BuildAndTravel_LongPayment")]
@@ -58,8 +58,8 @@ namespace TrainOP.Benchmarks
 
         [Benchmark]
         [BenchmarkCategory("BuildAndTravel_LongPayment")]
-        public decimal Interceptors_BuildAndTravel_LongPayment() =>
-            InterceptorScenarios.BuildAndTravelLongPayment();
+        public decimal Caller_BuildAndTravel_LongPayment() =>
+            CallerScenarios.BuildAndTravelLongPayment();
 
         [Benchmark(Baseline = true)]
         [BenchmarkCategory("TravelOnly_Payment")]
@@ -68,8 +68,8 @@ namespace TrainOP.Benchmarks
 
         [Benchmark]
         [BenchmarkCategory("TravelOnly_Payment")]
-        public decimal Interceptors_TravelOnly_Payment() =>
-            InterceptorScenarios.Travel(_interceptorPaymentTrain);
+        public decimal Caller_TravelOnly_Payment() =>
+            CallerScenarios.Travel(_callerPaymentTrain);
 
         [Benchmark(Baseline = true)]
         [BenchmarkCategory("TravelOnly_LongPayment")]
@@ -78,7 +78,7 @@ namespace TrainOP.Benchmarks
 
         [Benchmark]
         [BenchmarkCategory("TravelOnly_LongPayment")]
-        public decimal Interceptors_TravelOnly_LongPayment() =>
-            InterceptorScenarios.Travel(_interceptorLongPaymentTrain);
+        public decimal Caller_TravelOnly_LongPayment() =>
+            CallerScenarios.Travel(_callerLongPaymentTrain);
     }
 }

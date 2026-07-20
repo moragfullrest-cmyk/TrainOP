@@ -3,10 +3,10 @@ using TrainOP;
 
 #if TRAINOP_BENCHMARK_REFLECTION
 namespace TrainOP.Benchmarks.Reflection
-#elif TRAINOP_BENCHMARK_INTERCEPTORS
-namespace TrainOP.Benchmarks.Interceptors
+#elif TRAINOP_BENCHMARK_CALLER
+namespace TrainOP.Benchmarks.Caller
 #else
-#error Define TRAINOP_BENCHMARK_REFLECTION or TRAINOP_BENCHMARK_INTERCEPTORS
+#error Define TRAINOP_BENCHMARK_REFLECTION or TRAINOP_BENCHMARK_CALLER
 #endif
 {
     /// <summary>

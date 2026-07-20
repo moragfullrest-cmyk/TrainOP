@@ -39,13 +39,13 @@ jobs:
           dotnet build src/TrainOP.Generators/TrainOP.Generators.csproj -c Release
 
       - name: Restore
-        if: matrix.dotnet == '10.0.x'
+        if: matrix.dotnet == '10.0.x' || matrix.dotnet == '8.0.x'
         run: dotnet restore TrainOP.sln
 
       - name: Build
-        if: matrix.dotnet == '10.0.x'
+        if: matrix.dotnet == '10.0.x' || matrix.dotnet == '8.0.x'
         run: dotnet build TrainOP.sln -c Release --no-restore
 
       - name: Test
-        if: matrix.dotnet == '10.0.x'
+        if: matrix.dotnet == '10.0.x' || matrix.dotnet == '8.0.x'
         run: dotnet test TrainOP.sln -c Release --no-build --verbosity normal

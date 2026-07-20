@@ -534,7 +534,9 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (!TryGetPrecedingTrainRouteCreationAssignment(identifier, semanticModel, out _))
+            // Preserve the ctor call-site location so runtime caller line stamping matches generator.
+            // For local-variable chains the anchor receiver is an identifier, but ctor stamp is on the preceding `new TrainRoute()`.
+            if (!TryGetPrecedingTrainRouteCreationAssignment(identifier, semanticModel, out var creation))
             {
                 return false;
             }
@@ -542,7 +544,7 @@ namespace TrainOP.Generators
             anchor = new RouteChainAnchor(
                 RouteChainAnchorKind.LocalVariable,
                 identifier,
-                identifier.GetLocation(),
+                creation.GetLocation(),
                 GetContainingMethod(identifier, semanticModel));
             return true;
         }

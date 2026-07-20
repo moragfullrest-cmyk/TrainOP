@@ -29,6 +29,7 @@ namespace TrainOP.Generators
                 TrainRouteDiagnostics.FactoryReturnPathUnknown,
                 TrainRouteDiagnostics.RouteBranchJoinFailed,
                 TrainRouteDiagnostics.UnsupportedStationHandler,
+                TrainRouteDiagnostics.MultipleTrainRouteNewSameLine,
             ];
 
         /// <summary>
@@ -58,6 +59,44 @@ namespace TrainOP.Generators
                 var tree = modelContext.SemanticModel.SyntaxTree;
                 var semanticModel = modelContext.SemanticModel;
                 var compilation = semanticModel.Compilation;
+
+                // Caller-mode stamping needs constructor call-site identity; enforce it by forbidding
+                // ambiguous `new TrainRoute()` pairs on the same source line inside one method.
+                foreach (var methodDeclaration in tree.GetRoot()
+                    .DescendantNodes()
+                    .OfType<MethodDeclarationSyntax>())
+                {
+                    var trainRouteCreations = methodDeclaration
+                        .DescendantNodes()
+                        .OfType<ObjectCreationExpressionSyntax>()
+                        .Where(oc => StationSyntaxHelper.IsTrainRouteCreation(oc, semanticModel))
+                        .ToList();
+
+                    if (trainRouteCreations.Count <= 1)
+                    {
+                        continue;
+                    }
+
+                    var byLine = trainRouteCreations
+                        .GroupBy(oc =>
+                            oc.GetLocation().GetLineSpan().StartLinePosition.Line);
+
+                    foreach (var lineGroup in byLine)
+                    {
+                        if (lineGroup.Count() <= 1)
+                        {
+                            continue;
+                        }
+
+                        var first = lineGroup.OrderBy(oc => oc.GetLocation().SourceSpan.Start).First();
+                        modelContext.ReportDiagnostic(Diagnostic.Create(
+                            TrainRouteDiagnostics.MultipleTrainRouteNewSameLine,
+                            first.GetLocation(),
+                            methodDeclaration.Identifier.ValueText,
+                            lineGroup.Key + 1));
+                    }
+                }
+
                 var chains = ChainDetector.DetectChains(tree, semanticModel);
                 foreach (var chain in chains)
                 {

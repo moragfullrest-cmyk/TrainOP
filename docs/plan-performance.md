@@ -33,15 +33,15 @@
 
 ### 1.4. Уже доступно без кода
 
-Рекомендация: **`TrainOP_ChainDispatchMode=stable`** (Roslyn interceptors) там, где SDK это поддерживает — ~20–25% быстрее reflection на chain-dispatch (`ChainDispatchBenchmarks`). Не отдельная фаза реализации.
+Рекомендация: **`TrainOP_ChainDispatchMode=caller`** (ctor+ordinal dispatch; default) — chain-dispatch без Roslyn interceptors; см. (`ChainDispatchBenchmarks`).
 
-Идея альтернативы Station-interceptors (Caller* на `new TrainRoute` + resolve по key/Count) зафиксирована в [`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) §4.3 — **не в работе**, канон не менять без spike.
+Идея альтернативы Station-interceptors (Caller* на `new TrainRoute` + resolve по key/Count) зафиксирована в [`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) §4.3 — **не в работе**, канон не менять без spike (фазы S0–S4, go/no-go §4.3.12).
 
 ---
 
 ## 2. Baseline
 
-Источник: `BenchmarkDotNet.Artifacts/results/TrainOP.Benchmarks.LibraryVsManualBenchmarks-report-github.md` (.NET 10, Release, interceptor adapter).
+Источник: `BenchmarkDotNet.Artifacts/results/TrainOP.Benchmarks.LibraryVsManualBenchmarks-report-github.md` (.NET 10, Release, caller adapter).
 
 | Сценарий | Manual | TrainOP TravelOnly | Ratio | Alloc (TrainOP) |
 |----------|--------|--------------------|-------|-----------------|
@@ -248,3 +248,4 @@ flowchart LR
 | 2026-07-17 | P5 hot-path fix: home-index вместо `Remove`/`Contains` по всем bags на каждый `LoadWagon`/`PullWagon` |
 | 2026-07-17 | **P5 снято:** откат typed bags → один `Dictionary<string,object>`; `LoadWagon<T>` удалён |
 | 2026-07-17 | Ссылка на идею Caller*-альтернативы Station-interceptors ([`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) §4.3) |
+| 2026-07-20 | Ссылка на spike S0–S4 и go/no-go в §4.3.11–4.3.12 |

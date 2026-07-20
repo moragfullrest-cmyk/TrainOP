@@ -9,19 +9,14 @@ namespace TrainOP.Generators
     internal enum ChainDispatchMode
     {
         /// <summary>
-        /// Roslyn interceptors (SDK 9.0.200+).
+        /// Resolve wagon names via ParameterInfo at registration time.
         /// </summary>
-        Stable = 0,
+        Reflection = 0,
 
         /// <summary>
-        /// Roslyn interceptors with experimental Features flag (SDK 8.0.400+).
+        /// Caller identity + chainStationIndex dispatch (no Roslyn interceptors).
         /// </summary>
-        Experimental = 1,
-
-        /// <summary>
-        /// Resolve wagon names via ParameterInfo at registration time (SDK &lt; 8.0.400).
-        /// </summary>
-        Reflection = 2,
+        Caller = 1,
     }
 
     /// <summary>
@@ -49,34 +44,21 @@ namespace TrainOP.Generators
                     return ChainDispatchMode.Reflection;
                 }
 
-                if (string.Equals(raw, "experimental", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(raw, "caller", StringComparison.OrdinalIgnoreCase))
                 {
-                    return ChainDispatchMode.Experimental;
+                    return ChainDispatchMode.Caller;
                 }
 
-                if (string.Equals(raw, "stable", StringComparison.OrdinalIgnoreCase))
+                // Deprecated aliases.
+                if (string.Equals(raw, "experimental", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(raw, "stable", StringComparison.OrdinalIgnoreCase))
                 {
-                    return ChainDispatchMode.Stable;
+                    return ChainDispatchMode.Caller;
                 }
             }
 
-            if (optionsProvider != null
-                && TryGetBuildProperty(optionsProvider, "InterceptorsNamespaces", out var namespaces)
-                && !string.IsNullOrWhiteSpace(namespaces)
-                && namespaces.IndexOf(GeneratedNamespace, StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                if (TryGetBuildProperty(optionsProvider, "Features", out var features)
-                    && !string.IsNullOrWhiteSpace(features)
-                    && features.IndexOf("Interceptors", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    return ChainDispatchMode.Experimental;
-                }
-
-                return ChainDispatchMode.Stable;
-            }
-
-            // Safe default: do not emit interceptors without MSBuild opt-in (prevents CS9137).
-            return ChainDispatchMode.Reflection;
+            // Safe default for the full caller replacement.
+            return ChainDispatchMode.Caller;
         }
 
         /// <summary>
@@ -84,7 +66,8 @@ namespace TrainOP.Generators
         /// </summary>
         public static bool UsesInterceptors(ChainDispatchMode mode)
         {
-            return mode == ChainDispatchMode.Stable || mode == ChainDispatchMode.Experimental;
+            // Interceptors are removed in caller replacement.
+            return false;
         }
 
         private static bool TryGetBuildProperty(

@@ -14,9 +14,9 @@ namespace TrainOP.Generators
         /// <summary>
         /// Builds a lookup from invocation locations to chain-site metadata.
         /// </summary>
-        public static IReadOnlyDictionary<string, ChainSiteBinding> Build(Compilation compilation)
+        public static IReadOnlyDictionary<string, ImmutableArray<ChainSiteBinding>> Build(Compilation compilation)
         {
-            var bindings = new Dictionary<string, ChainSiteBinding>(StringComparer.Ordinal);
+            var bindings = new Dictionary<string, List<ChainSiteBinding>>(StringComparer.Ordinal);
 
             foreach (var syntaxTree in compilation.SyntaxTrees)
             {
@@ -25,7 +25,7 @@ namespace TrainOP.Generators
                 for (var chainIndex = 0; chainIndex < chains.Length; chainIndex++)
                 {
                     var chain = chains[chainIndex];
-                    var chainId = RouteChainIdBuilder.Build(chain.Anchor);
+                    var chainId = CallerChainKeyBuilder.Build(chain.Anchor);
                     for (var stationIndex = 0; stationIndex < chain.Stations.Length; stationIndex++)
                     {
                         var station = chain.Stations[stationIndex];
@@ -44,43 +44,67 @@ namespace TrainOP.Generators
                             station.Handler,
                             returnMembers);
 
-                        bindings[BuildLocationKey(station.InvocationLocation)] = binding;
+                        var locationKey = BuildLocationKey(station.InvocationLocation);
+                        if (!bindings.TryGetValue(locationKey, out var list))
+                        {
+                            list = new List<ChainSiteBinding>();
+                            bindings[locationKey] = list;
+                        }
+
+                        list.Add(binding);
                     }
                 }
             }
 
-            return bindings;
+            var result = new Dictionary<string, ImmutableArray<ChainSiteBinding>>(StringComparer.Ordinal);
+            foreach (var kvp in bindings)
+            {
+                result[kvp.Key] = kvp.Value.ToImmutableArray();
+            }
+
+            return result;
         }
 
         /// <summary>
-        /// Resolves a chain-site binding for a station invocation location.
+        /// Resolves all chain-site bindings for a station invocation location.
         /// </summary>
-        public static bool TryResolve(
-            IReadOnlyDictionary<string, ChainSiteBinding> bindings,
+        public static bool TryResolveAll(
+            IReadOnlyDictionary<string, ImmutableArray<ChainSiteBinding>> bindings,
             Location invocationLocation,
-            out ChainSiteBinding chainBinding)
+            out ImmutableArray<ChainSiteBinding> chainBindings)
         {
-            chainBinding = null;
+            chainBindings = default;
             if (invocationLocation == null || bindings == null || bindings.Count == 0)
             {
                 return false;
             }
 
-            if (bindings.TryGetValue(BuildLocationKey(invocationLocation), out chainBinding))
+            if (bindings.TryGetValue(BuildLocationKey(invocationLocation), out chainBindings))
             {
-                return true;
+                return chainBindings.Length > 0;
             }
 
+            var matches = ImmutableArray.CreateBuilder<ChainSiteBinding>();
             foreach (var candidate in bindings.Values)
             {
-                if (LocationsEqual(candidate.InvocationLocation, invocationLocation))
+                for (var i = 0; i < candidate.Length; i++)
                 {
-                    chainBinding = candidate;
-                    return true;
+                    var item = candidate[i];
+                    if (LocationsEqual(item.InvocationLocation, invocationLocation))
+                    {
+                        matches.Add(item);
+                    }
                 }
             }
 
-            return false;
+            if (matches.Count == 0)
+            {
+                chainBindings = default;
+                return false;
+            }
+
+            chainBindings = matches.ToImmutable();
+            return true;
         }
 
         private static bool LocationsEqual(Location left, Location right)

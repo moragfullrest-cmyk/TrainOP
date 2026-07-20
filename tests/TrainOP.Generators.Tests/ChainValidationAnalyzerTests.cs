@@ -39,6 +39,34 @@ public static class PaymentRoute
         }
 
         /// <summary>
+        /// Verifies that TOP014 is reported for multiple TrainRoute creations on the same line in one method.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop014_ForSameLineMultipleTrainRouteNew()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class MultiNewRoute
+{
+    public static TrainRoute Build(bool flag)
+    {
+        var a = new TrainRoute(), b = new TrainRoute();
+        return flag
+            ? a.Station(""Seed"", () => new { value = 1 })
+            : b.Station(""Seed"", () => new { value = 2 });
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP014");
+            Assert.DoesNotContain(
+                diagnostics,
+                d => d.Severity == DiagnosticSeverity.Error && d.Id != "TOP014");
+        }
+
+        /// <summary>
         /// Verifies that TOP001 is reported when the first station requires wagons without a seed.
         /// </summary>
         [Fact]

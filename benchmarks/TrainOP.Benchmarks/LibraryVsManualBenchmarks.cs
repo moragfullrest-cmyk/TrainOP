@@ -1,13 +1,13 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using TrainOP;
-using Library = TrainOP.Benchmarks.Interceptors.LibraryWorkloadScenarios;
-using LibraryChains = TrainOP.Benchmarks.Interceptors.ChainDispatchScenarios;
+using Library = TrainOP.Benchmarks.Caller.LibraryWorkloadScenarios;
+using LibraryChains = TrainOP.Benchmarks.Caller.ChainDispatchScenarios;
 
 namespace TrainOP.Benchmarks
 {
     /// <summary>
-    /// Compares TrainOP (interceptor mode) against hand-written pipelines with the same transforms.
+    /// Compares TrainOP (caller mode) against hand-written pipelines with the same transforms.
     /// </summary>
     [MemoryDiagnoser]
     [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]

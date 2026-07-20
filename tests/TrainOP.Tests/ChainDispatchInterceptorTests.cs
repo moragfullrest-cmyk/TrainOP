@@ -3,9 +3,9 @@ using Xunit;
 namespace TrainOP.Tests.DataOriented
 {
     /// <summary>
-    /// Runtime tests for chain-dispatched station handlers wired through Roslyn interceptors.
+    /// Runtime tests for chain-dispatched station handlers resolved via caller identity.
     /// </summary>
-    public sealed class ChainDispatchInterceptorTests
+    public sealed class ChainDispatchCallerTests
     {
         /// <summary>
         /// Verifies that a payment chain resolves paymentId and amount wagons at runtime.

@@ -4,10 +4,10 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <IsPackable>false</IsPackable>
-    <RootNamespace>TrainOP.Benchmarks.Interceptors</RootNamespace>
-    <DefineConstants>$(DefineConstants);TRAINOP_BENCHMARK_INTERCEPTORS</DefineConstants>
-    <!-- Explicit stable: Roslyn interceptors (requires SDK ≥ 9.0.200). -->
-    <TrainOP_ChainDispatchMode>stable</TrainOP_ChainDispatchMode>
+    <RootNamespace>TrainOP.Benchmarks.Caller</RootNamespace>
+    <DefineConstants>$(DefineConstants);TRAINOP_BENCHMARK_CALLER</DefineConstants>
+    <!-- Caller: ctor+ordinal dispatch without Roslyn interceptors. -->
+    <TrainOP_ChainDispatchMode>caller</TrainOP_ChainDispatchMode>
   </PropertyGroup>
 
   <ItemGroup>

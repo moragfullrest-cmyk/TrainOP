@@ -17,19 +17,19 @@ dotnet run -c Release --project benchmarks/TrainOP.Benchmarks -- -f * --job shor
 Фильтры:
 
 ```bash
-# reflection vs interceptors
+# reflection vs caller
 dotnet run -c Release --project benchmarks/TrainOP.Benchmarks -- --filter *ChainDispatch*
 
 # библиотека vs ручной код
 dotnet run -c Release --project benchmarks/TrainOP.Benchmarks -- --filter *LibraryVsManual*
 ```
 
-## 1. Reflection vs interceptors
+## 1. Reflection vs caller
 
 | Адаптер | Режим | Механизм |
 |---------|-------|----------|
 | `TrainOP.Benchmarks.Reflection` | `reflection` | имена вагонов через `ParameterInfo` при регистрации |
-| `TrainOP.Benchmarks.Interceptors` | `stable` | Roslyn interceptors + compile-time binding tables |
+| `TrainOP.Benchmarks.Caller` | `caller` | ctor+ordinal dispatch without Roslyn interceptors |
 
 Общий сценарий (`Shared/ChainDispatchScenarios.cs`) компилируется в оба адаптера.
 
@@ -40,7 +40,7 @@ dotnet run -c Release --project benchmarks/TrainOP.Benchmarks -- --filter *Libra
 
 ## 2. Библиотека vs ручной код
 
-Класс `LibraryVsManualBenchmarks` сравнивает interceptor-режим TrainOP с эквивалентными transforms без библиотеки (`ManualPipelineScenarios`).
+Класс `LibraryVsManualBenchmarks` сравнивает caller-режим TrainOP с эквивалентными transforms без библиотеки (`ManualPipelineScenarios`).
 
 | Категория | Смысл |
 |-----------|--------|

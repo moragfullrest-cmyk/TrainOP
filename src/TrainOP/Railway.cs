@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -384,6 +385,63 @@ namespace TrainOP
     {
         private readonly List<StationPlan> _route = new List<StationPlan>();
         private ServiceStationPlan _serviceStation;
+        private readonly string _callerChainKey;
+        private int _chainRegistrationOrdinal;
+
+        private static string BuildCallerChainKey(string filePath, int lineNumber, string memberName)
+        {
+            if (string.IsNullOrEmpty(filePath))
+            {
+                return string.Empty;
+            }
+
+            // Must match generator normalization: only slash normalization + simple fallback.
+            filePath = filePath.Replace('\\', '/');
+            if (filePath.Length == 0)
+            {
+                filePath = "unknown";
+            }
+
+            if (string.IsNullOrEmpty(memberName))
+            {
+                memberName = "global";
+            }
+
+            // CallerLineNumber is already 1-based.
+            if (lineNumber <= 0)
+            {
+                lineNumber = 1;
+            }
+
+            return filePath + ":" + lineNumber + ":" + memberName;
+        }
+
+        /// <summary>
+        /// Internal ctor stamping caller identity for chain-dispatch in caller mode.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public TrainRoute(
+            [CallerFilePath] string filePath = null,
+            [CallerLineNumber] int lineNumber = 0,
+            [CallerMemberName] string memberName = null)
+        {
+            _callerChainKey = BuildCallerChainKey(filePath, lineNumber, memberName);
+        }
+
+        /// <summary>
+        /// Caller identity key used by generated chain-dispatch adapters in caller mode.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public string CallerChainKey => _callerChainKey;
+
+        /// <summary>
+        /// Returns the next chain registration ordinal (used as chainStationIndex).
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public int NextChainRegistrationOrdinal()
+        {
+            return _chainRegistrationOrdinal++;
+        }
 
         /// <summary>
         /// Registers a synchronous station that returns an updated manifest.

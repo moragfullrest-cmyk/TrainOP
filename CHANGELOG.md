@@ -4,6 +4,14 @@ All notable changes to TrainOP are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-07-20
+
+### Changed
+
+- **Chain-dispatch default:** switched generated chain dispatch to `caller` mode (ctor+ordinal) and removed the Roslyn-interceptor emission path.
+- **Validation and diagnostics:** added caller-chain validation and clearer diagnostics for unsupported chain shapes in generators.
+- **Release surface:** aligned docs, benchmarks, CI conditions, and package metadata around the single-TFM `netstandard2.0` + caller-default release.
+
 ## [0.9.0] - 2026-07-17
 
 ### Added
@@ -16,6 +24,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 - **Runtime modularization:** extracted `StationPlan`, `ServiceStationPlan`, `StationAdapter`, `StationStepResult`, and related helpers from `Railway.cs`.
 - **Generator modularization:** split station codegen into focused types (`StationAdapterBodyEmitter`, handler I/O models, `MergedStationSchema`, `TypeSignatureGroup`, delegate signature helpers); removed `StationReturnMetadataBuilder`.
 - Documentation index links updated for the architecture guide.
+- **Single-TFM ship:** runtime package is now `netstandard2.0` only (removed `net8.0` multi-target).
+- **Chain-dispatch mode default:** switched default to `caller` (ctor+ordinal dispatch) without Roslyn interceptors; removed the SDK gate.
 
 ## [0.8.0] - 2026-07-17
 

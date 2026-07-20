@@ -15,8 +15,8 @@ dotnet add package TrainOP.Generators
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.9.0" />
-  <PackageReference Include="TrainOP.Generators" Version="0.9.0" />
+  <PackageReference Include="TrainOP" Version="0.10.0" />
+  <PackageReference Include="TrainOP.Generators" Version="0.10.0" />
 </ItemGroup>
 ```
 
@@ -34,14 +34,14 @@ dotnet add package TrainOP.Generators
                     ReferenceOutputAssembly="false" />
 </ItemGroup>
 
-<!-- Обязательно для ProjectReference: InterceptorsNamespaces / TrainOP_ChainDispatchMode -->
+<!-- Для ProjectReference: импортируйте targets файл, чтобы подключить analyzer/generator конфигурацию -->
 <Import Project="path/to/TrainOP/TrainOP.Generators/build/TrainOP.Generators.targets" />
 ```
 
 Требования (для обоих способов подключения):
 
-- Совместимость с пакетом TrainOP: `netstandard2.0` или `net8.0`+
-- SDK-style проект; для полного chain-dispatch (interceptors) — .NET SDK ≥ 8.0.400 (stable с 9.0.200)
+- Совместимость с пакетом TrainOP: `netstandard2.0`
+- SDK-style проект с поддержкой analyzers/source generators (для chain-dispatch по умолчанию `caller` дополнительных SDK-порогов не требуется)
 - При ProjectReference — `<Import>` файла `TrainOP.Generators.targets` (см. [nuget.md](nuget.md))
 
 ## Минимальный пример

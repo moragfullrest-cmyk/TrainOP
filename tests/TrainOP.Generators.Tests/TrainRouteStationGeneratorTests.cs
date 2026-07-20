@@ -572,15 +572,13 @@ public static class ConflictingNameRoute
             var generated = RunGenerators(source);
 
             Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "TOP007");
-            Assert.Contains("InterceptsLocation", generated);
+            Assert.DoesNotContain("InterceptsLocation", generated);
             Assert.Contains("StationCore_", generated);
             Assert.Contains("ResolveChainBinding_", generated);
             Assert.Contains("var inputNames = binding.InputNames;", generated);
             Assert.Contains("var returnMembers = binding.ReturnMembers;", generated);
             Assert.Contains("ChainStationBinding_", generated);
             Assert.DoesNotContain("binding.InputNames[0]", generated);
-            Assert.Contains("ConflictingNameRoute.Payment", generated);
-            Assert.Contains("ConflictingNameRoute.Order", generated);
             Assert.Contains("manifest.PullWagon<global::System.String>(inputNames[0])", generated);
         }
 
@@ -860,8 +858,8 @@ public static class MultiSeedRoute
             };
 
             var optionsProvider = TestAnalyzerConfigOptionsProvider.ForChainDispatchMode(
-                "stable",
-                interceptorsNamespaces: "TrainOP.Generated");
+                "caller",
+                interceptorsNamespaces: null);
 
             GeneratorDriver driver = CSharpGeneratorDriver.Create(
                 generators,

@@ -36,8 +36,9 @@ namespace TrainOP.Generators
             _entries.Add(new StationEntry(handlerBinding, location, chainBinding));
             if (chainBinding != null
                 && !_chainBindings.Exists(existing =>
-                    ChainStationCallIndex.BuildLocationKey(existing.InvocationLocation)
-                    == ChainStationCallIndex.BuildLocationKey(chainBinding.InvocationLocation)))
+                    existing.ChainId == chainBinding.ChainId
+                    && ChainStationCallIndex.BuildLocationKey(existing.InvocationLocation)
+                        == ChainStationCallIndex.BuildLocationKey(chainBinding.InvocationLocation)))
             {
                 _chainBindings.Add(chainBinding);
             }
