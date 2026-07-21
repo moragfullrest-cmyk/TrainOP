@@ -139,7 +139,7 @@ public static class Route
             invocation = tree.GetRoot()
                 .DescendantNodes()
                 .OfType<InvocationExpressionSyntax>()
-                .Where(inv => StationSyntaxHelper.MatchesRouteHandlerShape(inv, TrainRouteMethodNames.Station, out _))
+                .Where(StationSyntaxHelper.IsCandidateStationInvocation)
                 .First();
         }
 

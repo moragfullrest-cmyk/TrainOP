@@ -23,8 +23,7 @@ namespace TrainOP.Generators.Route
 
         /// <summary>
         /// The forking expression that is the direct (after peel) receiver of a shared downstream
-        /// <c>.Station</c>, or the forked expression itself when built via
-        /// <see cref="BranchRouteJoinSetFinder.FromForkReceiver"/>.
+        /// <c>.Station</c>.
         /// </summary>
         public ExpressionSyntax JoinReceiver { get; }
 

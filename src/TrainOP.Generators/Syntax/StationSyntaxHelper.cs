@@ -94,30 +94,6 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Determines whether an invocation has the syntactic shape of a route handler call
-        /// (member access, matching method name, exactly two arguments).
-        /// </summary>
-        public static bool MatchesRouteHandlerShape(
-            InvocationExpressionSyntax invocation,
-            string methodName,
-            out MemberAccessExpressionSyntax memberAccess)
-        {
-            memberAccess = null;
-            if (!TryParseRouteHandlerInvocation(invocation, out var stationKind, out var parsedMemberAccess))
-            {
-                return false;
-            }
-
-            if (!string.Equals(stationKind.ToMethodName(), methodName, StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            memberAccess = parsedMemberAccess;
-            return true;
-        }
-
-        /// <summary>
         /// Determines whether an invocation has the syntactic shape of Station or ServiceStation.
         /// </summary>
         public static bool MatchesStationOrServiceStationShape(

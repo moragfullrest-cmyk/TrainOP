@@ -10,13 +10,11 @@ namespace TrainOP.Generators
         private PullContext(
             string localVariableName,
             string nameExpression,
-            string manifestVariable,
-            string statementIndent)
+            string manifestVariable)
         {
             LocalVariableName = localVariableName;
             NameExpression = nameExpression;
             ManifestVariable = manifestVariable;
-            StatementIndent = statementIndent;
         }
 
         /// <summary>Generated local variable name (<c>paymentId</c> or <c>wagon0</c>).</summary>
@@ -28,17 +26,13 @@ namespace TrainOP.Generators
         /// <summary>Manifest variable used for pull (default <c>manifest</c>).</summary>
         public string ManifestVariable { get; }
 
-        /// <summary>Indent prefix for the generated statement.</summary>
-        public string StatementIndent { get; }
-
         /// <summary>Pull using a compile-time literal wagon name.</summary>
         public static PullContext Literal(WagonBinding wagon, string manifestVariable = "manifest")
         {
             return new PullContext(
                 wagon.Name,
                 "\"" + StringHelpers.Escape(wagon.Name) + "\"",
-                manifestVariable,
-                "                ");
+                manifestVariable);
         }
 
         /// <summary>Pull using a runtime name array (<c>inputNames[i]</c>).</summary>
@@ -50,8 +44,7 @@ namespace TrainOP.Generators
             return new PullContext(
                 "wagon" + wagonIndex,
                 namesVariable + "[" + wagonIndex + "]",
-                manifestVariable,
-                "                ");
+                manifestVariable);
         }
     }
 }

@@ -15,7 +15,7 @@ namespace TrainOP.Generators
         {
             if (schema.UsesChainDispatch)
             {
-                ChainAwareEmission.Emit(writer.Builder, schema, emissionState);
+                ChainAwareEmission.Emit(writer, schema, emissionState);
                 return;
             }
 

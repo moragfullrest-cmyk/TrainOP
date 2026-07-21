@@ -1,4 +1,3 @@
-using System.Text;
 using TrainOP.Generators.Handlers;
 
 namespace TrainOP.Generators
@@ -10,7 +9,7 @@ namespace TrainOP.Generators
         /// </summary>
         internal static void EmitTypedMerge(
             this MergePlan plan,
-            StringBuilder source,
+            CodegenWriter writer,
             StationHandlerBinding schema,
             MergeEmitContext context)
         {
@@ -18,96 +17,99 @@ namespace TrainOP.Generators
             var unwrapGreenPayload = IsGreenPayloadReturnType(returnTypeDisplay);
             var dataVariable = unwrapGreenPayload ? "stationReturnData" : context.DataVariable;
 
-            source.AppendLine(context.StatementIndent + "var merged = manifest;");
+            writer.AppendLine("var merged = manifest;");
             if (unwrapGreenPayload)
             {
-                source.Append(context.StatementIndent)
-                    .Append("var ")
+                writer.AppendIndented("var ")
                     .Append(dataVariable)
-                    .Append(" = stationReturn.Value;")
-                    .AppendLine();
+                    .Append(" = stationReturn.Value;");
+                writer.EndLine();
             }
 
-            plan.EmitInputSlots(source, context.WithDataVariable(dataVariable));
-            plan.EmitExtraSlots(source, dataVariable, context.StatementIndent);
-            source.AppendLine(context.StatementIndent + "return RailwaySignals.Green(merged);");
+            plan.EmitInputSlots(writer, context.WithDataVariable(dataVariable));
+            plan.EmitExtraSlots(writer, dataVariable);
+            writer.AppendLine("return RailwaySignals.Green(merged);");
         }
 
-        private static void EmitInputSlots(this MergePlan plan, StringBuilder source, MergeEmitContext context)
+        private static void EmitInputSlots(this MergePlan plan, CodegenWriter writer, MergeEmitContext context)
         {
             for (var i = 0; i < plan.InputSlots.Length; i++)
             {
-                plan.InputSlots[i].EmitMergeStatement(source, context);
+                plan.InputSlots[i].EmitMergeStatement(writer, context);
             }
         }
 
-        private static void EmitExtraSlots(this MergePlan plan, StringBuilder source, string dataVariable, string indent)
+        private static void EmitExtraSlots(this MergePlan plan, CodegenWriter writer, string dataVariable)
         {
             for (var i = 0; i < plan.ExtraSlots.Length; i++)
             {
-                plan.ExtraSlots[i].EmitMergeStatement(source, dataVariable, indent);
+                plan.ExtraSlots[i].EmitMergeStatement(writer, dataVariable);
             }
         }
 
-        internal static void EmitMergeStatement(this MergeInputSlot slot, StringBuilder source, MergeEmitContext context)
+        internal static void EmitMergeStatement(this MergeInputSlot slot, CodegenWriter writer, MergeEmitContext context)
         {
-            var indent = context.StatementIndent;
             var wagonNameExpression = MergeEmitContext.BuildWagonNameExpression(context.WagonNamesExpression, slot.WagonIndex);
 
             if (slot.IsMapped)
             {
-                source.Append(indent).Append("merged = merged.LoadWagon(")
+                writer.AppendIndented("merged = merged.LoadWagon(")
                     .Append(wagonNameExpression)
                     .Append(", ")
                     .Append(context.DataVariable)
                     .Append('.')
                     .Append(slot.ReturnMemberName)
-                    .AppendLine(");");
+                    .Append(");");
+                writer.EndLine();
                 return;
             }
 
             if (context.RefFlagsExpression != null)
             {
-                source.Append(indent).Append("if (").Append(context.RefFlagsExpression).Append('[').Append(slot.WagonIndex).AppendLine("])");
-                source.Append(indent).Append("{ merged = merged.LoadWagon(")
+                writer.AppendIndented("if (").Append(context.RefFlagsExpression).Append('[').Append(slot.WagonIndex).AppendLine("])");
+                writer.AppendIndented("{ merged = merged.LoadWagon(")
                     .Append(wagonNameExpression)
                     .Append(", ")
                     .Append(context.RefLocalValuesExpression)
                     .Append('[')
                     .Append(slot.WagonIndex)
-                    .AppendLine("]); }");
+                    .Append("]); }");
+                writer.EndLine();
 
                 if (context.RemoveOmittedRegularInputs)
                 {
-                    source.AppendLine(indent + "else");
-                    source.AppendLine(indent + "{");
-                    source.Append(indent).Append("    merged = merged.UnloadWagon(")
-                        .Append(wagonNameExpression)
-                        .AppendLine(");");
-                    source.AppendLine(indent + "}");
+                    writer.AppendLine("else");
+                    using (writer.Block())
+                    {
+                        writer.AppendIndented("merged = merged.UnloadWagon(")
+                            .Append(wagonNameExpression)
+                            .Append(");");
+                        writer.EndLine();
+                    }
                 }
             }
             else if (context.RemoveOmittedRegularInputs)
             {
-                source.Append(indent).Append("merged = merged.UnloadWagon(")
+                writer.AppendIndented("merged = merged.UnloadWagon(")
                     .Append(wagonNameExpression)
-                    .AppendLine(");");
+                    .Append(");");
+                writer.EndLine();
             }
         }
 
         internal static void EmitMergeStatement(
             this MergeExtraSlot slot,
-            StringBuilder source,
-            string dataVariable,
-            string indent)
+            CodegenWriter writer,
+            string dataVariable)
         {
-            source.Append(indent).Append("merged = merged.LoadWagon(\"")
+            writer.AppendIndented("merged = merged.LoadWagon(\"")
                 .Append(StringHelpers.Escape(slot.ReturnMemberName))
                 .Append("\", ")
                 .Append(dataVariable)
                 .Append('.')
                 .Append(slot.ReturnMemberName)
-                .AppendLine(");");
+                .Append(");");
+            writer.EndLine();
         }
 
         private static MergeEmitContext WithDataVariable(this MergeEmitContext context, string dataVariable)
@@ -117,8 +119,7 @@ namespace TrainOP.Generators
                 dataVariable,
                 context.RefFlagsExpression,
                 context.RefLocalValuesExpression,
-                context.RemoveOmittedRegularInputs,
-                context.StatementIndent);
+                context.RemoveOmittedRegularInputs);
         }
 
         private static bool IsGreenPayloadReturnType(string returnTypeDisplay)

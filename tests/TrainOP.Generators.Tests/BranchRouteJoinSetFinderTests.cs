@@ -186,36 +186,6 @@ public static class Route
             Assert.Empty(joinSets);
         }
 
-        /// <summary>
-        /// <see cref="BranchRouteJoinSetFinder.FromForkReceiver"/> discovers branches and wraps a join set.
-        /// </summary>
-        [Fact]
-        public void FromForkReceiver_WrapsDiscoveredBranches()
-        {
-            const string source = @"
-using TrainOP;
-
-public static class Route
-{
-    public static TrainRoute Build(bool useLeft) =>
-        (useLeft
-            ? new TrainRoute().Station(""Left"", () => new { value = 1 })
-            : new TrainRoute().Station(""Right"", () => new { value = 2 }))
-        .Station(""Join"", (int value) => new { value });
-}";
-
-            var (syntaxTree, model) = Compile(source);
-            var forkReceiver = FindFirstForkReceiver(syntaxTree);
-            Assert.NotNull(forkReceiver);
-
-            var joinSet = BranchRouteJoinSetFinder.FromForkReceiver(forkReceiver, model);
-
-            Assert.Same(forkReceiver, joinSet.JoinReceiver);
-            Assert.Null(joinSet.DownstreamStation);
-            Assert.Equal(2, joinSet.Branches.Length);
-            Assert.All(joinSet.Branches, b => Assert.True(b.IsResolved));
-        }
-
         private static ImmutableArray<BranchRouteJoinSet> Find(string source)
         {
             var (syntaxTree, model) = Compile(source);
@@ -232,31 +202,6 @@ public static class Route
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
             return (syntaxTree, compilation.GetSemanticModel(syntaxTree));
-        }
-
-        /// <summary>
-        /// Locates the forking receiver of the first <c>.Station</c> whose receiver is a ternary / coalesce / switch.
-        /// </summary>
-        private static ExpressionSyntax FindFirstForkReceiver(SyntaxTree syntaxTree)
-        {
-            foreach (var invocation in syntaxTree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>())
-            {
-                if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess
-                    || !string.Equals(memberAccess.Name.Identifier.ValueText, TrainRouteMethodNames.Station, StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                var peeled = ReceiverExpressionSyntaxPeel.UnwrapTransparent(memberAccess.Expression);
-                if (peeled is ConditionalExpressionSyntax
-                    || peeled is SwitchExpressionSyntax
-                    || (peeled is BinaryExpressionSyntax binary && binary.IsKind(SyntaxKind.CoalesceExpression)))
-                {
-                    return memberAccess.Expression;
-                }
-            }
-
-            return null;
         }
 
         private static string GetDownstreamStationName(InvocationExpressionSyntax downstreamStation)

@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 
 namespace TrainOP.Generators
@@ -7,81 +8,204 @@ namespace TrainOP.Generators
     /// </summary>
     internal sealed class CodegenWriter
     {
+        public const int IndentUnit = 4;
+
         private readonly StringBuilder _builder;
+        private int _indentLevel;
 
         /// <summary>
-        /// Creates a writer over an existing builder (typically shared with legacy emit helpers).
+        /// Creates a writer with an empty source buffer.
         /// </summary>
-        public CodegenWriter(StringBuilder builder)
+        public CodegenWriter()
         {
-            _builder = builder ?? new StringBuilder();
+            _builder = new StringBuilder();
         }
 
-        /// <summary>Underlying builder passed to existing static codegen helpers.</summary>
-        public StringBuilder Builder => _builder;
+        /// <summary>Current indent depth (each level is <see cref="IndentUnit"/> spaces).</summary>
+        public int IndentLevel => _indentLevel;
 
-        /// <summary>Default indent for class members (four spaces).</summary>
-        public int MemberIndent { get; set; } = 4;
-
-        /// <summary>Appends text without a trailing newline.</summary>
-        public void Append(string text)
+        /// <summary>Appends text without indent or a trailing newline.</summary>
+        public CodegenWriter Append(string text)
         {
             _builder.Append(text);
+            return this;
         }
 
-        /// <summary>Appends a blank line.</summary>
+        /// <summary>Appends one character without indent or a trailing newline.</summary>
+        public CodegenWriter Append(char value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>Appends a formatted integer without indent or a trailing newline.</summary>
+        public CodegenWriter Append(int value)
+        {
+            _builder.Append(value);
+            return this;
+        }
+
+        /// <summary>Appends current indent followed by text without a trailing newline.</summary>
+        public CodegenWriter AppendIndented(string text)
+        {
+            _builder.Append(GetIndent());
+            _builder.Append(text);
+            return this;
+        }
+
+        /// <summary>Appends a blank line without indent.</summary>
         public void AppendLine()
         {
             _builder.AppendLine();
         }
 
-        /// <summary>Appends one line with a trailing newline.</summary>
+        /// <summary>Appends one indented line with a trailing newline.</summary>
         public void AppendLine(string line)
         {
+            _builder.Append(GetIndent());
             _builder.AppendLine(line);
         }
 
-        /// <summary>Appends one indented line with a trailing newline.</summary>
-        public void AppendLine(int indent, string line)
+        /// <summary>Ends the current line without adding indent to a continuation fragment.</summary>
+        public void EndLine()
         {
-            _builder.Append(new string(' ', indent));
+            _builder.AppendLine();
+        }
+
+        /// <summary>Appends one line without indent (usings, namespace, auto-generated header).</summary>
+        public void AppendRawLine(string line)
+        {
             _builder.AppendLine(line);
         }
 
-        /// <summary>Appends one member-level indented line.</summary>
-        public void AppendMemberLine(string line)
+        /// <summary>Increases indent for a lexical scope; restore via <see cref="IDisposable.Dispose"/>.</summary>
+        public IDisposable PushIndent(int levels = 1)
         {
-            AppendLine(MemberIndent, line);
+            _indentLevel += levels;
+            return new IndentScope(this, levels);
+        }
+
+        internal void PopIndent(int levels)
+        {
+            _indentLevel -= levels;
+            if (_indentLevel < 0)
+            {
+                throw new InvalidOperationException("Indent level underflow.");
+            }
+        }
+
+        /// <summary>Opens a braced block; restores indent and writes <c>}</c> on <see cref="IDisposable.Dispose"/>.</summary>
+        public IDisposable Block(string headerLine = null, string closeSuffix = null)
+        {
+            return new BlockScope(this, headerLine, closeSuffix);
         }
 
         /// <summary>Emits standard usings for generated TrainRoute extension source.</summary>
         public void EmitExtensionFileUsings()
         {
-            AppendLine("using System;");
-            AppendLine("using System.Threading;");
-            AppendLine("using System.Threading.Tasks;");
+            AppendRawLine("using System;");
+            AppendRawLine("using System.Threading;");
+            AppendRawLine("using System.Threading.Tasks;");
             AppendLine();
         }
 
         /// <summary>Emits namespace and extensions class opening braces.</summary>
         public void EmitExtensionFileHeader()
         {
-            AppendLine("namespace TrainOP");
+            AppendRawLine("namespace TrainOP");
+            AppendRawLine("{");
+            _indentLevel = 1;
+            AppendLine("public static class TrainRouteStationExtensions");
             AppendLine("{");
-            AppendLine("    public static class TrainRouteStationExtensions");
-            AppendLine("    {");
+            _indentLevel = 2;
         }
 
         /// <summary>Emits extensions class and namespace closing braces.</summary>
         public void EmitExtensionFileFooter()
         {
-            AppendLine("    }");
+            _indentLevel = 1;
             AppendLine("}");
+            _indentLevel = 0;
+            AppendRawLine("}");
         }
 
         public override string ToString()
         {
             return _builder.ToString();
+        }
+
+        private string GetIndent()
+        {
+            return _indentLevel <= 0 ? string.Empty : new string(' ', _indentLevel * IndentUnit);
+        }
+
+        internal sealed class IndentScope : IDisposable
+        {
+            private readonly CodegenWriter _writer;
+            private readonly int _levels;
+            private bool _disposed;
+
+            internal IndentScope(CodegenWriter writer, int levels)
+            {
+                _writer = writer;
+                _levels = levels;
+            }
+
+            public void Dispose()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _writer.PopIndent(_levels);
+                _disposed = true;
+            }
+        }
+
+        internal sealed class BlockScope : IDisposable
+        {
+            private readonly CodegenWriter _writer;
+            private readonly string _closeSuffix;
+            private readonly IDisposable _indent;
+            private bool _disposed;
+
+            internal BlockScope(CodegenWriter writer, string headerLine, string closeSuffix)
+            {
+                _writer = writer;
+                _closeSuffix = closeSuffix;
+
+                if (headerLine != null)
+                {
+                    writer.AppendLine(headerLine);
+                }
+
+                writer.AppendLine("{");
+                _indent = writer.PushIndent(1);
+            }
+
+            public void Dispose()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _indent.Dispose();
+
+                if (_closeSuffix == null)
+                {
+                    _writer.AppendLine("}");
+                }
+                else
+                {
+                    _writer.AppendIndented("}");
+                    _writer.Append(_closeSuffix);
+                    _writer.EndLine();
+                }
+
+                _disposed = true;
+            }
         }
     }
 }

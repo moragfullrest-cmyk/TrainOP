@@ -58,7 +58,7 @@ public static class PaymentModule
             Assert.Contains("[RouteSchemaFor(typeof(global::PaymentModule), \"Build\")]", generated);
             Assert.Contains("[RouteSchemaWagon(\"amount\"", generated);
             Assert.Contains("[RouteSchemaWagon(\"paymentId\"", generated);
-            Assert.Contains("TerminalWagons", generated);
+            Assert.Contains("internal static class PaymentModule_Build_Schema { }", generated);
         }
 
         /// <summary>

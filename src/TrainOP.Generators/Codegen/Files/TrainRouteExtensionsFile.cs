@@ -17,7 +17,7 @@ namespace TrainOP.Generators
         /// </summary>
         internal static string Emit(ImmutableArray<MergedStationSchema> schemas)
         {
-            var writer = new CodegenWriter(new StringBuilder());
+            var writer = new CodegenWriter();
             var emissionState = new EmissionState();
             var metadataConsolidation = EmissionState.BuildMetadataConsolidation(schemas);
             writer.EmitExtensionFileUsings();

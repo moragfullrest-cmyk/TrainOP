@@ -1,4 +1,3 @@
-using System.Text;
 using TrainOP.Generators.Handlers;
 
 namespace TrainOP.Generators
@@ -10,28 +9,30 @@ namespace TrainOP.Generators
         /// </summary>
         internal static void EmitPublicExtensionMethod(
             this StationHandlerBinding schema,
-            StringBuilder source,
+            CodegenWriter writer,
             NamingScope names,
             CodegenContext context,
             bool incrementChainOrdinal)
         {
-            schema.EmitOverloadResolutionPriority(source);
+            schema.EmitOverloadResolutionPriority(writer);
             var handlerTypeName = schema.BuildHandlerTypeName(names.DelegateName);
-            source.Append("        public static TrainRoute ")
+            writer.AppendIndented("public static TrainRoute ")
                 .Append(schema.ExtensionMethodName)
                 .Append("(this TrainRoute route, string stationName, ")
                 .Append(handlerTypeName)
-                .AppendLine(" handler)");
-            source.AppendLine("        {");
-            source.AppendLine("            if (route == null) throw new ArgumentNullException(nameof(route));");
-            source.AppendLine("            if (handler == null) throw new ArgumentNullException(nameof(handler));");
-            if (incrementChainOrdinal)
+                .Append(" handler)");
+            writer.EndLine();
+            using (writer.Block())
             {
-                source.AppendLine("            route.NextChainRegistrationOrdinal();");
-            }
+                writer.AppendLine("if (route == null) throw new ArgumentNullException(nameof(route));");
+                writer.AppendLine("if (handler == null) throw new ArgumentNullException(nameof(handler));");
+                if (incrementChainOrdinal)
+                {
+                    writer.AppendLine("route.NextChainRegistrationOrdinal();");
+                }
 
-            schema.EmitAdapterBody(source, context);
-            source.AppendLine("        }");
+                schema.EmitAdapterBody(writer, context);
+            }
         }
 
         /// <summary>
@@ -39,15 +40,22 @@ namespace TrainOP.Generators
         /// </summary>
         internal static void EmitAdapterBody(
             this StationHandlerBinding schema,
-            StringBuilder source,
+            CodegenWriter writer,
             CodegenContext context)
         {
-            EmitRegistrationOpen(source, schema, context.StationLabelExpression);
-            EmitPull(source, schema, context);
-            EmitHandlerInvocation(source, schema, context);
-            EmitRefLocalValuesIfNeeded(source, schema, context.UseNeutralWagonNames);
-            EmitReturnMerge(source, schema, context);
-            source.AppendLine("            });");
+            EmitRegistrationOpen(writer, schema, context.StationLabelExpression);
+            using (writer.Block(closeSuffix: ");"))
+            {
+                if (schema.IsServiceStation)
+                {
+                    writer.AppendLine("var manifest = red.Manifest;");
+                }
+
+                EmitPull(writer, schema, context);
+                EmitHandlerInvocation(writer, schema, context);
+                EmitRefLocalValuesIfNeeded(writer, schema, context.UseNeutralWagonNames);
+                EmitReturnMerge(writer, schema, context);
+            }
         }
 
         /// <summary>
@@ -55,23 +63,26 @@ namespace TrainOP.Generators
         /// </summary>
         internal static void EmitChainDispatchPublicMethod(
             this StationHandlerBinding schema,
-            StringBuilder source,
+            CodegenWriter writer,
             NamingScope names,
             string handlerTypeName)
         {
-            schema.EmitOverloadResolutionPriority(source);
-            source.Append("        public static TrainRoute ")
+            schema.EmitOverloadResolutionPriority(writer);
+            writer.AppendIndented("public static TrainRoute ")
                 .Append(schema.ExtensionMethodName)
                 .Append("(this TrainRoute route, string stationName, ")
                 .Append(handlerTypeName)
-                .AppendLine(" handler)");
-            source.AppendLine("        {");
-            source.AppendLine("            if (route == null) throw new ArgumentNullException(nameof(route));");
-            source.AppendLine("            if (handler == null) throw new ArgumentNullException(nameof(handler));");
-            source.Append("            return ")
-                .Append(names.CoreMethodName)
-                .AppendLine("(route, stationName, handler, route.CallerChainKey, route.NextChainRegistrationOrdinal());");
-            source.AppendLine("        }");
+                .Append(" handler)");
+            writer.EndLine();
+            using (writer.Block())
+            {
+                writer.AppendLine("if (route == null) throw new ArgumentNullException(nameof(route));");
+                writer.AppendLine("if (handler == null) throw new ArgumentNullException(nameof(handler));");
+                writer.AppendIndented("return ")
+                    .Append(names.CoreMethodName)
+                    .Append("(route, stationName, handler, route.CallerChainKey, route.NextChainRegistrationOrdinal());");
+                writer.EndLine();
+            }
         }
 
         /// <summary>
@@ -79,53 +90,60 @@ namespace TrainOP.Generators
         /// </summary>
         internal static void EmitChainDispatchCoreMethods(
             this StationHandlerBinding schema,
-            StringBuilder source,
+            CodegenWriter writer,
             NamingScope names,
             string handlerTypeName,
             CodegenContext context)
         {
-            source.Append("        internal static TrainRoute ")
+            writer.AppendIndented("internal static TrainRoute ")
                 .Append(names.CoreMethodName)
                 .Append("(this TrainRoute route, string stationName, ")
                 .Append(handlerTypeName)
-                .AppendLine(" handler, string chainKey, int chainStationIndex)");
-            source.AppendLine("        {");
-            source.Append("            return ")
-                .Append(names.CoreMethodName)
-                .Append("(route, stationName, handler, ")
-                .Append(names.ResolveChainBindingMethod)
-                .AppendLine("(chainKey, chainStationIndex));");
-            source.AppendLine("        }");
-            source.AppendLine();
+                .Append(" handler, string chainKey, int chainStationIndex)");
+            writer.EndLine();
+            using (writer.Block())
+            {
+                writer.AppendIndented("return ")
+                    .Append(names.CoreMethodName)
+                    .Append("(route, stationName, handler, ")
+                    .Append(names.ResolveChainBindingMethod)
+                    .Append("(chainKey, chainStationIndex));");
+                writer.EndLine();
+            }
 
-            source.Append("        internal static TrainRoute ")
+            writer.AppendLine();
+
+            writer.AppendIndented("internal static TrainRoute ")
                 .Append(names.CoreMethodName)
                 .Append("(this TrainRoute route, string stationName, ")
                 .Append(handlerTypeName)
                 .Append(" handler, ")
                 .Append(ChainBindingTypes.BindingTypeName)
-                .AppendLine(" binding)");
-            source.AppendLine("        {");
-            source.AppendLine("            if (route == null) throw new ArgumentNullException(nameof(route));");
-            source.AppendLine("            if (handler == null) throw new ArgumentNullException(nameof(handler));");
-            source.AppendLine("            var inputNames = binding.InputNames;");
-            source.AppendLine("            var returnMembers = binding.ReturnMembers;");
-            source.AppendLine("            var refFlags = binding.RefFlags;");
+                .Append(" binding)");
+            writer.EndLine();
+            using (writer.Block())
+            {
+                writer.AppendLine("if (route == null) throw new ArgumentNullException(nameof(route));");
+                writer.AppendLine("if (handler == null) throw new ArgumentNullException(nameof(handler));");
+                writer.AppendLine("var inputNames = binding.InputNames;");
+                writer.AppendLine("var returnMembers = binding.ReturnMembers;");
+                writer.AppendLine("var refFlags = binding.RefFlags;");
 
-            schema.EmitAdapterBody(source, context);
-            source.AppendLine("        }");
+                schema.EmitAdapterBody(writer, context);
+            }
         }
 
-        private static void EmitOverloadResolutionPriority(this StationHandlerBinding schema, StringBuilder source)
+        private static void EmitOverloadResolutionPriority(this StationHandlerBinding schema, CodegenWriter writer)
         {
             var priority = schema.IsAsync ? 0 : 1;
-            source.Append("        [System.Runtime.CompilerServices.OverloadResolutionPriority(")
+            writer.AppendIndented("[System.Runtime.CompilerServices.OverloadResolutionPriority(")
                 .Append(priority)
-                .AppendLine(")]");
+                .Append(")]");
+            writer.EndLine();
         }
 
         private static void EmitRegistrationOpen(
-            StringBuilder source,
+            CodegenWriter writer,
             StationHandlerBinding schema,
             string stationLabelExpression)
         {
@@ -133,56 +151,57 @@ namespace TrainOP.Generators
             {
                 if (schema.IsAsync)
                 {
-                    source.Append("            return route.")
+                    writer.AppendIndented("return route.")
                         .Append(TrainRouteMethodNames.ServiceStation)
                         .Append("(")
                         .Append(stationLabelExpression)
-                        .AppendLine(", async (red, token) =>");
+                        .Append(", async (red, token) =>");
+                    writer.EndLine();
                 }
                 else
                 {
-                    source.Append("            return route.")
+                    writer.AppendIndented("return route.")
                         .Append(TrainRouteMethodNames.ServiceStation)
                         .Append("(")
                         .Append(stationLabelExpression)
-                        .AppendLine(", (red, token) =>");
+                        .Append(", (red, token) =>");
+                    writer.EndLine();
                 }
 
-                source.AppendLine("            {");
-                source.AppendLine("                var manifest = red.Manifest;");
                 return;
             }
 
             if (schema.IsAsync)
             {
-                source.Append("            return route.RegisterStation(")
+                writer.AppendIndented("return route.RegisterStation(")
                     .Append(stationLabelExpression)
-                    .AppendLine(", async (manifest, token) =>");
+                    .Append(", async (manifest, token) =>");
+                writer.EndLine();
             }
             else if (schema.HasCancellationToken)
             {
-                source.Append("            return route.RegisterStation(")
+                writer.AppendIndented("return route.RegisterStation(")
                     .Append(stationLabelExpression)
-                    .AppendLine(", (manifest, token) =>");
+                    .Append(", (manifest, token) =>");
+                writer.EndLine();
             }
             else
             {
-                source.Append("            return route.RegisterStation(")
+                writer.AppendIndented("return route.RegisterStation(")
                     .Append(stationLabelExpression)
-                    .AppendLine(", manifest =>");
+                    .Append(", manifest =>");
+                writer.EndLine();
             }
-
-            source.AppendLine("            {");
         }
 
-        private static void EmitPull(StringBuilder source, StationHandlerBinding schema, CodegenContext context)
+        private static void EmitPull(CodegenWriter writer, StationHandlerBinding schema, CodegenContext context)
         {
             if (context.Pull == PullStrategy.NameArray)
             {
                 for (var i = 0; i < schema.Wagons.Length; i++)
                 {
                     schema.Wagons[i].EmitPull(
-                        source,
+                        writer,
                         PullContext.NameArray(i, context.InputNamesVariable));
                 }
 
@@ -191,12 +210,12 @@ namespace TrainOP.Generators
 
             for (var i = 0; i < schema.Wagons.Length; i++)
             {
-                schema.Wagons[i].EmitPull(source, PullContext.Literal(schema.Wagons[i]));
+                schema.Wagons[i].EmitPull(writer, PullContext.Literal(schema.Wagons[i]));
             }
         }
 
         private static void EmitHandlerInvocation(
-            StringBuilder source,
+            CodegenWriter writer,
             StationHandlerBinding schema,
             CodegenContext context)
         {
@@ -218,35 +237,41 @@ namespace TrainOP.Generators
             {
                 if (schema.ReturnShape.IsVoid)
                 {
-                    source.Append("                await handler(");
-                    schema.Input.EmitCallArguments(source, argumentContext);
-                    source.AppendLine(").ConfigureAwait(false);");
-                    source.Append("                ").Append(stationReturnType).AppendLine(" stationReturn = default;");
+                    writer.AppendIndented("await handler(");
+                    schema.Input.EmitCallArguments(writer, argumentContext);
+                    writer.Append(").ConfigureAwait(false);");
+                    writer.EndLine();
+                    writer.AppendIndented(stationReturnType).Append(" stationReturn = default;");
+                    writer.EndLine();
                     return;
                 }
 
-                source.Append("                ").Append(stationReturnType).Append(" stationReturn = await handler(");
-                schema.Input.EmitCallArguments(source, argumentContext);
-                source.AppendLine(").ConfigureAwait(false);");
+                writer.AppendIndented(stationReturnType).Append(" stationReturn = await handler(");
+                schema.Input.EmitCallArguments(writer, argumentContext);
+                writer.Append(").ConfigureAwait(false);");
+                writer.EndLine();
                 return;
             }
 
             if (schema.ReturnShape.IsVoid)
             {
-                source.Append("                handler(");
-                schema.Input.EmitCallArguments(source, argumentContext);
-                source.AppendLine(");");
-                source.Append("                ").Append(stationReturnType).AppendLine(" stationReturn = default;");
+                writer.AppendIndented("handler(");
+                schema.Input.EmitCallArguments(writer, argumentContext);
+                writer.Append(");");
+                writer.EndLine();
+                writer.AppendIndented(stationReturnType).Append(" stationReturn = default;");
+                writer.EndLine();
                 return;
             }
 
-            source.Append("                ").Append(stationReturnType).Append(" stationReturn = handler(");
-            schema.Input.EmitCallArguments(source, argumentContext);
-            source.AppendLine(");");
+            writer.AppendIndented(stationReturnType).Append(" stationReturn = handler(");
+            schema.Input.EmitCallArguments(writer, argumentContext);
+            writer.Append(");");
+            writer.EndLine();
         }
 
         private static void EmitRefLocalValuesIfNeeded(
-            StringBuilder source,
+            CodegenWriter writer,
             StationHandlerBinding schema,
             bool useNeutralWagonNames)
         {
@@ -255,29 +280,30 @@ namespace TrainOP.Generators
                 return;
             }
 
-            source.Append("                var refLocalValues = new object[] { ");
+            writer.AppendIndented("var refLocalValues = new object[] { ");
             for (var i = 0; i < schema.Wagons.Length; i++)
             {
                 if (useNeutralWagonNames)
                 {
-                    source.Append("wagon").Append(i);
+                    writer.Append("wagon").Append(i);
                 }
                 else
                 {
-                    source.Append(schema.Wagons[i].Name);
+                    writer.Append(schema.Wagons[i].Name);
                 }
 
                 if (i < schema.Wagons.Length - 1)
                 {
-                    source.Append(", ");
+                    writer.Append(", ");
                 }
             }
 
-            source.AppendLine(" };");
+            writer.Append(" };");
+            writer.EndLine();
         }
 
         private static void EmitReturnMerge(
-            StringBuilder source,
+            CodegenWriter writer,
             StationHandlerBinding schema,
             CodegenContext context)
         {
@@ -288,7 +314,7 @@ namespace TrainOP.Generators
                 && context.PassRefFlagsToServiceMergeWhenPresent
                 && !string.IsNullOrEmpty(context.RefFlagsExpression))
             {
-                source.Append("                return StationMerge.ToServiceSignal(manifest, stationReturn, ")
+                writer.AppendIndented("return StationMerge.ToServiceSignal(manifest, stationReturn, ")
                     .Append(context.StationLabelExpression)
                     .Append(", ")
                     .Append(context.WagonNamesExpression)
@@ -296,12 +322,13 @@ namespace TrainOP.Generators
                     .Append(context.RefFlagsExpression)
                     .Append(", ")
                     .Append(refLocalValues ?? "null")
-                    .AppendLine(");");
+                    .Append(");");
+                writer.EndLine();
                 return;
             }
 
             EmitStationReturnMerge(
-                source,
+                writer,
                 schema,
                 context.WagonNamesExpression,
                 context.ReturnMembersExpression,
@@ -310,7 +337,7 @@ namespace TrainOP.Generators
         }
 
         private static void EmitStationReturnMerge(
-            StringBuilder source,
+            CodegenWriter writer,
             StationHandlerBinding schema,
             string wagonNamesField,
             string returnMembersField,
@@ -321,7 +348,7 @@ namespace TrainOP.Generators
             {
                 var plan = MergePlanBuilder.Build(schema);
                 plan.EmitTypedMerge(
-                    source,
+                    writer,
                     schema,
                     new MergeEmitContext(
                         wagonNamesField,
@@ -333,7 +360,7 @@ namespace TrainOP.Generators
             }
 
             EmitToSignalCall(
-                source,
+                writer,
                 wagonNamesField,
                 schema,
                 returnMembersField,
@@ -342,7 +369,7 @@ namespace TrainOP.Generators
         }
 
         private static void EmitToSignalCall(
-            StringBuilder source,
+            CodegenWriter writer,
             string wagonNamesField,
             StationHandlerBinding schema,
             string returnMembersField,
@@ -352,7 +379,7 @@ namespace TrainOP.Generators
             const string stationLabelExpression = "stationName";
             if (schema.IsServiceStation)
             {
-                source.Append("                return StationMerge.ToServiceSignal(manifest, stationReturn, ")
+                writer.AppendIndented("return StationMerge.ToServiceSignal(manifest, stationReturn, ")
                     .Append(stationLabelExpression)
                     .Append(", ")
                     .Append(wagonNamesField)
@@ -360,11 +387,12 @@ namespace TrainOP.Generators
                     .Append(refFlagsField ?? "null")
                     .Append(", ")
                     .Append(refLocalValuesExpression ?? "null")
-                    .AppendLine(");");
+                    .Append(");");
+                writer.EndLine();
                 return;
             }
 
-            source.Append("                return StationMerge.ToSignal(manifest, stationReturn, ")
+            writer.AppendIndented("return StationMerge.ToSignal(manifest, stationReturn, ")
                 .Append(stationLabelExpression)
                 .Append(", ")
                 .Append(wagonNamesField)
@@ -375,15 +403,17 @@ namespace TrainOP.Generators
 
             if (refFlagsField != null)
             {
-                source.Append(", ")
+                writer.Append(", ")
                     .Append(refFlagsField)
                     .Append(", ")
                     .Append(refLocalValuesExpression)
-                    .AppendLine(");");
+                    .Append(");");
+                writer.EndLine();
             }
             else
             {
-                source.AppendLine(");");
+                writer.Append(");");
+                writer.EndLine();
             }
         }
 

@@ -10,15 +10,13 @@ namespace TrainOP.Generators
             string dataVariable,
             string refFlagsExpression,
             string refLocalValuesExpression,
-            bool removeOmittedRegularInputs,
-            string statementIndent = "                ")
+            bool removeOmittedRegularInputs)
         {
             WagonNamesExpression = wagonNamesExpression;
             DataVariable = dataVariable;
             RefFlagsExpression = refFlagsExpression;
             RefLocalValuesExpression = refLocalValuesExpression;
             RemoveOmittedRegularInputs = removeOmittedRegularInputs;
-            StatementIndent = statementIndent;
         }
 
         public string WagonNamesExpression { get; }
@@ -30,8 +28,6 @@ namespace TrainOP.Generators
         public string RefLocalValuesExpression { get; }
 
         public bool RemoveOmittedRegularInputs { get; }
-
-        public string StatementIndent { get; }
 
         public static string BuildWagonNameExpression(string wagonNamesExpression, int wagonIndex)
         {

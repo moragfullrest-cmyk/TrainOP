@@ -1,7 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using System.Collections.Immutable;
-using System.Text;
 using TrainOP.Generators.Wagons;
 
 namespace TrainOP.Generators
@@ -27,51 +26,35 @@ namespace TrainOP.Generators
         public ImmutableArray<WagonBinding> TerminalWagons { get; }
 
         /// <summary>
-        /// Emits attributes and the schema holder type into generated source.
+        /// Emits schema attributes on a generated holder type.
         /// </summary>
-        internal void Emit(StringBuilder source)
+        internal void Emit(CodegenWriter writer)
         {
             var ownerDisplay = Method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             var schemaTypeName = BuildSchemaTypeName(Method);
-            source.Append("    [RouteSchemaFor(typeof(")
+            writer.AppendIndented("[RouteSchemaFor(typeof(")
                 .Append(ownerDisplay)
                 .Append("), \"")
                 .Append(Method.Name)
-                .AppendLine("\")]");
+                .Append("\")]");
+            writer.EndLine();
 
             for (var i = 0; i < TerminalWagons.Length; i++)
             {
                 var wagon = TerminalWagons[i];
-                source.Append("    [RouteSchemaWagon(\"")
+                writer.AppendIndented("[RouteSchemaWagon(\"")
                     .Append(StringHelpers.Escape(wagon.Name) ?? string.Empty)
                     .Append("\", typeof(")
-                    .Append(wagon.TypeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
-                    .AppendLine("))]");
+                    .Append(wagon.TypeDisplay)
+                    .Append("))]");
+                writer.EndLine();
             }
 
-            source.Append("    internal static class ")
+            writer.AppendIndented("internal static class ")
                 .Append(schemaTypeName)
-                .AppendLine();
-            source.AppendLine("    {");
-            source.Append("        public static readonly WagonSlot[] TerminalWagons = new WagonSlot[]");
-            source.AppendLine();
-            source.AppendLine("        {");
-
-            for (var i = 0; i < TerminalWagons.Length; i++)
-            {
-                var wagon = TerminalWagons[i];
-                source.Append("            new WagonSlot(\"")
-                    .Append(StringHelpers.Escape(wagon.Name) ?? string.Empty)
-                    .Append("\", typeof(")
-                    .Append(wagon.TypeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))
-                    .Append("))");
-
-                source.AppendLine(i == TerminalWagons.Length - 1 ? string.Empty : ",");
-            }
-
-            source.AppendLine("        };");
-            source.AppendLine("    }");
-            source.AppendLine();
+                .Append(" { }");
+            writer.EndLine();
+            writer.AppendLine();
         }
 
         /// <summary>

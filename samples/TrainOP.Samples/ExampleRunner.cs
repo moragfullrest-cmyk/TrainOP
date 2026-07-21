@@ -21,6 +21,7 @@ internal static class ExampleRunner
             new LongRouteServiceStationExample(),
             new NestedBranchingRouteExample(),
             new CodeVolumeComparisonExample(),
+            new CrossAssemblyRouteExample(),
         };
 
         for (var i = 0; i < examples.Length; i++)

@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+### Changed
+
+- **CodegenWriter:** migrated all source emit paths to indent-stack API; removed `Builder` escape hatch and string-based `StatementIndent` from emit contexts.
+
 ## [0.12.0] - 2026-07-21
 
 ### Changed

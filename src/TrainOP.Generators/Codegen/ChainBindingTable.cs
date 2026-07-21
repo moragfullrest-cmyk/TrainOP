@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using TrainOP.Generators.Chain;
 using TrainOP.Generators.Handlers;
 
@@ -35,21 +34,21 @@ namespace TrainOP.Generators
         /// <summary>
         /// Emits the shared chain binding struct once per generated extensions file.
         /// </summary>
-        internal static void EmitStructOnce(StringBuilder source, EmissionState emissionState)
+        internal static void EmitStructOnce(CodegenWriter writer, EmissionState emissionState)
         {
             if (emissionState.EmittedChainBindingStruct)
             {
                 return;
             }
 
-            EmitStruct(source);
+            EmitStruct(writer);
             emissionState.EmittedChainBindingStruct = true;
         }
 
         /// <summary>
         /// Emits binding constants and the resolver method for this table.
         /// </summary>
-        internal void Emit(StringBuilder source)
+        internal void Emit(CodegenWriter writer)
         {
             var orderedBindings = _chainBindings
                 .OrderBy(binding => binding.ChainId, StringComparer.Ordinal)
@@ -57,23 +56,23 @@ namespace TrainOP.Generators
                 .ToList();
 
             EmitBindingConstant(
-                source,
+                writer,
                 "DefaultChainBinding_" + _names.DelegateTypeId,
                 _canonicalSchema,
                 _defaultReturnMembers);
-            source.AppendLine();
+            writer.AppendLine();
 
             for (var i = 0; i < orderedBindings.Count; i++)
             {
                 EmitBindingConstant(
-                    source,
+                    writer,
                     BuildBindingFieldName(_names.DelegateTypeId, orderedBindings[i]),
                     orderedBindings[i].Schema,
                     orderedBindings[i].ReturnMembers);
             }
 
-            source.AppendLine();
-            EmitResolver(source, orderedBindings);
+            writer.AppendLine();
+            EmitResolver(writer, orderedBindings);
         }
 
         /// <summary>
@@ -92,121 +91,129 @@ namespace TrainOP.Generators
             return "ChainBinding_" + delegateTypeId + "_" + StringHelpers.SanitizeIdentifier(chainId) + "_" + stationIndex;
         }
 
-        private static void EmitStruct(StringBuilder source)
+        private static void EmitStruct(CodegenWriter writer)
         {
-            source.Append("        internal readonly struct ")
-                .Append(ChainBindingTypes.BindingTypeName)
-                .AppendLine();
-            source.AppendLine("        {");
-            source.Append("            public ")
-                .Append(ChainBindingTypes.BindingTypeName)
-                .AppendLine("(string[] inputNames, string[] returnMembers, bool[] refFlags)");
-            source.AppendLine("            {");
-            source.AppendLine("                InputNames = inputNames;");
-            source.AppendLine("                ReturnMembers = returnMembers;");
-            source.AppendLine("                RefFlags = refFlags;");
-            source.AppendLine("            }");
-            source.AppendLine();
-            source.AppendLine("            public string[] InputNames { get; }");
-            source.AppendLine("            public string[] ReturnMembers { get; }");
-            source.AppendLine("            public bool[] RefFlags { get; }");
-            source.AppendLine("        }");
-            source.AppendLine();
+            writer.AppendIndented("internal readonly struct ")
+                .Append(ChainBindingTypes.BindingTypeName);
+            writer.EndLine();
+            using (writer.Block())
+            {
+                writer.AppendIndented("public ")
+                    .Append(ChainBindingTypes.BindingTypeName)
+                    .Append("(string[] inputNames, string[] returnMembers, bool[] refFlags)");
+                writer.EndLine();
+                using (writer.Block())
+                {
+                    writer.AppendLine("InputNames = inputNames;");
+                    writer.AppendLine("ReturnMembers = returnMembers;");
+                    writer.AppendLine("RefFlags = refFlags;");
+                }
+
+                writer.AppendLine();
+                writer.AppendLine("public string[] InputNames { get; }");
+                writer.AppendLine("public string[] ReturnMembers { get; }");
+                writer.AppendLine("public bool[] RefFlags { get; }");
+            }
+
+            writer.AppendLine();
         }
 
-        private void EmitResolver(StringBuilder source, List<ChainSiteBinding> orderedBindings)
+        private void EmitResolver(CodegenWriter writer, List<ChainSiteBinding> orderedBindings)
         {
-            source.Append("        private static ")
+            writer.AppendIndented("private static ")
                 .Append(ChainBindingTypes.BindingTypeName)
                 .Append(" ")
                 .Append(_names.ResolveChainBindingMethod)
-                .AppendLine("(string chainKey, int chainStationIndex)");
-            source.AppendLine("        {");
-            source.AppendLine("            if (!string.IsNullOrEmpty(chainKey))");
-            source.AppendLine("            {");
-            source.AppendLine("                switch (chainKey)");
-            source.AppendLine("                {");
-
-            string currentChainId = null;
-            for (var i = 0; i < orderedBindings.Count; i++)
+                .Append("(string chainKey, int chainStationIndex)");
+            writer.EndLine();
+            using (writer.Block())
             {
-                var binding = orderedBindings[i];
-                if (!string.Equals(currentChainId, binding.ChainId, StringComparison.Ordinal))
+                writer.AppendLine("if (!string.IsNullOrEmpty(chainKey))");
+                using (writer.Block())
                 {
-                    if (currentChainId != null)
+                    writer.AppendLine("switch (chainKey)");
+                    using (writer.Block())
                     {
-                        source.AppendLine("                        }");
-                        source.AppendLine("                        break;");
-                        source.AppendLine();
-                    }
+                        for (var i = 0; i < orderedBindings.Count;)
+                        {
+                            var chainId = orderedBindings[i].ChainId;
+                            writer.AppendIndented("case \"")
+                                .Append(StringHelpers.Escape(chainId))
+                                .Append("\":");
+                            writer.EndLine();
+                            using (writer.PushIndent())
+                            {
+                                writer.AppendLine("switch (chainStationIndex)");
+                                using (writer.Block())
+                                {
+                                    while (i < orderedBindings.Count
+                                        && string.Equals(orderedBindings[i].ChainId, chainId, StringComparison.Ordinal))
+                                    {
+                                        var binding = orderedBindings[i];
+                                        writer.AppendIndented("case ")
+                                            .Append(binding.StationIndex)
+                                            .Append(": return ")
+                                            .Append(BuildBindingFieldName(_names.DelegateTypeId, binding))
+                                            .Append(";");
+                                        writer.EndLine();
+                                        i++;
+                                    }
+                                }
 
-                    source.Append("                    case \"")
-                        .Append(StringHelpers.Escape(binding.ChainId))
-                        .AppendLine("\":");
-                    source.AppendLine("                        switch (chainStationIndex)");
-                    source.AppendLine("                        {");
-                    currentChainId = binding.ChainId;
+                                writer.AppendLine("break;");
+                            }
+
+                            writer.AppendLine();
+                        }
+                    }
                 }
 
-                source.Append("                            case ")
-                    .Append(binding.StationIndex)
-                    .Append(": return ")
-                    .Append(BuildBindingFieldName(_names.DelegateTypeId, binding))
-                    .AppendLine(";");
+                writer.AppendLine();
+                writer.AppendIndented("return DefaultChainBinding_")
+                    .Append(_names.DelegateTypeId)
+                    .Append(";");
+                writer.EndLine();
             }
-
-            if (currentChainId != null)
-            {
-                source.AppendLine("                        }");
-                source.AppendLine("                        break;");
-            }
-
-            source.AppendLine("                }");
-            source.AppendLine("            }");
-            source.AppendLine();
-            source.Append("            return DefaultChainBinding_")
-                .Append(_names.DelegateTypeId)
-                .AppendLine(";");
-            source.AppendLine("        }");
         }
 
         private static void EmitBindingConstant(
-            StringBuilder source,
+            CodegenWriter writer,
             string fieldName,
             StationHandlerBinding schema,
             string[] returnMembers)
         {
-            source.Append("        internal static readonly ")
+            writer.AppendIndented("internal static readonly ")
                 .Append(ChainBindingTypes.BindingTypeName)
                 .Append(" ")
                 .Append(fieldName)
                 .Append(" = new ")
                 .Append(ChainBindingTypes.BindingTypeName)
                 .Append("(");
-            schema.Input.EmitWagonNamesArrayLiteral(source, StringHelpers.Escape);
-            source.Append(", ");
-            EmitStringArray(source, returnMembers);
-            source.Append(", ");
-            schema.Input.EmitRefFlagsArrayLiteral(source);
-            source.AppendLine(");");
+            schema.Input.EmitWagonNamesArrayLiteral(writer, StringHelpers.Escape);
+            writer.Append(", ");
+            EmitStringArray(writer, returnMembers);
+            writer.Append(", ");
+            schema.Input.EmitRefFlagsArrayLiteral(writer);
+            writer.Append(");");
+            writer.EndLine();
         }
 
-        private static void EmitStringArray(StringBuilder source, string[] values)
+        private static void EmitStringArray(CodegenWriter writer, string[] values)
         {
-            source.Append("new string[] { ");
+            writer.Append("new string[] { ");
             if (values != null)
             {
                 for (var i = 0; i < values.Length; i++)
                 {
-                    source.Append("\"").Append(StringHelpers.Escape(values[i])).Append("\"");
+                    writer.Append("\"").Append(StringHelpers.Escape(values[i])).Append("\"");
                     if (i < values.Length - 1)
                     {
-                        source.Append(", ");
+                        writer.Append(", ");
                     }
                 }
             }
 
-            source.Append(" }");
+            writer.Append(" }");
         }
     }
 }

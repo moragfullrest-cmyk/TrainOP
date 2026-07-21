@@ -3,7 +3,7 @@ using Microsoft.CodeAnalysis;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Maps wagon type symbols to manifest-safe display strings.
+    /// Maps wagon type symbols to manifest-safe display strings for generated C# source.
     /// </summary>
     internal static class ManifestWagonTypes
     {

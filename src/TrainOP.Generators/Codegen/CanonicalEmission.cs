@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Text;
 using TrainOP.Generators.Handlers;
 
 namespace TrainOP.Generators
@@ -21,34 +20,22 @@ namespace TrainOP.Generators
             var metadataKey = EmissionState.BuildMetadataKey(merged);
             var emitMetadata = emissionState.TryAddMetadataKey(metadataKey);
             var metadata = metadataConsolidation[metadataKey];
-            Emit(writer.Builder, merged, metadata, emitMetadata);
-        }
-
-        /// <summary>
-        /// Emits delegate, metadata fields, and extension method members for one merged schema.
-        /// </summary>
-        internal static void Emit(
-            StringBuilder source,
-            MergedStationSchema merged,
-            MergedStationSchema metadata,
-            bool emitMetadata)
-        {
             var handlerBinding = merged.CanonicalBinding;
             var names = NamingScope.ForDelegate(merged.DelegateTypeId, handlerBinding, metadata.ReturnMembers);
             var context = CodegenContext.ForCanonical(names);
             if (emitMetadata)
             {
-                handlerBinding.Input.EmitMetadataFields(source, names, metadata.ReturnMembers);
-                source.AppendLine();
+                handlerBinding.Input.EmitMetadataFields(writer, names, metadata.ReturnMembers);
+                writer.AppendLine();
 
                 if (handlerBinding.RequiresCustomDelegate())
                 {
-                    handlerBinding.EmitCustomDelegateDeclaration(source, names.DelegateName);
-                    source.AppendLine();
+                    handlerBinding.EmitCustomDelegateDeclaration(writer, names.DelegateName);
+                    writer.AppendLine();
                 }
             }
 
-            handlerBinding.EmitPublicExtensionMethod(source, names, context, incrementChainOrdinal: true);
+            handlerBinding.EmitPublicExtensionMethod(writer, names, context, incrementChainOrdinal: true);
         }
     }
 }

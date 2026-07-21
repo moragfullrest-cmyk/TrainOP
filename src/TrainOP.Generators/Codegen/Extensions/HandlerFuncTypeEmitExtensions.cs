@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Text;
 using TrainOP.Generators.Handlers;
 
 namespace TrainOP.Generators
@@ -79,18 +78,18 @@ namespace TrainOP.Generators
         /// </summary>
         internal static void EmitCustomDelegateDeclaration(
             this StationHandlerBinding schema,
-            StringBuilder source,
+            CodegenWriter writer,
             string delegateName)
         {
             if (schema.IsAsync)
             {
                 if (schema.ReturnShape.IsVoid)
                 {
-                    source.Append("        public delegate System.Threading.Tasks.Task ").Append(delegateName).Append("(");
+                    writer.AppendIndented("public delegate System.Threading.Tasks.Task ").Append(delegateName).Append("(");
                 }
                 else
                 {
-                    source.Append("        public delegate System.Threading.Tasks.Task<")
+                    writer.AppendIndented("public delegate System.Threading.Tasks.Task<")
                         .Append(HandlerFuncTypeResolver.ResolveCanonicalFuncReturnType(schema))
                         .Append("> ")
                         .Append(delegateName)
@@ -99,19 +98,20 @@ namespace TrainOP.Generators
             }
             else if (schema.ReturnShape.IsVoid)
             {
-                source.Append("        public delegate void ").Append(delegateName).Append("(");
+                writer.AppendIndented("public delegate void ").Append(delegateName).Append("(");
             }
             else
             {
-                source.Append("        public delegate ")
+                writer.AppendIndented("public delegate ")
                     .Append(HandlerFuncTypeResolver.ResolveCanonicalFuncReturnType(schema))
                     .Append(" ")
                     .Append(delegateName)
                     .Append("(");
             }
 
-            schema.Input.EmitDelegateParameters(source, useNeutralParameterNames: true);
-            source.AppendLine(");");
+            schema.Input.EmitDelegateParameters(writer, useNeutralParameterNames: true);
+            writer.Append(");");
+            writer.EndLine();
         }
 
         private static bool UsesActionCancellationHandler(this StationHandlerBinding schema)
@@ -159,7 +159,7 @@ namespace TrainOP.Generators
 
         private static void EmitDelegateParameters(
             this HandlerInputParameters input,
-            StringBuilder source,
+            CodegenWriter writer,
             bool useNeutralParameterNames)
         {
             var needsComma = false;
@@ -168,7 +168,7 @@ namespace TrainOP.Generators
             {
                 if (needsComma)
                 {
-                    source.Append(", ");
+                    writer.Append(", ");
                 }
 
                 var slot = callOrder[i];
@@ -178,23 +178,23 @@ namespace TrainOP.Generators
                         var wagon = slot.Wagon;
                         if (wagon.IsByReference)
                         {
-                            source.Append("ref ");
+                            writer.Append("ref ");
                         }
 
                         var parameterName = useNeutralParameterNames ? "p" + slot.WagonIndex : wagon.Name;
-                        source.Append(wagon.TypeDisplay).Append(" ").Append(parameterName);
+                        writer.Append(wagon.TypeDisplay).Append(" ").Append(parameterName);
                         break;
                     case HandlerInputKind.RedSignal:
-                        source.Append("RedSignal ").Append(useNeutralParameterNames ? "pRed" : "red");
+                        writer.Append("RedSignal ").Append(useNeutralParameterNames ? "pRed" : "red");
                         break;
                     case HandlerInputKind.SignalIssue:
-                        source.Append("SignalIssue ").Append(useNeutralParameterNames ? "pIssue" : "issue");
+                        writer.Append("SignalIssue ").Append(useNeutralParameterNames ? "pIssue" : "issue");
                         break;
                     case HandlerInputKind.CargoManifest:
-                        source.Append("CargoManifest ").Append(useNeutralParameterNames ? "pManifest" : "manifest");
+                        writer.Append("CargoManifest ").Append(useNeutralParameterNames ? "pManifest" : "manifest");
                         break;
                     case HandlerInputKind.CancellationToken:
-                        source.Append("CancellationToken ").Append(useNeutralParameterNames ? "pToken" : "cancellationToken");
+                        writer.Append("CancellationToken ").Append(useNeutralParameterNames ? "pToken" : "cancellationToken");
                         break;
                 }
 

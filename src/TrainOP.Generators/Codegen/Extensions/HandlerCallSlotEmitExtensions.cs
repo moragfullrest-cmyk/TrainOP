@@ -1,4 +1,3 @@
-using System.Text;
 using TrainOP.Generators.Handlers;
 
 namespace TrainOP.Generators
@@ -8,37 +7,37 @@ namespace TrainOP.Generators
         /// <summary>
         /// Emits one handler call argument for this call slot.
         /// </summary>
-        internal static void EmitArgument(this HandlerCallSlot slot, StringBuilder source, CallArgumentContext context)
+        internal static void EmitArgument(this HandlerCallSlot slot, CodegenWriter writer, CallArgumentContext context)
         {
             switch (slot.Kind)
             {
                 case HandlerInputKind.Wagon:
                     if (slot.Wagon.IsByReference)
                     {
-                        source.Append("ref ");
+                        writer.Append("ref ");
                     }
 
                     if (context.UseNeutralWagonNames)
                     {
-                        source.Append("wagon").Append(slot.WagonIndex);
+                        writer.Append("wagon").Append(slot.WagonIndex);
                     }
                     else
                     {
-                        source.Append(slot.Wagon.Name);
+                        writer.Append(slot.Wagon.Name);
                     }
 
                     break;
                 case HandlerInputKind.RedSignal:
-                    source.Append(context.RedVariable ?? "red");
+                    writer.Append(context.RedVariable ?? "red");
                     break;
                 case HandlerInputKind.SignalIssue:
-                    source.Append(context.SignalIssueExpression);
+                    writer.Append(context.SignalIssueExpression);
                     break;
                 case HandlerInputKind.CargoManifest:
-                    source.Append("manifest");
+                    writer.Append("manifest");
                     break;
                 case HandlerInputKind.CancellationToken:
-                    source.Append(context.TokenVariable ?? "default");
+                    writer.Append(context.TokenVariable ?? "default");
                     break;
             }
         }

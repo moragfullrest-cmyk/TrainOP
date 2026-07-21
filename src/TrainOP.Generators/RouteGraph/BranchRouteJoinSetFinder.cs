@@ -54,18 +54,6 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Builds a join set from an already-identified forking receiver.
-        /// </summary>
-        public static BranchRouteJoinSet FromForkReceiver(
-            ExpressionSyntax forkReceiver,
-            SemanticModel model,
-            InvocationExpressionSyntax downstreamStation = null)
-        {
-            var branches = BranchRouteGraphDiscoverer.Discover(forkReceiver, model);
-            return new BranchRouteJoinSet(forkReceiver, downstreamStation, branches);
-        }
-
-        /// <summary>
         /// Determines whether a node is a Station / ServiceStation candidate.
         /// </summary>
         private static bool IsCandidateDownstreamStation(SyntaxNode node)

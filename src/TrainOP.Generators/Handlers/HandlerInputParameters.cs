@@ -67,18 +67,6 @@ namespace TrainOP.Generators.Handlers
         /// </summary>
         public ImmutableArray<HandlerCallSlot> CallOrder { get; }
 
-        /// <summary>Projects wagon names for merge metadata and chain bindings.</summary>
-        public string[] GetWagonNames()
-        {
-            var names = new string[Wagons.Length];
-            for (var i = 0; i < Wagons.Length; i++)
-            {
-                names[i] = Wagons[i].Name;
-            }
-
-            return names;
-        }
-
         /// <summary>Compares two wagon arrays for matching names in the same order.</summary>
         public static bool WagonNamesMatch(ImmutableArray<WagonBinding> left, ImmutableArray<WagonBinding> right)
         {

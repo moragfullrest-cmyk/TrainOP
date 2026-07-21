@@ -20,7 +20,6 @@ Reference `TrainOP` and `TrainOP.Generators` in the library project. The generat
 
 - `[RouteSchemaFor(typeof(PaymentModule), "Build")]`
 - repeated `[RouteSchemaWagon(name, typeof(T))]` attributes
-- `TerminalWagons` array for runtime inspection
 
 ## Consumer application
 

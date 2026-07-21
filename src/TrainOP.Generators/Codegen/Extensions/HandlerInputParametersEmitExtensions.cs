@@ -1,5 +1,4 @@
 using System;
-using System.Text;
 using TrainOP.Generators.Handlers;
 
 namespace TrainOP.Generators
@@ -11,7 +10,7 @@ namespace TrainOP.Generators
         /// </summary>
         internal static void EmitCallArguments(
             this HandlerInputParameters input,
-            StringBuilder source,
+            CodegenWriter writer,
             CallArgumentContext context)
         {
             var needsComma = false;
@@ -20,10 +19,10 @@ namespace TrainOP.Generators
             {
                 if (needsComma)
                 {
-                    source.Append(", ");
+                    writer.Append(", ");
                 }
 
-                callOrder[i].EmitArgument(source, context);
+                callOrder[i].EmitArgument(writer, context);
                 needsComma = true;
             }
         }
@@ -33,38 +32,38 @@ namespace TrainOP.Generators
         /// </summary>
         internal static void EmitWagonNamesArrayLiteral(
             this HandlerInputParameters input,
-            StringBuilder source,
+            CodegenWriter writer,
             Func<string, string> escape)
         {
-            source.Append("new string[] { ");
+            writer.Append("new string[] { ");
             for (var i = 0; i < input.Wagons.Length; i++)
             {
-                source.Append("\"").Append(escape(input.Wagons[i].Name)).Append("\"");
+                writer.Append("\"").Append(escape(input.Wagons[i].Name)).Append("\"");
                 if (i < input.Wagons.Length - 1)
                 {
-                    source.Append(", ");
+                    writer.Append(", ");
                 }
             }
 
-            source.Append(" }");
+            writer.Append(" }");
         }
 
         /// <summary>
         /// Emits a <c>bool[]</c> literal of wagon ref flags into generated source.
         /// </summary>
-        internal static void EmitRefFlagsArrayLiteral(this HandlerInputParameters input, StringBuilder source)
+        internal static void EmitRefFlagsArrayLiteral(this HandlerInputParameters input, CodegenWriter writer)
         {
-            source.Append("new bool[] { ");
+            writer.Append("new bool[] { ");
             for (var i = 0; i < input.Wagons.Length; i++)
             {
-                source.Append(input.Wagons[i].IsByReference ? "true" : "false");
+                writer.Append(input.Wagons[i].IsByReference ? "true" : "false");
                 if (i < input.Wagons.Length - 1)
                 {
-                    source.Append(", ");
+                    writer.Append(", ");
                 }
             }
 
-            source.Append(" }");
+            writer.Append(" }");
         }
 
         /// <summary>
@@ -72,34 +71,37 @@ namespace TrainOP.Generators
         /// </summary>
         internal static void EmitMetadataFields(
             this HandlerInputParameters input,
-            StringBuilder source,
+            CodegenWriter writer,
             NamingScope names,
             string[] returnMembers)
         {
             if (names.RefFlagsField != null)
             {
-                source.Append("        private static readonly bool[] ").Append(names.RefFlagsField).Append(" = ");
-                input.EmitRefFlagsArrayLiteral(source);
-                source.AppendLine(";");
+                writer.AppendIndented("private static readonly bool[] ").Append(names.RefFlagsField).Append(" = ");
+                input.EmitRefFlagsArrayLiteral(writer);
+                writer.Append(";");
+                writer.EndLine();
             }
 
-            source.Append("        private static readonly string[] ").Append(names.WagonNamesField).Append(" = ");
-            input.EmitWagonNamesArrayLiteral(source, StringHelpers.Escape);
-            source.AppendLine(";");
+            writer.AppendIndented("private static readonly string[] ").Append(names.WagonNamesField).Append(" = ");
+            input.EmitWagonNamesArrayLiteral(writer, StringHelpers.Escape);
+            writer.Append(";");
+            writer.EndLine();
 
             if (names.ReturnMembersField != null && returnMembers != null)
             {
-                source.Append("        private static readonly string[] ").Append(names.ReturnMembersField).Append(" = new string[] { ");
+                writer.AppendIndented("private static readonly string[] ").Append(names.ReturnMembersField).Append(" = new string[] { ");
                 for (var i = 0; i < returnMembers.Length; i++)
                 {
-                    source.Append("\"").Append(StringHelpers.Escape(returnMembers[i])).Append("\"");
+                    writer.Append("\"").Append(StringHelpers.Escape(returnMembers[i])).Append("\"");
                     if (i < returnMembers.Length - 1)
                     {
-                        source.Append(", ");
+                        writer.Append(", ");
                     }
                 }
 
-                source.AppendLine(" };");
+                writer.Append(" };");
+                writer.EndLine();
             }
         }
     }
