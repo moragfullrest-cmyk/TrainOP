@@ -128,31 +128,6 @@ namespace TrainOP.Generators.Handlers
             return !IsSignalOnlyReturnType(Shape.ReturnTypeDisplay);
         }
 
-        /// <summary>
-        /// Builds an inline compile-time <c>string[]</c> literal for known return member names.
-        /// </summary>
-        public string BuildCompileTimeReturnMembersExpression(Func<string, string> escape)
-        {
-            if (Shape.Members.IsDefaultOrEmpty)
-            {
-                return null;
-            }
-
-            var builder = new StringBuilder();
-            builder.Append("new string[] { ");
-            for (var i = 0; i < Shape.Members.Length; i++)
-            {
-                builder.Append("\"").Append(escape(Shape.Members[i].Name)).Append("\"");
-                if (i < Shape.Members.Length - 1)
-                {
-                    builder.Append(", ");
-                }
-            }
-
-            builder.Append(" }");
-            return builder.ToString();
-        }
-
         private static HandlerOutputMode ResolveMode(ReturnShape shape)
         {
             if (shape.IsVoid)

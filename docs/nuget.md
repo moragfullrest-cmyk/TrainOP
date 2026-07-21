@@ -33,16 +33,16 @@ dotnet add package TrainOP.Generators
 Указать версию явно:
 
 ```bash
-dotnet add package TrainOP --version 0.11.0
-dotnet add package TrainOP.Generators --version 0.11.0
+dotnet add package TrainOP --version 0.12.0
+dotnet add package TrainOP.Generators --version 0.12.0
 ```
 
 ### PackageReference в `.csproj`
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.11.0" />
-  <PackageReference Include="TrainOP.Generators" Version="0.11.0" />
+  <PackageReference Include="TrainOP" Version="0.12.0" />
+  <PackageReference Include="TrainOP.Generators" Version="0.12.0" />
 </ItemGroup>
 ```
 

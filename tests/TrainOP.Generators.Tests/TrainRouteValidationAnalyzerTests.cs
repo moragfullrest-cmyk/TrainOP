@@ -12,9 +12,9 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests diagnostic output from <see cref="ChainValidationAnalyzer"/> on route chains.
+    /// Tests diagnostic output from <see cref="TrainRouteValidationAnalyzer"/> on route chains.
     /// </summary>
-    public sealed class ChainValidationAnalyzerTests
+    public sealed class TrainRouteValidationAnalyzerTests
     {
         /// <summary>
         /// Verifies that a valid route chain produces no analyzer errors.
@@ -949,7 +949,7 @@ public static class AmbiguousRoute
                 GetMetadataReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new ChainValidationAnalyzer());
+            var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new TrainRouteValidationAnalyzer());
             var compilationWithAnalyzers = compilation.WithAnalyzers(analyzers);
             return await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync();
         }

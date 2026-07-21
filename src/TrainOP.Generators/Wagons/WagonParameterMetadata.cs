@@ -3,9 +3,9 @@ using Microsoft.CodeAnalysis;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Analyzes handler parameter symbols for wagon binding metadata.
+    /// Metadata helpers for handler wagon parameter symbols.
     /// </summary>
-    internal static class WagonParameterAnalyzer
+    internal static class WagonParameterMetadata
     {
         /// <summary>
         /// Determines whether the parameter is passed by reference.

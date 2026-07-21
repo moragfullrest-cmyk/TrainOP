@@ -14,7 +14,7 @@ namespace TrainOP.Generators
     /// <summary>
     /// Walk-primitives for fluent route chain traversal (used by RouteGraphAssembler).
     /// </summary>
-    internal static class RouteChainDetector
+    internal static class RouteChainWalker
     {
         /// <summary>
         /// Attempts to detect a route chain anchor at the given syntax node.
@@ -499,7 +499,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            var key = ChainStationCallIndex.BuildLocationKey(invocation.GetLocation());
+            var key = ChainSiteBindingLookup.BuildLocationKey(invocation.GetLocation());
             if (key.Length == 0
                 || !stationSitesByKey.TryGetValue(key, out site)
                 || site.Kind != expectedKind

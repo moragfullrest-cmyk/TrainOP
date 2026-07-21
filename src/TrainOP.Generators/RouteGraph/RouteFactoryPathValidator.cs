@@ -40,7 +40,7 @@ namespace TrainOP.Generators
             var location = factoryMethod?.Locations.FirstOrDefault() ?? Location.None;
             var displayName = factoryMethod?.ToDisplayString() ?? "?";
 
-            var paths = RouteFactoryPathAnalyzer.AnalyzeAllReturnPaths(factoryMethod, compilation);
+            var paths = RouteFactoryPathSimulator.SimulateAllReturnPaths(factoryMethod, compilation);
             if (paths.IsDefaultOrEmpty)
             {
                 diagnostics.Add(Diagnostic.Create(

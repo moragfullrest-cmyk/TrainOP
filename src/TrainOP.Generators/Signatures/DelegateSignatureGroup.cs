@@ -8,7 +8,7 @@ namespace TrainOP.Generators
     /// <summary>
     /// Accumulates handler bindings that share the same delegate type signature.
     /// </summary>
-    internal sealed class TypeSignatureGroup
+    internal sealed class DelegateSignatureGroup
     {
         private readonly DelegateTypeSignature _typeSignature;
         private readonly List<ReturnShape> _returnShapes = new List<ReturnShape>();
@@ -19,7 +19,7 @@ namespace TrainOP.Generators
         /// <summary>
         /// Creates a group keyed by delegate type signature.
         /// </summary>
-        public TypeSignatureGroup(DelegateTypeSignature typeSignature)
+        public DelegateSignatureGroup(DelegateTypeSignature typeSignature)
         {
             _typeSignature = typeSignature;
         }
@@ -37,8 +37,8 @@ namespace TrainOP.Generators
             if (chainBinding != null
                 && !_chainBindings.Exists(existing =>
                     existing.ChainId == chainBinding.ChainId
-                    && ChainStationCallIndex.BuildLocationKey(existing.InvocationLocation)
-                        == ChainStationCallIndex.BuildLocationKey(chainBinding.InvocationLocation)))
+                    && ChainSiteBindingLookup.BuildLocationKey(existing.InvocationLocation)
+                        == ChainSiteBindingLookup.BuildLocationKey(chainBinding.InvocationLocation)))
             {
                 _chainBindings.Add(chainBinding);
             }

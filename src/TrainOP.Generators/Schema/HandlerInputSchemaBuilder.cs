@@ -108,11 +108,11 @@ namespace TrainOP.Generators
                     return null;
                 }
 
-                var isByReference = WagonParameterAnalyzer.IsByReference(parameter);
+                var isByReference = WagonParameterMetadata.IsByReference(parameter);
 
-                var isOptional = WagonParameterAnalyzer.IsOptionalNullableValueType(parameterType, out var underlyingType);
-                var pullTypeDisplay = WagonParameterAnalyzer.GetPullTypeDisplay(parameterType, underlyingType, isOptional);
-                var effectiveTypeSymbol = WagonParameterAnalyzer.GetEffectiveTypeSymbol(parameterType, underlyingType, isOptional);
+                var isOptional = WagonParameterMetadata.IsOptionalNullableValueType(parameterType, out var underlyingType);
+                var pullTypeDisplay = WagonParameterMetadata.GetPullTypeDisplay(parameterType, underlyingType, isOptional);
+                var effectiveTypeSymbol = WagonParameterMetadata.GetEffectiveTypeSymbol(parameterType, underlyingType, isOptional);
                 var typeDisplay = ManifestWagonTypes.ToWagonParameterTypeDisplay(parameterType, underlyingType, isOptional);
                 if (string.IsNullOrWhiteSpace(typeDisplay))
                 {

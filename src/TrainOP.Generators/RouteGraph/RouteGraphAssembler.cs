@@ -13,7 +13,7 @@ namespace TrainOP.Generators
     {
         /// <summary>
         /// Builds route chains from discovered anchors via forward chain walk;
-        /// station sites supply pre-resolved handler bindings for <see cref="RouteChainDetector.TryAdvanceChain"/>.
+        /// station sites supply pre-resolved handler bindings for <see cref="RouteChainWalker.TryAdvanceChain"/>.
         /// </summary>
         public static RouteGraph Build(ImmutableArray<RouteSite> sites, Compilation compilation)
         {
@@ -37,7 +37,7 @@ namespace TrainOP.Generators
                 if (site.IsStation)
                 {
                     stationSites.Add(site);
-                    var key = ChainStationCallIndex.BuildLocationKey(site.Invocation.GetLocation());
+                    var key = ChainSiteBindingLookup.BuildLocationKey(site.Invocation.GetLocation());
                     if (key.Length > 0)
                     {
                         stationByKey[key] = site;
@@ -81,7 +81,7 @@ namespace TrainOP.Generators
                         station.Invocation,
                         station.Handler);
 
-                    var locationKey = ChainStationCallIndex.BuildLocationKey(station.InvocationLocation);
+                    var locationKey = ChainSiteBindingLookup.BuildLocationKey(station.InvocationLocation);
                     if (!chainIndex.TryGetValue(locationKey, out var list))
                     {
                         list = new List<ChainSiteBinding>();
@@ -90,7 +90,7 @@ namespace TrainOP.Generators
 
                     list.Add(binding);
 
-                    var invocationKey = ChainStationCallIndex.BuildLocationKey(station.Invocation.GetLocation());
+                    var invocationKey = ChainSiteBindingLookup.BuildLocationKey(station.Invocation.GetLocation());
                     if (invocationKey.Length > 0)
                     {
                         chainsByInvocationKey[invocationKey] = chain;
@@ -120,7 +120,7 @@ namespace TrainOP.Generators
             var stations = ImmutableArray.CreateBuilder<StationChainLink>();
             var current = anchor.Root;
 
-            while (RouteChainDetector.TryAdvanceChain(
+            while (RouteChainWalker.TryAdvanceChain(
                 current,
                 semanticModel,
                 stations,

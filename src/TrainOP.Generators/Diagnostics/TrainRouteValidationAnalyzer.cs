@@ -8,13 +8,13 @@ using TrainOP.Generators.Route;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Roslyn analyzer that reports route-chain validation diagnostics at compile time.
+    /// Roslyn analyzer that reports TrainRoute validation diagnostics at compile time.
     /// </summary>
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
-    public sealed class ChainValidationAnalyzer : DiagnosticAnalyzer
+    public sealed class TrainRouteValidationAnalyzer : DiagnosticAnalyzer
     {
         /// <summary>
-        /// Diagnostics produced by route-chain simulation and orphan handler detection.
+        /// Diagnostics produced by route graph validation, simulation, and orphan handler detection.
         /// </summary>
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
             [
@@ -34,7 +34,7 @@ namespace TrainOP.Generators
             ];
 
         /// <summary>
-        /// Registers semantic-model analysis for route chains in each compilation.
+        /// Registers semantic-model analysis for route graphs in each compilation.
         /// </summary>
         public override void Initialize(AnalysisContext context)
         {

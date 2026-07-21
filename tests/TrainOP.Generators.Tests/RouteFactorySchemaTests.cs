@@ -31,7 +31,7 @@ public static class DivergentRoute
             : new TrainRoute().Station(""B"", () => new { paymentId = ""p2"" });
 }";
 
-            var diagnostics = await ChainValidationAnalyzerTests.RunAnalyzerAsync(source);
+            var diagnostics = await TrainRouteValidationAnalyzerTests.RunAnalyzerAsync(source);
 
             Assert.Contains(diagnostics, d => d.Id == "TOP012");
         }
@@ -103,13 +103,13 @@ public static class AppRoute
             var routeLibCompilation = CSharpCompilation.Create(
                 "RouteLib",
                 new[] { routeLibTree },
-                ChainValidationAnalyzerTests.GetMetadataReferences(),
+                TrainRouteValidationAnalyzerTests.GetMetadataReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
             routeLibCompilation = RunGeneratorOnCompilation(routeLibCompilation, out _);
 
             var consumerTree = CSharpSyntaxTree.ParseText(consumerSource, path: "Consumer.cs");
-            var references = ChainValidationAnalyzerTests.GetMetadataReferences()
+            var references = TrainRouteValidationAnalyzerTests.GetMetadataReferences()
                 .Concat(new[] { MetadataReference.CreateFromImage(EmitToImage(routeLibCompilation)) })
                 .ToArray();
 
@@ -119,7 +119,7 @@ public static class AppRoute
                 references,
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new ChainValidationAnalyzer());
+            var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new TrainRouteValidationAnalyzer());
             return await consumerCompilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();
         }
 
@@ -156,7 +156,7 @@ public static class AppRoute
             var compilation = CSharpCompilation.Create(
                 "GeneratorSchemaTests",
                 new[] { tree },
-                ChainValidationAnalyzerTests.GetMetadataReferences(),
+                TrainRouteValidationAnalyzerTests.GetMetadataReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
             RouteFactorySchemaTests.RunGeneratorOnCompilation(compilation, out var generated);

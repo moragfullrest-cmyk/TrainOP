@@ -1,20 +1,15 @@
 using System.Collections.Generic;
 using System.Text;
 using TrainOP.Generators.Handlers;
+
 namespace TrainOP.Generators
 {
-    /// <summary>
-    /// Builds Func and Action type strings for generated station handler extension methods.
-    /// Parameter order comes from <see cref="HandlerInputParameters.CallOrder"/>.
-    /// </summary>
-    internal static class HandlerFuncTypeCodegen
+    internal static class HandlerFuncTypeEmitExtensions
     {
         /// <summary>
-        /// Determines whether a handler must use a custom delegate.
-        /// Ref parameters are unsupported by Func/Action; async handlers use custom delegates
-        /// to avoid overload ambiguity with sync Func counterparts under a single Station name.
+        /// Determines whether this handler must use a custom delegate type.
         /// </summary>
-        public static bool RequiresCustomDelegate(StationHandlerBinding schema)
+        internal static bool RequiresCustomDelegate(this StationHandlerBinding schema)
         {
             return schema.HasRefWagons || schema.IsAsync;
         }
@@ -22,28 +17,28 @@ namespace TrainOP.Generators
         /// <summary>
         /// Resolves the handler type used by a generated route extension method.
         /// </summary>
-        public static string BuildHandlerTypeName(StationHandlerBinding schema, string customDelegateName)
+        internal static string BuildHandlerTypeName(this StationHandlerBinding schema, string customDelegateName)
         {
-            if (RequiresCustomDelegate(schema))
+            if (schema.RequiresCustomDelegate())
             {
                 return customDelegateName;
             }
 
-            if (UsesActionCancellationHandler(schema))
+            if (schema.UsesActionCancellationHandler())
             {
                 return "Action<CancellationToken>";
             }
 
-            return BuildFuncOrActionTypeName(schema);
+            return schema.BuildFuncOrActionTypeName();
         }
 
         /// <summary>
-        /// Builds a Func or Action type with concrete return types for tuple, object, and signal handler groups.
+        /// Builds a Func or Action type with concrete return types for this handler.
         /// </summary>
-        public static string BuildFuncOrActionTypeName(StationHandlerBinding schema)
+        internal static string BuildFuncOrActionTypeName(this StationHandlerBinding schema)
         {
             var parameters = new List<string>();
-            AppendHandlerParameterTypes(schema, parameters);
+            schema.Input.AppendHandlerParameterTypes(parameters);
 
             if (schema.ReturnShape.IsVoid)
             {
@@ -55,7 +50,7 @@ namespace TrainOP.Generators
                 return "Action<" + string.Join(", ", parameters) + ">";
             }
 
-            var returnType = ResolveCanonicalFuncReturnType(schema);
+            var returnType = HandlerFuncTypeResolver.ResolveCanonicalFuncReturnType(schema);
             if (parameters.Count == 0)
             {
                 return "Func<" + returnType + ">";
@@ -66,9 +61,26 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Builds a custom delegate declaration for handlers that require ref parameters.
+        /// Builds a stable grouping key for handler schemas that share the same generated extension signature.
         /// </summary>
-        public static void EmitCustomDelegateDeclaration(StringBuilder source, StationHandlerBinding schema, string delegateName)
+        internal static string BuildGroupingKey(this StationHandlerBinding schema, string delegateTypeId)
+        {
+            var routeMethod = schema.ExtensionMethodName;
+            if (schema.RequiresCustomDelegate())
+            {
+                return routeMethod + "|delegate|" + delegateTypeId;
+            }
+
+            return routeMethod + "|" + schema.BuildHandlerTypeName("unused");
+        }
+
+        /// <summary>
+        /// Emits a custom delegate declaration when Func/Action is insufficient.
+        /// </summary>
+        internal static void EmitCustomDelegateDeclaration(
+            this StationHandlerBinding schema,
+            StringBuilder source,
+            string delegateName)
         {
             if (schema.IsAsync)
             {
@@ -79,7 +91,7 @@ namespace TrainOP.Generators
                 else
                 {
                     source.Append("        public delegate System.Threading.Tasks.Task<")
-                        .Append(ResolveCanonicalFuncReturnType(schema))
+                        .Append(HandlerFuncTypeResolver.ResolveCanonicalFuncReturnType(schema))
                         .Append("> ")
                         .Append(delegateName)
                         .Append("(");
@@ -92,102 +104,17 @@ namespace TrainOP.Generators
             else
             {
                 source.Append("        public delegate ")
-                    .Append(ResolveCanonicalFuncReturnType(schema))
+                    .Append(HandlerFuncTypeResolver.ResolveCanonicalFuncReturnType(schema))
                     .Append(" ")
                     .Append(delegateName)
                     .Append("(");
             }
 
-            EmitDelegateParameters(source, schema, useNeutralParameterNames: true);
+            schema.Input.EmitDelegateParameters(source, useNeutralParameterNames: true);
             source.AppendLine(");");
         }
 
-        /// <summary>
-        /// Resolves the return type segment of a generated Func or Action type.
-        /// </summary>
-        public static string ResolveFuncReturnType(StationHandlerBinding schema)
-        {
-            if (schema.ReturnShape.IsVoid)
-            {
-                return "void";
-            }
-
-            if (schema.ReturnShape.IsExplicitSignalReturn)
-            {
-                return ReturnTypeDisplayHelper.SignalReturnTypeDisplay;
-            }
-
-            if (schema.ReturnShape.UseGenericReturn || schema.ReturnShape.IsUnknown)
-            {
-                return "global::System.Object";
-            }
-
-            if (!string.IsNullOrWhiteSpace(schema.ReturnShape.ReturnTypeDisplay))
-            {
-                return schema.ReturnShape.ReturnTypeDisplay;
-            }
-
-            return "global::System.Object";
-        }
-
-        /// <summary>
-        /// Resolves a canonical return type display for generated handler signatures.
-        /// </summary>
-        public static string ResolveCanonicalFuncReturnType(StationHandlerBinding schema)
-        {
-            if (schema.ReturnShape.IsValueTuple)
-            {
-                var tupleDisplay = ResolveCanonicalTupleReturnTypeDisplay(schema.ReturnShape);
-                if (!string.IsNullOrWhiteSpace(tupleDisplay))
-                {
-                    return tupleDisplay;
-                }
-            }
-
-            return ResolveFuncReturnType(schema);
-        }
-
-        /// <summary>
-        /// Resolves a canonical tuple return type display from return shape members.
-        /// </summary>
-        public static string ResolveCanonicalTupleReturnTypeDisplay(ReturnShape returnShape)
-        {
-            if (!returnShape.IsValueTuple || returnShape.Members.IsDefaultOrEmpty)
-            {
-                return returnShape.ReturnTypeDisplay;
-            }
-
-            var builder = new StringBuilder();
-            builder.Append('(');
-            for (var i = 0; i < returnShape.Members.Length; i++)
-            {
-                if (i > 0)
-                {
-                    builder.Append(", ");
-                }
-
-                builder.Append(returnShape.Members[i].TypeDisplay);
-            }
-
-            builder.Append(')');
-            return builder.ToString();
-        }
-
-        /// <summary>
-        /// Builds a stable grouping key for handler schemas that share the same generated extension signature.
-        /// </summary>
-        public static string BuildGroupingKey(StationHandlerBinding schema, string delegateTypeId)
-        {
-            var routeMethod = schema.ExtensionMethodName;
-            if (RequiresCustomDelegate(schema))
-            {
-                return routeMethod + "|delegate|" + delegateTypeId;
-            }
-
-            return routeMethod + "|" + BuildHandlerTypeName(schema, "unused");
-        }
-
-        private static bool UsesActionCancellationHandler(StationHandlerBinding schema)
+        private static bool UsesActionCancellationHandler(this StationHandlerBinding schema)
         {
             return !schema.IsServiceStation
                 && !schema.IsAsync
@@ -196,9 +123,9 @@ namespace TrainOP.Generators
                 && schema.Wagons.Length == 0;
         }
 
-        private static void AppendHandlerParameterTypes(StationHandlerBinding schema, List<string> parameters)
+        private static void AppendHandlerParameterTypes(this HandlerInputParameters input, List<string> parameters)
         {
-            var callOrder = schema.Input.CallOrder;
+            var callOrder = input.CallOrder;
             for (var i = 0; i < callOrder.Length; i++)
             {
                 var slot = callOrder[i];
@@ -230,10 +157,13 @@ namespace TrainOP.Generators
             }
         }
 
-        private static void EmitDelegateParameters(StringBuilder source, StationHandlerBinding schema, bool useNeutralParameterNames)
+        private static void EmitDelegateParameters(
+            this HandlerInputParameters input,
+            StringBuilder source,
+            bool useNeutralParameterNames)
         {
             var needsComma = false;
-            var callOrder = schema.Input.CallOrder;
+            var callOrder = input.CallOrder;
             for (var i = 0; i < callOrder.Length; i++)
             {
                 if (needsComma)

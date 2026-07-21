@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Immutable;
-using System.Text;
 using TrainOP.Generators.Wagons;
 
 namespace TrainOP.Generators.Handlers
@@ -80,18 +79,6 @@ namespace TrainOP.Generators.Handlers
             return names;
         }
 
-        /// <summary>Projects by-ref flags aligned with <see cref="GetWagonNames"/>.</summary>
-        public bool[] GetRefFlags()
-        {
-            var flags = new bool[Wagons.Length];
-            for (var i = 0; i < Wagons.Length; i++)
-            {
-                flags[i] = Wagons[i].IsByReference;
-            }
-
-            return flags;
-        }
-
         /// <summary>Compares two wagon arrays for matching names in the same order.</summary>
         public static bool WagonNamesMatch(ImmutableArray<WagonBinding> left, ImmutableArray<WagonBinding> right)
         {
@@ -129,50 +116,13 @@ namespace TrainOP.Generators.Handlers
                 return "(none)";
             }
 
-            var builder = new StringBuilder();
+            var names = new string[wagons.Length];
             for (var i = 0; i < wagons.Length; i++)
             {
-                if (i > 0)
-                {
-                    builder.Append(", ");
-                }
-
-                builder.Append(wagons[i].Name);
+                names[i] = wagons[i].Name;
             }
 
-            return builder.ToString();
-        }
-
-        /// <summary>Appends a <c>string[]</c> literal of wagon names into generated source.</summary>
-        public void AppendWagonNamesArrayLiteral(StringBuilder source, Func<string, string> escape)
-        {
-            source.Append("new string[] { ");
-            for (var i = 0; i < Wagons.Length; i++)
-            {
-                source.Append("\"").Append(escape(Wagons[i].Name)).Append("\"");
-                if (i < Wagons.Length - 1)
-                {
-                    source.Append(", ");
-                }
-            }
-
-            source.Append(" }");
-        }
-
-        /// <summary>Appends a <c>bool[]</c> literal of wagon ref flags into generated source.</summary>
-        public void AppendRefFlagsArrayLiteral(StringBuilder source)
-        {
-            source.Append("new bool[] { ");
-            for (var i = 0; i < Wagons.Length; i++)
-            {
-                source.Append(Wagons[i].IsByReference ? "true" : "false");
-                if (i < Wagons.Length - 1)
-                {
-                    source.Append(", ");
-                }
-            }
-
-            source.Append(" }");
+            return string.Join(", ", names);
         }
 
         private static bool ComputeHasRefWagons(ImmutableArray<WagonBinding> wagons)

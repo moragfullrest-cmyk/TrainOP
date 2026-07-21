@@ -101,34 +101,8 @@ namespace TrainOP.Generators.Route
                 return false;
             }
 
-            var key = ChainStationCallIndex.BuildLocationKey(invocation.GetLocation());
+            var key = ChainSiteBindingLookup.BuildLocationKey(invocation.GetLocation());
             return key.Length > 0 && _chainsByInvocationKey.TryGetValue(key, out chain);
-        }
-
-        /// <summary>
-        /// Returns station invocations in <paramref name="syntaxTree"/> that belong to a chain.
-        /// </summary>
-        public ImmutableArray<InvocationExpressionSyntax> GetChainedInvocationsInTree(SyntaxTree syntaxTree)
-        {
-            if (syntaxTree == null)
-            {
-                return ImmutableArray<InvocationExpressionSyntax>.Empty;
-            }
-
-            var builder = ImmutableArray.CreateBuilder<InvocationExpressionSyntax>();
-            foreach (var chain in GetChainsInTree(syntaxTree))
-            {
-                for (var i = 0; i < chain.Stations.Length; i++)
-                {
-                    var invocation = chain.Stations[i].Invocation;
-                    if (invocation != null)
-                    {
-                        builder.Add(invocation);
-                    }
-                }
-            }
-
-            return builder.ToImmutable();
         }
 
         /// <summary>
@@ -141,7 +115,7 @@ namespace TrainOP.Generators.Route
                 return false;
             }
 
-            var key = ChainStationCallIndex.BuildLocationKey(invocationLocation);
+            var key = ChainSiteBindingLookup.BuildLocationKey(invocationLocation);
             return key.Length > 0 && _chainedInvocationKeys.Contains(key);
         }
 
@@ -207,7 +181,7 @@ namespace TrainOP.Generators.Route
             {
                 for (var i = 0; i < bindings.Length; i++)
                 {
-                    var key = ChainStationCallIndex.BuildLocationKey(bindings[i].InvocationLocation);
+                    var key = ChainSiteBindingLookup.BuildLocationKey(bindings[i].InvocationLocation);
                     if (key.Length > 0)
                     {
                         keys.Add(key);

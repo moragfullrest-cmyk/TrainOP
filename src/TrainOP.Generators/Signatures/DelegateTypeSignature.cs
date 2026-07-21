@@ -110,7 +110,7 @@ namespace TrainOP.Generators
 
             if (returnShape.IsValueTuple)
             {
-                return "tuple:" + HandlerFuncTypeCodegen.ResolveCanonicalTupleReturnTypeDisplay(returnShape);
+                return "tuple:" + HandlerFuncTypeResolver.ResolveCanonicalTupleReturnTypeDisplay(returnShape);
             }
 
             return returnShape.ReturnTypeDisplay ?? "object";

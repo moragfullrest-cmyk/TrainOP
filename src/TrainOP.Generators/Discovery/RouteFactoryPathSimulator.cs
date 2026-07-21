@@ -10,12 +10,12 @@ namespace TrainOP.Generators
     /// <summary>
     /// Collects and simulates all return paths of a TrainRoute factory method.
     /// </summary>
-    internal static class RouteFactoryPathAnalyzer
+    internal static class RouteFactoryPathSimulator
     {
         /// <summary>
-        /// Analyzes all statically discoverable return paths for a factory method.
+        /// Simulates all statically discoverable return paths for a factory method.
         /// </summary>
-        public static ImmutableArray<FactoryPathSimulation> AnalyzeAllReturnPaths(
+        public static ImmutableArray<FactoryPathSimulation> SimulateAllReturnPaths(
             IMethodSymbol factoryMethod,
             Compilation compilation)
         {
@@ -165,7 +165,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (!RouteChainDetector.TryBuildChainFromStationInvocation(
+            if (!RouteChainWalker.TryBuildChainFromStationInvocation(
                 firstDownstreamStation,
                 semanticModel,
                 out var downstreamChain))
@@ -260,7 +260,7 @@ namespace TrainOP.Generators
             Compilation compilation,
             Location location)
         {
-            if (RouteChainDetector.TryBuildChainEndingAt(expression, semanticModel, out var chain))
+            if (RouteChainWalker.TryBuildChainEndingAt(expression, semanticModel, out var chain))
             {
                 var simulation = ChainGraphSimulator.Simulate(chain, chain.Anchor.InitialWagons);
                 return new FactoryPathSimulation(
@@ -269,7 +269,7 @@ namespace TrainOP.Generators
                     location);
             }
 
-            if (RouteChainDetector.TryBuildFactoryExtensionChain(
+            if (RouteChainWalker.TryBuildFactoryExtensionChain(
                 expression,
                 semanticModel,
                 compilation,

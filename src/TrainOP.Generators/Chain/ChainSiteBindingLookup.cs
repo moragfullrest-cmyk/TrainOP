@@ -8,7 +8,7 @@ namespace TrainOP.Generators
     /// <summary>
     /// Location-key utilities for chain-site binding lookup.
     /// </summary>
-    internal static class ChainStationCallIndex
+    internal static class ChainSiteBindingLookup
     {
         /// <summary>
         /// Resolves all chain-site bindings for a station invocation location.

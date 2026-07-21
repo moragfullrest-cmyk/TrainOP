@@ -45,9 +45,6 @@ namespace TrainOP.Generators.Route
 
         public Location IdentityLocation { get; }
 
-        /// <summary>Invocation location for station sites (same as <see cref="IdentityLocation"/>).</summary>
-        public Location InvocationLocation => IdentityLocation;
-
         public InvocationExpressionSyntax Invocation { get; }
 
         public ExpressionSyntax Receiver { get; }
@@ -68,11 +65,6 @@ namespace TrainOP.Generators.Route
 
         public bool IsStation =>
             Kind == RouteSiteKind.Station || Kind == RouteSiteKind.ServiceStation;
-
-        public HandlerStationKind HandlerStationKind =>
-            Kind == RouteSiteKind.ServiceStation
-                ? HandlerStationKind.ServiceStation
-                : HandlerStationKind.Station;
 
         /// <summary>
         /// Creates a station or service-station call site discovered from syntax.
@@ -119,32 +111,6 @@ namespace TrainOP.Generators.Route
                 anchor.ContainingMethod,
                 anchor.FactoryMethod,
                 anchor.InitialWagons);
-        }
-
-        /// <summary>
-        /// Creates a chain anchor from resolved root metadata.
-        /// </summary>
-        public static RouteSite CreateAnchor(
-            ExpressionSyntax root,
-            Location identityLocation,
-            RouteChainAnchorKind anchorKind,
-            IMethodSymbol containingMethod,
-            IMethodSymbol factoryMethod,
-            ImmutableArray<WagonBinding> initialWagons)
-        {
-            return new RouteSite(
-                RouteSiteKind.Anchor,
-                root,
-                identityLocation,
-                null,
-                null,
-                null,
-                null,
-                null,
-                anchorKind,
-                containingMethod,
-                factoryMethod,
-                initialWagons);
         }
 
         /// <summary>

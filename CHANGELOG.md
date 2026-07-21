@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-21
+
+### Changed
+
+- **Codegen emit refactor:** consolidated source generation into `Emit` extension methods on handler/route models with shared infrastructure (`CodegenWriter`, `CodegenContext`, `EmissionState`, `NamingScope`, `PullStrategy`).
+- **File-level emitters:** `TrainRouteExtensionsFile` and `RouteSchemasFile` now own extension/schema file emission; `TrainRouteStationGenerator` is slim orchestration only.
+- **Chain and canonical paths:** `ChainAwareEmission`, `ChainBindingTable`, and `CanonicalEmission` replace monolithic `*Codegen` static classes.
+- **Naming cleanup:** renamed discovery/diagnostics types (`RouteChainWalker`, `RouteFactoryPathSimulator`, `TrainRouteValidationAnalyzer`, `DelegateSignatureGroup`, …) and runtime entry points (`TrainRouteRuntime`, `StationDataHandlerResults`).
+
+### Removed
+
+- **Legacy codegen wrappers:** `HandlerFuncTypeCodegen`, `StationAdapterBodyCodegen`, `WagonBindingCodegen`, `TypedStationReturnCodegen`, `ChainAwareStationCodegen`, and `RouteSchemaExporter` (logic moved to extensions/resolvers/file emitters).
+
 ## [0.11.0] - 2026-07-21
 
 ### Fixed

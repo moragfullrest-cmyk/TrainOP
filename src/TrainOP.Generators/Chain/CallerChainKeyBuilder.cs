@@ -9,20 +9,6 @@ namespace TrainOP.Generators
     /// </summary>
     internal static class CallerChainKeyBuilder
     {
-        private static Location GetMethodLocation(IMethodSymbol method)
-        {
-            if (method == null)
-            {
-                return null;
-            }
-
-            // For source declarations, Roslyn usually provides IsInSource locations.
-            // Fallback to the first available location for metadata-bound scenarios.
-            return method.Locations
-                .FirstOrDefault(l => l != null)
-                ?? method.Locations.FirstOrDefault();
-        }
-
         /// <summary>
         /// Builds a chain key for a detected chain anchor.
         /// </summary>
@@ -47,12 +33,12 @@ namespace TrainOP.Generators
             }
 
             // File/line are taken from the location that best approximates ctor call-site.
-            // For ObjectCreation & LocalVariable anchors, RouteChainDetector already provides the location of the ctor call expression.
+            // For ObjectCreation & LocalVariable anchors, RouteChainWalker already provides the location of the ctor call expression.
             // For factory anchors, we approximate with the factory method location; common expression-bodied factories keep them aligned.
             var location =
                 (anchor.Kind == RouteChainAnchorKind.MethodInvocation
                     || anchor.Kind == RouteChainAnchorKind.FactorySchema)
-                ? GetMethodLocation(anchor.FactoryMethod)
+                ? anchor.FactoryMethod?.Locations.FirstOrDefault()
                 : anchor.Location;
 
             if (location == null)

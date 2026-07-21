@@ -12,26 +12,6 @@ namespace TrainOP.Generators
     internal static class HandlerSchemaResolver
     {
         /// <summary>
-        /// Resolves a Station or ServiceStation invocation into a full handler schema.
-        /// </summary>
-        public static HandlerSchemaResult ResolveInvocation(
-            InvocationExpressionSyntax invocation,
-            SemanticModel semanticModel,
-            HandlerStationKind stationKind)
-        {
-            if (!StationSyntaxHelper.TryParseRouteHandlerInvocation(
-                    invocation,
-                    out var parsedKind,
-                    out var memberAccess)
-                || parsedKind != stationKind)
-            {
-                return HandlerSchemaResult.Failed(HandlerSchemaFailure.InvalidShape);
-            }
-
-            return ResolveParsedInvocation(invocation, semanticModel, stationKind, memberAccess);
-        }
-
-        /// <summary>
         /// Resolves a Station or ServiceStation invocation that was already parsed by
         /// <see cref="StationSyntaxHelper.TryParseRouteHandlerInvocation"/>.
         /// </summary>

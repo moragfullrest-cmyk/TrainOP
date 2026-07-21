@@ -79,7 +79,7 @@ namespace TrainOP.Generators
                 foreach (var node in syntaxTree.GetRoot().DescendantNodes())
                 {
                     if (node is InvocationExpressionSyntax invocation
-                        && IsCandidateStationSite(node))
+                        && StationSyntaxHelper.IsCandidateRouteHandlerInvocation(node))
                     {
                         var station = TryDiscoverStation(invocation, semanticModel);
                         if (station != null)
@@ -172,7 +172,7 @@ namespace TrainOP.Generators
                 return null;
             }
 
-            if (!RouteChainDetector.TryDetectAnchorSite(node, semanticModel, out var anchor))
+            if (!RouteChainWalker.TryDetectAnchorSite(node, semanticModel, out var anchor))
             {
                 return null;
             }
