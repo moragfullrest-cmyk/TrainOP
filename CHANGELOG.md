@@ -4,6 +4,24 @@ All notable changes to TrainOP are documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.11.0] - 2026-07-21
+
+### Fixed
+
+- **Typed merge for default ItemN tuples:** compile-time merge now maps input wagons by positional return members (`Item1`, `Item2`, …) instead of name-based switches that never matched manifest wagon keys.
+
+### Changed
+
+- **Typed station return codegen:** replaced runtime loops and `switch` over wagon/return member names with unrolled `MergePlan`-driven `LoadWagon`/`UnloadWagon` emission when the handler return shape is known at compile time.
+- **Generator modularization:** reorganized source generator into focused folders (`Chain/`, `Codegen/`, `Handlers/`, `Route/`, `RouteGraph/`, `Schema/`, `Merge/`, …) with `RouteGraph`/`RouteSite` discovery and `HandlerSchemaResolver` pipeline.
+
+### Removed
+
+- **Reflection chain-dispatch:** removed `TrainOP_ChainDispatchMode=reflection`, `StationHandlerParameterNames`, and reflection-specific generator emission; caller dispatch is the only chain-dispatch path.
+- **Tests and benchmarks:** removed `TrainOP.ReflectionDispatch.Tests`, `TrainOP.Benchmarks.Reflection`, and `ChainDispatchBenchmarks` (reflection vs caller comparison).
+
 ## [0.10.0] - 2026-07-20
 
 ### Changed

@@ -1,13 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 
 namespace TrainOP
 {
     /// <summary>
     /// Reads wagon values from station handler return values using generator-provided names and ordinals.
-    /// Member discovery order matches the source generator (<c>HandlerReturnInference</c>):
+    /// Member discovery order matches the source generator (<c>HandlerReturnSchemaInference</c>):
     /// value-tuple elements first when applicable; otherwise public instance properties, then public instance fields.
     /// </summary>
     public static class WagonStationReturn

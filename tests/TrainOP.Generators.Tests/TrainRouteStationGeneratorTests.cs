@@ -1,9 +1,11 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace TrainOP.Generators.Tests
@@ -13,6 +15,33 @@ namespace TrainOP.Generators.Tests
     /// </summary>
     public sealed class TrainRouteStationGeneratorTests
     {
+        /// <summary>
+        /// Verifies that the generator emits a Station extension when the station name is a const.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsStationExtension_ForConstStationName()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class ConstNameRoute
+{
+    private const string ValidateStation = ""Validate"";
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay"", amount = 4m })
+        .Station(ValidateStation, (string paymentId, decimal amount) =>
+            new { paymentId = paymentId + ""-ok"", amount = amount + 1m });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("public static class TrainRouteStationExtensions", generated);
+            Assert.Contains("Func<global::System.String, global::System.Decimal,", generated);
+            Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
+            Assert.Contains("manifest.PullWagon<global::System.Decimal>(\"amount\")", generated);
+            Assert.Contains("StationMerge.ToSignal", generated);
+        }
+
         /// <summary>
         /// Verifies that the generator emits a Station extension for a handler with ref parameters.
         /// </summary>
@@ -494,6 +523,62 @@ public static class PaymentRoute
         }
 
         /// <summary>
+        /// Verifies that default ItemN tuple returns emit positional unrolled typed merge into input wagon keys.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsPositionalMerge_ForDefaultItemNTupleReturn()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class PaymentRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            (paymentId + ""-disc"", amount * 0.9m));
+}";
+
+            var generated = RunGenerators(source);
+            var discountBlock = ExtractHandlerBlock(generated, "Func<global::System.String, global::System.Decimal, (string, decimal)>");
+
+            Assert.Contains("stationReturn.Item1", discountBlock);
+            Assert.Contains("stationReturn.Item2", discountBlock);
+            Assert.Contains(".LoadWagon(WagonNames_", discountBlock);
+            Assert.Contains("[0]", discountBlock);
+            Assert.Contains("[1]", discountBlock);
+            Assert.DoesNotContain("switch (wagonName)", discountBlock);
+            Assert.DoesNotContain("for (var i = 0; i < WagonNames_", discountBlock);
+            Assert.DoesNotContain("UnloadWagon(WagonNames_", discountBlock);
+        }
+
+        /// <summary>
+        /// Verifies that inferred named tuple returns emit unrolled typed merge without runtime loops.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsUnrolledMerge_ForInferredNamedTupleReturn()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class PaymentRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            (paymentId, amount));
+}";
+
+            var generated = RunGenerators(source);
+            var discountBlock = ExtractHandlerBlock(generated, "Func<global::System.String, global::System.Decimal, (string, decimal)>");
+
+            Assert.Contains("stationReturn.paymentId", discountBlock);
+            Assert.Contains("stationReturn.amount", discountBlock);
+            Assert.DoesNotContain("for (var i = 0; i < WagonNames_", discountBlock);
+            Assert.DoesNotContain("switch (wagonName)", discountBlock);
+        }
+
+        /// <summary>
         /// Verifies inferred tuple element names are emitted (not ItemN).
         /// </summary>
         [Fact]
@@ -544,10 +629,10 @@ public static class MixedSeedRoute
         }
 
         /// <summary>
-        /// Verifies that legacy handlers in separate chains get interceptors and avoid TOP007.
+        /// Verifies that handlers in separate chains use caller dispatch and avoid TOP007.
         /// </summary>
         [Fact]
-        public void Generator_EmitsInterceptors_ForLegacyStationsInSeparateChains()
+        public void Generator_EmitsCallerDispatch_ForLegacyStationsInSeparateChains()
         {
             const string source = @"
 using TrainOP;
@@ -577,13 +662,41 @@ public static class ConflictingNameRoute
             Assert.Contains("ResolveChainBinding_", generated);
             Assert.Contains("var inputNames = binding.InputNames;", generated);
             Assert.Contains("var returnMembers = binding.ReturnMembers;", generated);
-            Assert.Contains("ChainStationBinding_", generated);
+            Assert.Contains("internal readonly struct ChainStationBinding", generated);
             Assert.DoesNotContain("binding.InputNames[0]", generated);
             Assert.Contains("manifest.PullWagon<global::System.String>(inputNames[0])", generated);
         }
 
         /// <summary>
-        /// Verifies that legacy handlers in one chain can use different wagon names via chain dispatch.
+        /// Verifies that the shared chain binding struct is emitted once for all chain-dispatch tables.
+        /// </summary>
+        [Fact]
+        public void Generator_DoesNotDuplicateChainBindingStruct_WhenMultipleChainDispatchSignaturesExist()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class ConflictingNameRoute
+{
+    public static TrainRoute Payment() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m });
+
+    public static TrainRoute Order() => new TrainRoute()
+        .Station(""Seed"", () => new { orderId = ""ord-1"", total = 50m })
+        .Station(""Validate"", (string orderId, decimal total) =>
+            new { orderId, total = total + 1m });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Equal(1, CountOccurrences("internal readonly struct ChainStationBinding", generated));
+            Assert.Contains("ResolveChainBinding_", generated);
+        }
+
+        /// <summary>
+        /// Verifies that handlers in one chain can use different wagon names via chain dispatch.
         /// </summary>
         [Fact]
         public void Generator_EmitsChainDispatch_ForLegacyStationsWithDifferentWagonNamesInOneChain()
@@ -615,7 +728,69 @@ public static class MixedNameRoute
         }
 
         /// <summary>
-        /// Verifies that a single Station overload is emitted when legacy handlers share a type signature but differ in parameter names.
+        /// Verifies that generated chain-dispatch tables use hashed chain keys instead of file paths.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsCallerChainKeys_AsHash()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class ChainRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m })
+        .Station(""Validate"", (string orderId, decimal total) =>
+            new { paymentId = orderId, amount = total + 1m });
+}";
+
+            var syntaxTree = CSharpSyntaxTree.ParseText(
+                source,
+                path: @"C:\Users\operator\project\Routes\ChainRoute.cs");
+            var compilation = CSharpCompilation.Create(
+                "GeneratorTests",
+                new[] { syntaxTree },
+                GetMetadataReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            var generators = new ISourceGenerator[]
+            {
+                new TrainRouteStationGenerator().AsSourceGenerator(),
+            };
+
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                generators,
+                additionalTexts: null,
+                parseOptions: null);
+            driver = driver.RunGenerators(compilation);
+
+            var generated = string.Join(
+                Environment.NewLine,
+                driver.GetRunResult().Results
+                    .SelectMany(result => result.GeneratedSources)
+                    .Select(result => result.SourceText.ToString()));
+
+            var lineNumber = syntaxTree.GetRoot()
+                .DescendantNodes()
+                .OfType<ObjectCreationExpressionSyntax>()
+                .Single()
+                .GetLocation()
+                .GetLineSpan()
+                .StartLinePosition.Line + 1;
+            var expectedChainKey = CallerChainKeyFormat.Build(
+                @"C:\Users\operator\project\Routes\ChainRoute.cs",
+                lineNumber,
+                "Build");
+
+            Assert.Matches(new Regex("case \"" + expectedChainKey + "\":"), generated);
+            Assert.DoesNotContain(@"C:\Users", generated);
+            Assert.DoesNotContain("ChainRoute.cs:", generated);
+        }
+
+        /// <summary>
+        /// Verifies that a single Station overload is emitted when handlers share a type signature but differ in parameter names.
         /// </summary>
         [Fact]
         public void Generator_EmitsSingleStationOverload_WhenHandlersShareTypeSignatureButDifferInParameterNames()
@@ -792,19 +967,42 @@ public static class MultiSeedRoute
             return count;
         }
 
+        private static string ExtractHandlerBlock(string generated, string handlerSignatureMarker)
+        {
+            var signatureIndex = generated.IndexOf(handlerSignatureMarker, StringComparison.Ordinal);
+            Assert.True(signatureIndex >= 0, "Handler signature marker not found: " + handlerSignatureMarker);
+
+            var registerIndex = generated.IndexOf("return route.RegisterStation", signatureIndex, StringComparison.Ordinal);
+            Assert.True(registerIndex >= 0, "RegisterStation block not found for handler signature.");
+
+            var blockStart = generated.IndexOf('{', registerIndex);
+            Assert.True(blockStart >= 0, "Handler block start not found.");
+
+            var depth = 0;
+            for (var i = blockStart; i < generated.Length; i++)
+            {
+                if (generated[i] == '{')
+                {
+                    depth++;
+                }
+                else if (generated[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        return generated.Substring(blockStart, i - blockStart + 1);
+                    }
+                }
+            }
+
+            throw new InvalidOperationException("Handler block end not found.");
+        }
+
         private static int CountStationOverloads(string generated)
         {
-            var extensionsBlock = generated;
             const string extensionsMarker = "class TrainRouteStationExtensions";
-            const string interceptorsMarker = "class TrainRouteStationInterceptors";
             var start = generated.IndexOf(extensionsMarker, StringComparison.Ordinal);
-            if (start >= 0)
-            {
-                var interceptorsStart = generated.IndexOf(interceptorsMarker, start, StringComparison.Ordinal);
-                extensionsBlock = interceptorsStart > start
-                    ? generated.Substring(start, interceptorsStart - start)
-                    : generated.Substring(start);
-            }
+            var extensionsBlock = start >= 0 ? generated.Substring(start) : generated;
 
             var stationOverloadCount = 0;
             var index = 0;
@@ -857,15 +1055,10 @@ public static class MultiSeedRoute
                 new TrainRouteStationGenerator().AsSourceGenerator(),
             };
 
-            var optionsProvider = TestAnalyzerConfigOptionsProvider.ForChainDispatchMode(
-                "caller",
-                interceptorsNamespaces: null);
-
             GeneratorDriver driver = CSharpGeneratorDriver.Create(
                 generators,
                 additionalTexts: null,
-                parseOptions: null,
-                optionsProvider: optionsProvider);
+                parseOptions: null);
             driver = driver.RunGenerators(compilation);
 
             return driver.GetRunResult();

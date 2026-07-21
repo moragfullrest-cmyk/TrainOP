@@ -390,30 +390,7 @@ namespace TrainOP
 
         private static string BuildCallerChainKey(string filePath, int lineNumber, string memberName)
         {
-            if (string.IsNullOrEmpty(filePath))
-            {
-                return string.Empty;
-            }
-
-            // Must match generator normalization: only slash normalization + simple fallback.
-            filePath = filePath.Replace('\\', '/');
-            if (filePath.Length == 0)
-            {
-                filePath = "unknown";
-            }
-
-            if (string.IsNullOrEmpty(memberName))
-            {
-                memberName = "global";
-            }
-
-            // CallerLineNumber is already 1-based.
-            if (lineNumber <= 0)
-            {
-                lineNumber = 1;
-            }
-
-            return filePath + ":" + lineNumber + ":" + memberName;
+            return CallerChainKeyFormat.Build(filePath, lineNumber, memberName);
         }
 
         /// <summary>

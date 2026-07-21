@@ -1,8 +1,12 @@
 {
   "profiles": {
-    "Profile 1": {
+    "Debug Samples (generator F5)": {
       "commandName": "DebugRoslynComponent",
       "targetProject": "..\\..\\samples\\TrainOP.Samples\\TrainOP.Samples.csproj"
+    },
+    "Debug Generator Tests (generator F5)": {
+      "commandName": "DebugRoslynComponent",
+      "targetProject": "..\\..\\..\\tests\\TrainOP.Generators.Tests\\TrainOP.Generators.Tests.csproj"
     }
   }
 }

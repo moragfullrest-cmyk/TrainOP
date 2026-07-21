@@ -5,8 +5,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using TrainOP.Generators;
-using TrainOP.Generators.Models;
+using TrainOP.Generators.Route;
 using Xunit;
 
 namespace TrainOP.Generators.Tests
@@ -55,10 +54,22 @@ public static class Route
             var actual = CallerChainKeyBuilder.Build(anchor);
 
             var lineNumber = objectCreation.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
-            var expectedFile = @"C:\repo\Test0.cs".Replace('\\', '/');
-            var expected = expectedFile + ":" + lineNumber + ":Build";
+            var expected = CallerChainKeyFormat.Build(@"C:\repo\Test0.cs", lineNumber, "Build");
 
             Assert.Equal(expected, actual);
+            Assert.Matches("^[0-9a-f]{16}$", actual);
+        }
+
+        [Fact]
+        public void CallerChainKeyBuilder_UsesDistinctHashes_ForSameFileNameInDifferentFolders()
+        {
+            var lineNumber = 10;
+            var memberName = "Build";
+
+            var left = CallerChainKeyFormat.Build(@"C:\repo\alpha\Route.cs", lineNumber, memberName);
+            var right = CallerChainKeyFormat.Build(@"C:\repo\beta\Route.cs", lineNumber, memberName);
+
+            Assert.NotEqual(left, right);
         }
 
         private static MetadataReference[] GetMetadataReferences()

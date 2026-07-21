@@ -66,7 +66,7 @@ dotnet add package TrainOP.Generators
 
 Генератор нужен для `.Station` data-oriented handlers.
 
-Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.10.0** — см. [CHANGELOG.md](CHANGELOG.md).
+Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.11.0** — см. [CHANGELOG.md](CHANGELOG.md).
 
 ### Локальная сборка пакетов
 
@@ -82,7 +82,7 @@ dotnet pack -c Release
 - `src/TrainOP.Generators` — инкрементальные generators и анализатор цепочки
 - `samples/TrainOP.Samples` — консольные примеры (в т.ч. вложенные маршруты и ветвление)
 - `tests/` — xUnit-тесты (сквозной data-oriented sample: `DataOrientedPaymentRouteEndToEndTests`)
-- `benchmarks/` — BenchmarkDotNet: reflection vs caller chain-dispatch
+- `benchmarks/` — BenchmarkDotNet: library vs manual pipelines
 
 ## Тесты
 
@@ -91,8 +91,6 @@ dotnet test TrainOP.sln
 ```
 
 ## Бенчмарки
-
-Сравнение `TrainOP_ChainDispatchMode=reflection` и caller (default):
 
 ```bash
 dotnet run -c Release --project benchmarks/TrainOP.Benchmarks

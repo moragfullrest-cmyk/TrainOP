@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using System.Collections.Immutable;
-using TrainOP.Generators.Models;
+using TrainOP.Generators.Wagons;
 using Xunit;
 
 namespace TrainOP.Generators.Tests

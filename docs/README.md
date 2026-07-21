@@ -14,7 +14,7 @@ TrainOP — библиотека Railway Oriented Programming (ROP) для .NET 
 | [Архитектура: generator, analyzer, caller, runtime](architecture-internals.md) | Как устроено внутри: пайплайн генератора, анализатор цепочек, Travel, merge, TOP* |
 | [Cross-assembly routes](cross-assembly-routes.md) | Route library + consumer extension, exported schema |
 | [Сравнение объёма кода](code-volume-comparison.md) | Manual vs TrainOP (токены, ошибки, recovery) |
-| [Benchmarks](../benchmarks/README.md) | Reflection vs caller; library vs manual |
+| [Benchmarks](../benchmarks/README.md) | Library vs manual |
 | [План: data-oriented handlers](plan-data-oriented-handlers.md) | Roadmap: фазы 0–8 выполнены; отложены якоря параметр/поле/свойство/делегат; снят typed Travel |
 | [План: производительность Travel](plan-performance.md) | Roadmap: P0–P3 + P4a done; P5 typed bags reverted; P4 TravelLight pending |
 
@@ -25,8 +25,8 @@ TrainOP.sln
 ├── src/TrainOP              — основная библиотека (netstandard2.0)
 ├── src/TrainOP.Generators   — source generators + chain analyzer
 ├── samples/TrainOP.Samples  — консольные примеры
-├── benchmarks/              — BenchmarkDotNet: reflection vs caller
-└── tests/                   — модульные тесты (xUnit; в т.ч. ReflectionDispatch)
+├── benchmarks/              — BenchmarkDotNet: library vs manual
+└── tests/                   — модульные тесты (xUnit)
 ```
 
 Сквозной reference-маршрут: `tests/TrainOP.Tests/DataOrientedPaymentRouteEndToEndTests.cs`.

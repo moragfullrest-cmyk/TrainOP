@@ -5,9 +5,6 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <RootNamespace>TrainOP.Benchmarks.Caller</RootNamespace>
-    <DefineConstants>$(DefineConstants);TRAINOP_BENCHMARK_CALLER</DefineConstants>
-    <!-- Caller: ctor+ordinal dispatch without Roslyn interceptors. -->
-    <TrainOP_ChainDispatchMode>caller</TrainOP_ChainDispatchMode>
   </PropertyGroup>
 
   <ItemGroup>

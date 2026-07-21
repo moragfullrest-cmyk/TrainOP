@@ -1,6 +1,6 @@
-# Архитектура TrainOP: как устроены генератор, interceptors и runtime
+# Архитектура TrainOP: как устроены генератор, caller dispatch и runtime
 
-Документ для разработчика, который знает C#, но только поверхностно — source generators, Roslyn analyzers и interceptors. Здесь полный путь от `.Station(...)` в исходнике до `RouteReport` в runtime.
+Документ для разработчика, который знает C#, но только поверхностно — source generators, Roslyn analyzers и caller dispatch. Здесь полный путь от `.Station(...)` в исходнике до `RouteReport` в runtime.
 
 Связанные документы: [getting-started](getting-started.md), [core-api](core-api.md), [cross-assembly-routes](cross-assembly-routes.md).
 
@@ -8,12 +8,12 @@
 
 ## Главная идея в одном абзаце
 
-Вы пишете fluent-маршрут из лямбд. **Генератор** читает имена параметров как ключи вагонов, выводит форму возврата и эмитит типизированные расширения. **Анализатор** симулирует поток вагонов по цепочке и репортит TOP* до runtime. **Interceptors** подставляют на конкретный call site таблицу имён вагонов. **Runtime** тянет поезд по списку адаптеров и мержит возвраты в `CargoManifest`.
+Вы пишете fluent-маршрут из лямбд. **Генератор** читает имена параметров как ключи вагонов, выводит форму возврата и эмитит типизированные расширения. **Анализатор** симулирует поток вагонов по цепочке и репортит TOP* до runtime. **Caller dispatch** различает call site'ы с одной CLR-сигнатурой через `CallerChainKey` + порядковый индекс станции. **Runtime** тянет поезд по списку адаптеров и мержит возвраты в `CargoManifest`.
 
 ```mermaid
 flowchart LR
   A["Исходник\n.Station(...)"] --> B["Generator\nсхема handler"]
-  B --> C["Extensions.g.cs\n+ Interceptors.g.cs"]
+  B --> C["Extensions.g.cs\ncaller dispatch"]
   C --> D["RegisterStation\nадаптер"]
   D --> E["Train.Travel"]
   E --> F["RouteReport"]
@@ -65,31 +65,288 @@ var amount = report.Get<decimal>("amount");
 
 ```mermaid
 flowchart LR
-  S["SyntaxProvider\n.Station / .ServiceStation"] --> R["Resolve handler\nlambda / method group"]
-  R --> I["Input / return\nwagons + signals"]
-  I --> C["ChainDetector\nfluent route graph"]
-  C --> G["TypeSignatureGroup\nгруппировка сигнатур"]
-  G --> E["Emit sources\nExtensions + Interceptors"]
+  S["SyntaxProvider\nRouteSiteDiscoverer"] --> R["RouteSite\nHandlerBinding + Receiver"]
+  R --> A["RouteGraphAssembler"]
+  A --> G["RouteGraph\nChains + ChainIndex"]
+  G --> TSG["TypeSignatureGroup\nгруппировка сигнатур"]
+  TSG --> RSO["RegisterSourceOutput\nEmitExtensions"]
+  RSO --> E["Extensions.g.cs"]
 ```
 
-| Шаг | Компонент | Что делает |
+| Шаг | Комponent | Что делает |
 |-----|-----------|------------|
-| 1 | `StationSyntaxHelper` | Кандидаты `.Station` / `.ServiceStation` на `TrainRoute` |
-| 2 | `TryResolveHandler` | Лямбда, anonymous method, method group / local function из **текущей** compilation (иначе TOP009) |
+| 1 | `RouteSiteDiscoverer` + `HandlerSchemaResolver` | SyntaxProvider transform: predicate → semantic parse → `RouteSite` (Station / ServiceStation / Anchor) |
+| 2 | `TryResolveHandler` | Лямбда, anonymous method, method group / local function из **текущей** compilation (иначе `null`; TOP009 — в analyzer) |
 | 3 | `HandlerInputSchemaBuilder` | Wagon inputs vs framework: `CargoManifest`, `RedSignal`, `SignalIssue`, `CancellationToken`, `ref` |
 | 4 | `HandlerReturnInference` | Anonymous/record, value tuple, `GreenPayload`, `RedFailure`, `GreenPass`, `Task<T>`, void |
-| 5 | `ChainDetector` + `ChainStationCallIndex` | Привязка call site к цепочке и индексу станции |
+| 5 | `RouteGraphAssembler` + `RouteGraph` | Сборка fluent-графа, `CallerChainKey`, `stationIndex`, `ChainSiteBinding` |
 | 6 | `TypeSignatureGroup` / `MergedStationSchema` | Группировка по сигнатуре делегата |
-| 7 | Emit | `TrainRouteStation.Extensions.g.cs`, при режиме interceptors — `TrainRouteStation.Interceptors.g.cs` |
+| 7 | Emit | `TrainRouteStation.Extensions.g.cs` (canonical или chain-aware адаптеры) |
 | 8 | `RouteSchemaExporter` | Schema attributes для public factory (cross-assembly) |
 
-Параллельно `ChainValidationAnalyzer` симулирует граф вагонов по цепочке и сообщает TOP001–TOP013 **без** выполнения кода.
+Параллельно `ChainValidationAnalyzer` использует тот же `RouteSiteDiscoverer` + `RouteGraphAssembler` на уровне compilation и симулирует граф вагонов по цепочке (TOP001–TOP013).
+
+### RegisterSourceOutput: инкрементальный пайплайн
+
+Точка входа генератора — callback, переданный в `RegisterSourceOutput` внутри `TrainRouteStationGenerator.Initialize`. Он выполняется Roslyn **каждый раз**, когда меняется compilation или набор обнаруженных вызовов `.Station` / `.ServiceStation`. Именно здесь собираются группы handler'ов и эмитится `TrainRouteStation.Extensions.g.cs`.
+
+#### Что подаётся на вход
+
+Генератор регистрирует **три инкрементальных источника**, склеенных через `Combine`:
+
+```csharp
+var stationSites = context.SyntaxProvider.CreateSyntaxProvider(
+    RouteSiteDiscoverer.IsCandidateStationSite,
+    RouteSiteDiscoverer.TryDiscoverStation);
+
+var anchorSites = context.SyntaxProvider.CreateSyntaxProvider(
+    RouteSiteDiscoverer.IsCandidateAnchorSite,
+    RouteSiteDiscoverer.TryDiscoverAnchor);
+
+var allSites = stationSites.Collect()
+    .Combine(anchorSites.Collect())
+    .Select(RouteSiteDiscoverer.MergeSites);
+
+var combined = context.CompilationProvider.Combine(allSites);
+
+context.RegisterSourceOutput(combined, (productionContext, source) => { ... });
+```
+
+| Компонент | Тип | Роль |
+|-----------|-----|------|
+| `CompilationProvider` | `Compilation` | Текущая compilation |
+| `SyntaxProvider` (station + anchor) + `Collect()` | `ImmutableArray<RouteSite>` | Все call site'ы и anchor-кандидаты |
+| `RouteGraphAssembler.Build` | `RouteGraph` | Цепочки, `ChainIndex`, chained-set |
+| `source.Left` | `Compilation` | Compilation для assembly |
+| `source.Right` | `ImmutableArray<RouteSite>` | Объединённые discovery-узлы |
+
+SyntaxProvider работает в **две фазы**: дешёвый syntactic predicate отсеивает почти всё, semantic transform (`TryDiscoverStation` / `TryDiscoverAnchor`) вызывается только для узлов, прошедших фильтр.
+
+#### RouteSiteDiscoverer: transform SyntaxProvider
+
+`RouteSiteDiscoverer.TryDiscoverStation` — единая точка semantic resolve handler'а (через `HandlerSchemaResolver`). На выходе — `RouteSite` с `HandlerBinding`, `Receiver`, `StationName` или `null`.
+
+##### Место в пайплайне
+
+```mermaid
+flowchart TB
+  Node["SyntaxNode"] --> Pred{"station | anchor\npredicate"}
+  Pred -->|false| Skip["узел игнорируется"]
+  Pred -->|true| RSD["RouteSiteDiscoverer"]
+  RSD -->|ok| Out["RouteSite"]
+  RSD -->|fail| Null["null"]
+```
+
+##### Что RouteSiteDiscoverer **не** делает
+
+| Не входит в transform | Где это происходит |
+|-----------------------|-------------------|
+| TOP009 (unsupported handler) | `ChainValidationAnalyzer` → `TryGetUnsupportedStationHandler` |
+| TOP005 (orphan station) | `ChainValidationAnalyzer` → `RouteGraph.IsChainedInvocation` |
+| TOP001–TOP003 (wagon flow) | `ChainValidationAnalyzer` → `ChainGraphSimulator` |
+| TOP007 (conflicting wagon names) | `RegisterSourceOutput` → `TypeSignatureGroup.ToMerged` |
+| Chain id / station index | `RouteGraphAssembler` в callback (из собранных `RouteSite`, без полного rescan) |
+
+Handler schema строится **один раз** в discovery; `ChainDetector.TryAdvanceChain` использует pre-built binding из `RouteSite` при forward walk.
+
+##### TryGetDataRouteHandlerInvocation — семантическая цепочка
+
+Обе `TryGetData*Invocation` делегируют в общий `TryGetDataRouteHandlerInvocation`. Шаги (любой `false` → `GetRouteHandlerCall` вернёт `null`):
+
+| # | Проверка | Зачем |
+|---|----------|-------|
+| 1 | `MatchesRouteHandlerShape` | Повторная проверка формы (защита при прямом вызове вне predicate) |
+| 2 | `IsTrainRouteReceiver(memberAccess.Expression, receiverType, semanticModel)` | Receiver — или `TrainRoute`, или выражение, **рекурсивно** сводимое к TrainRoute (`new TrainRoute()`, fluent `.Station(...)`, `?:`, `??`, switch expression) |
+| 3 | `IsBuiltinTrainRouteHandler` | Вызов **встроенного** `TrainRoute.Station` / `ServiceStation` (не generated extension) — пропуск |
+| 4 | `TryResolveHandler(arg[1], semanticModel, out resolved)` | Handler — лямбда, anonymous method или однозначный method group / local function **с исходником в текущей compilation** |
+| 5 | `IsLikelyBuiltinServiceStationHandler` (только ServiceStation) | Отсечь legacy handler `(RedSignal red) => …` без data-oriented вагонов |
+| 6 | `HandlerInputSchemaBuilder.TryBuild(resolved, …)` | Построить полную схему: wagon inputs, framework-параметры, return shape |
+| 7 | Извлечь `stationName` | Literal `"Name"` → `Token.ValueText`; иначе fallback `Arguments[0].ToString().Trim('"')` |
+
+`handlerLocation` для diagnostics и группировки берётся из **handler-выражения** (`resolved.Location`), не из всего invocation.
+
+##### TryResolveHandler — разбор второго аргумента
+
+Второй аргумент `.Station("Name", **handler**)` проходит `UnwrapHandlerExpression` (снимает скобки и cast), затем:
+
+| Форма handler'а | `HandlerKind` | Как получается `IMethodSymbol` |
+|-----------------|---------------|--------------------------------|
+| `(…) => …` / `x => …` | `Lambda` | `semanticModel.GetSymbolInfo(lambda)` |
+| `delegate(…) { … }` | `AnonymousMethod` | `GetSymbolInfo(anonymousMethod)` |
+| `LocalHandler` / `this.Handler` | `MethodGroup` | `GetSymbolInfo` + `GetMemberGroup`; должна быть **ровно одна** подходящая overload |
+| `Func<…>` variable | — | **не поддерживается** → `null` |
+
+Для method group / local function дополнительно:
+
+- `IsInspectableInCompilation` — хотя бы один `DeclaringSyntaxReference` лежит в syntax tree **этой** compilation (методы только из referenced DLL без исходников → `null`).
+- Тело метода (`Body` / `ExpressionBody`) подтягивается для `HandlerReturnInference` (анализ return expressions, tuple literals).
+
+`ResolvedHandler` несёт: `Kind`, `IMethodSymbol`, тело, `Location`, исходный `ExpressionSyntax`.
+
+##### HandlerInputSchemaBuilder.TryBuild — что попадает в binding
+
+Из `IMethodSymbol.Parameters` строится `StationHandlerBinding`:
+
+**Входы (`HandlerInputParameters`):**
+
+- каждый параметр классифицируется: **Wagon** (имя → ключ вагона), `CargoManifest`, `RedSignal`, `SignalIssue`, `CancellationToken`;
+- `ref`/`out` wagon → `WagonBinding.IsByRef`;
+- optional nullable value types → `IsOptional`;
+- порядок слотов сохраняется в `HandlerCallSlot[]` для codegen invoke.
+
+**Выход (`HandlerOutputParameters` / `ReturnShape`):**
+
+- `HandlerReturnInference` по типу return и телу handler'а: void, anonymous/record, value tuple, `Task<T>`, `RailwaySignals.Green/Red/Pass`, `CargoManifest`, unknown;
+- для tuple/record — member names (или `ItemN` → позже TOP006 в analyzer).
+
+Если схема невалидна — `TryDiscoverStation` → `null`.
+
+##### Результат: RouteSite
+
+`RouteSite` объединяет anchor и station call site: `HandlerBinding`, `Receiver`, `StationName`, `IdentityLocation`, а для anchor — `AnchorKind`, `FactoryMethod`, `InitialWagons`.
+
+#### Общая схема callback'а
+
+```mermaid
+flowchart TB
+  In["RegisterSourceOutput\n(compilation + RouteSite[])"] --> Schema["RouteSchemaExporter.Emit"]
+  Schema --> Graph["RouteGraphAssembler.Build"]
+  Graph --> Groups["Dictionary groupingKey → TypeSignatureGroup"]
+  Groups --> AddCall["AddDiscoveredCall per station + chain-only sites"]
+  AddCall --> Merge["group.ToMerged → MergedStationSchema[]"]
+  Merge --> Emit["EmitExtensions → AddSource(.g.cs)"]
+```
+
+#### Шаг 1. RouteSchemaExporter (отдельный выход)
+
+Без изменений: public factory schema для cross-assembly.
+
+#### Шаг 2. RouteGraphAssembler — сборка графа из RouteSite
+
+`RouteGraphAssembler.Build(sites, compilation)`:
+
+1. Собирает station sites в `stationByKey` и якоря из discovery (`RouteSiteKind.Anchor`).
+2. Forward ordering через `ChainDetector.TryAdvanceChain` от каждого якоря с pre-built binding из `RouteSite`.
+3. Строит `RouteGraph`: `Chains`, `ChainIndex` (`locationKey → ChainSiteBinding[]`), chained-set.
+
+Semantic resolve handler'а выполняется **один раз** в discovery; повторного `DetectChains` scan по syntax tree нет.
+
+#### Шаг 3. AddDiscoveredCall — дедупликация и группировка
+
+Один проход по `graph.StationSites` + дополнение из `graph.ChainIndex` для call site'ов, попавших в цепочку без pre-resolved handler в discovery.
+
+Lookup chain binding: `ChainStationCallIndex.TryResolveAll(graph.ChainIndex, ...)`.
+
+#### Шаг 4. Analyzer — тот же граф
+
+`ChainValidationAnalyzer` в `RegisterCompilationStartAction` вызывает `RouteSiteDiscoverer.CollectAll` + `RouteGraphAssembler.Build` один раз на compilation. Per-tree semantic action использует `graph.GetChainsInTree(tree)` и `graph.IsChainedInvocation`.
+
+Если после обработки `groups.Count == 0` — callback завершается **без** `AddSource`.
+
+#### Шаг 5. TypeSignatureGroup → MergedStationSchema
+
+```csharp
+var mergedSchemas = groups.Values
+    .Select(group => group.ToMerged(productionContext))
+    .OrderBy(x => x.DelegateTypeId)
+    .ToImmutableArray();
+```
+
+`ToMerged` для каждой группы:
+
+1. Создаёт `MergedStationSchema(canonicalBinding, delegateTypeId)`.
+2. Объединяет return shapes → `ReturnMembers` для compile-time merge.
+3. Решает, нужен ли **chain dispatch** (`RequiresChainDispatch`):
+   - есть chain bindings **и**
+   - в группе **больше одного набора имён вагонов** при одной type-сигнатуре.
+4. Если chain dispatch → `merged.SetChainBindings(_chainBindings)` + `ReportNonChainConflicts` (TOP007 для orphan call site'ов вне цепочки с конфликтующими именами).
+5. Если не chain dispatch → `ReportCanonicalConflicts` (TOP007, когда два non-chain call site с одной сигнатурой, но разными именами параметров).
+
+`UsesChainDispatch` на `MergedStationSchema` дополнительно требует `!IsServiceStation` — service station не участвует в caller dispatch таблицах.
+
+#### Шаг 6. EmitExtensions — эмиссия одного .g.cs
+
+`EmitExtensions(productionContext, mergedSchemas)`:
+
+1. `BuildMetadataConsolidation` — для **non-chain** групп с одинаковым `delegateTypeId + wagon names` объединяет return metadata, чтобы `ReturnMembers_*` static field эмитился один раз.
+2. Пишет заголовок `TrainRouteStationExtensions` в `StringBuilder`.
+3. Для каждого `MergedStationSchema` (dedupe по `emissionKey`) вызывает `EmitSchemaMembers`:
+
+| `merged.UsesChainDispatch` | Что эмитится |
+|----------------------------|--------------|
+| `true` | **Chain-aware:** `ChainStationBinding_*` struct, static `ChainBinding_*` constants, `ResolveChainBinding_*(chainKey, index)` switch, публичный `.Station` → `StationCore_*(route, handler, route.CallerChainKey, route.NextChainRegistrationOrdinal())`, internal overload с resolved binding |
+| `false` | **Canonical:** static `WagonNames_*`, optional `RefFlags_*` / `ReturnMembers_*`, один публичный `.Station` с compile-time именами + `route.NextChainRegistrationOrdinal()` (чтобы не сбить индекс, если дальше по маршруту будут chain-dispatch станции) |
+
+4. Тело регистрации в обоих случаях генерирует `StationAdapterBodyEmitter.EmitRegistration` → `route.RegisterStation(..., manifest => { PullWagon; invoke handler; StationMerge })`.
+5. `context.AddSource("TrainRouteStation.Extensions.g.cs", SourceText.From(...))` — единственный основной output генератора станций.
+
+#### Chain-aware vs canonical: что видит runtime
+
+**Canonical** (один набор имён вагонов на всю группу):
+
+```csharp
+// Упрощённо
+public static TrainRoute Station(this TrainRoute route, string stationName, TrainStationHandler_Abc handler)
+{
+    route.NextChainRegistrationOrdinal(); // сдвиг счётчика для смешанных маршрутов
+    return route.RegisterStation(stationName, manifest => { /* Pull по WagonNames_Abc */ });
+}
+```
+
+**Chain-aware** (несколько цепочек с `(string, decimal)` но разными именами):
+
+```csharp
+public static TrainRoute Station(this TrainRoute route, string stationName, TrainStationHandler_Abc handler)
+{
+    return StationCore_Abc(route, stationName, handler, route.CallerChainKey, route.NextChainRegistrationOrdinal());
+}
+
+private static ChainStationBinding_Abc ResolveChainBinding_Abc(string chainKey, int chainStationIndex)
+{
+    switch (chainKey) {
+        case "Routes/Payment.cs:12:PaymentRoute":
+            switch (chainStationIndex) { case 1: return ChainBinding_Abc_..._1; }
+            break;
+        // ...
+    }
+    return DefaultChainBinding_Abc;
+}
+```
+
+При `RegisterStation` binding уже содержит `inputNames`, `returnMembers`, `refFlags` для **конкретной** станции **конкретной** цепочки — runtime reflection не нужен.
+
+#### Инкрементальность и побочные эффекты
+
+| Действие | Где | Когда |
+|----------|-----|-------|
+| `context.AddSource(...)` | `EmitExtensions`, `RouteSchemaExporter` | Новый/обновлённый generated file |
+| `context.ReportDiagnostic(TOP007)` | `TypeSignatureGroup.ToMerged` | Конфликт имён вагонов без chain dispatch |
+| Полный rebuild route graph | `RouteGraphAssembler.Build` | На **каждый** вызов callback (из collected `RouteSite[]`) |
+
+SyntaxProvider даёт инкрементальность на уровне **transform отдельных узлов**; `RouteGraphAssembler` пересчитывается в callback целиком из актуального массива sites.
+
+#### Связь с остальными компонентами
+
+```mermaid
+flowchart LR
+  SP["SyntaxProvider\nRouteSite[]"] --> CB["RegisterSourceOutput"]
+  CP["CompilationProvider"] --> CB
+  CB --> RGA["RouteGraphAssembler"]
+  CB --> TSG["TypeSignatureGroup"]
+  TSG --> MSS["MergedStationSchema"]
+  MSS --> E1["EmitChainAwareSchemaMembers"]
+  MSS --> E2["EmitCanonicalSchemaMembers"]
+  E1 --> SAB["StationAdapterBodyEmitter"]
+  E2 --> SAB
+  SAB --> RS["runtime RegisterStation"]
+```
+
+Analyzer (`ChainValidationAnalyzer`) использует те же `RouteSiteDiscoverer`, `RouteGraphAssembler`, `ChainDetector` (walk-primitives), `StationSyntaxHelper`.
 
 ### Что эмитится
 
-- **`TrainRouteStation.Extensions.g.cs`** — типизированные `Station` / `ServiceStation`, `StationCore_*`, таблицы `ChainBinding_*`.
-- **`TrainRouteStation.Interceptors.g.cs`** — методы с `[InterceptsLocation]`, которые перехватывают call site.
-- Schema для public route factory через `RouteSchemaExporter` (см. [cross-assembly-routes](cross-assembly-routes.md)).
+- **`TrainRouteStation.Extensions.g.cs`** — типизированные `Station` / `ServiceStation`, `StationCore_*`, таблицы `ChainBinding_*` / `ResolveChainBinding_*` (caller dispatch).
+- **`RouteSchemas.g.cs`** — schema attributes для public route factory (cross-assembly).
 
 ### Допустимые формы handler'а
 
@@ -135,27 +392,28 @@ var route = PaymentModule.Build()
 
 ```mermaid
 flowchart TB
-  Start["CompilationStart\nSemanticModelAction"] --> Skip["Пропуск *.g.cs"]
-  Skip --> Chains["ChainDetector.DetectChains"]
+  Start["CompilationStart\nRouteGraph built once"] --> PerTree["SemanticModelAction per tree"]
+  PerTree --> Skip["Пропуск *.g.cs"]
+  Skip --> Chains["RouteGraph.GetChainsInTree"]
   Chains --> FactoryRes["RouteFactoryResolver\nесли anchor = factory"]
-  Chains --> Sim["ChainGraphValidator\n→ ChainGraphSimulator"]
-  Start --> Factories["RouteFactoryPathValidator\npublic/exported factories"]
-  Start --> Joins["BranchRouteJoinSetFinder\n+ BranchRouteJoinValidator"]
-  Joins --> Downstream["Simulate downstream\nс merged terminal wagons"]
-  Start --> Orphans["DetectOrphanStationInvocations\nTOP005"]
-  Start --> Unsupported["Unsupported handler form\nTOP009"]
+  Chains --> Sim["ChainGraphSimulator"]
+  PerTree --> Factories["RouteFactoryPathValidator\npublic/exported factories"]
+  PerTree --> Joins["BranchRouteJoinSetFinder\n+ BranchRouteJoinValidator"]
+  Joins --> Downstream["RouteGraph.TryGetChainForInvocation\n+ Simulate merged terminal"]
+  PerTree --> Orphans["RouteGraph.IsChainedInvocation\nTOP005"]
+  PerTree --> Unsupported["Unsupported handler form\nTOP009"]
 ```
 
 ### Что делает за один проход syntax tree
 
 | Этап | Компонент | Результат |
 |------|-----------|-----------|
-| Найти цепочки | `ChainDetector` | `RouteChain` (anchor + станции по порядку) |
+| Найти цепочки | `RouteGraph` | `RouteChain` (anchor + станции по порядку) |
 | Factory как anchor | `RouteFactoryResolver` | Подтянуть upstream schema / TOP011 |
-| Симуляция вагонов | `ChainGraphSimulator` через `ChainGraphValidator` | TOP001, TOP002, TOP003, TOP004, TOP006, TOP010 по ходу «виртуального» манифеста |
-| Public factory paths | `RouteFactoryPathAnalyzer` + `RouteFactoryPathValidator` | TOP012 / TOP013 (расходящиеся или unknown return paths) |
-| Ветвление | `BranchRouteJoinSetFinder` + `BranchRouteJoinValidator` | TOP008; при успешном merge — симуляция хвоста с объединённым терминалом |
-| Orphans | `DetectOrphanStationInvocations` | TOP005 на `.Station` вне поддерживаемой цепочки |
+| Симуляция вагонов | `ChainGraphSimulator` | TOP001, TOP002, TOP003, TOP004, TOP006, TOP010 |
+| Public factory paths | `RouteFactoryPathAnalyzer` + `RouteFactoryPathValidator` | TOP012 / TOP013 |
+| Ветвление | `BranchRouteJoinSetFinder` + `BranchRouteJoinValidator` | TOP008; при успешном merge — симуляция хвоста |
+| Orphans | `RouteGraph.IsChainedInvocation` | TOP005 на `.Station` вне цепочки |
 | Форма handler'а | `StationSyntaxHelper.TryGetUnsupportedStationHandler` | TOP009 |
 
 Сгенерированный код (`.g.cs`) анализатор **не** анализирует (`ConfigureGeneratedCodeAnalysis(None)` + явный skip по пути).
@@ -222,7 +480,7 @@ flowchart TB
 | Нужен для сборки data-oriented API | да (без него нет `.Station` overload) | нет (сборка может пройти, если код уже «счастливый») |
 | Видит цепочку | да (`ChainStationCallIndex`) | да (`ChainDetector`) |
 | Симулирует вагоны | косвенно (для chain bindings / schema) | да, полный walk + TOP* |
-| Interceptors | эмитит | не трогает |
+| Caller dispatch | эмитит `ResolveChainBinding_*` | не участвует (только валидация цепочек) |
 
 Без анализатора библиотека «едет», но ошибки вагонов вылезут в runtime (`KeyNotFoundException` / cast) или вообще как неверный merge. Analyzer переносит эти проверки на compile-time.
 
@@ -236,38 +494,44 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  Call["Ваш .Station(...)\ncall site"] --> Ix["Interceptor\nInterceptsLocation"]
-  Ix --> Core["StationCore_N\n+ ChainBinding"]
+  Call["Ваш .Station(...)\ncall site"] --> Key["route.CallerChainKey\n+ chainStationIndex"]
+  Key --> Resolve["ResolveChainBinding_*"]
+  Resolve --> Core["StationCore_*\n+ ChainBinding"]
   Core --> Reg["RegisterStation\nruntime adapter"]
 ```
 
-| Режим | Поведение |
-|-------|-----------|
-| Без interceptor | Вызов идёт в общую `Station(this TrainRoute, string, Func<string, decimal, …>)`. Имена вагонов либо канонические для группы, либо reflection fallback — нельзя надёжно различить два call site с одной сигнатурой типов. |
-| С interceptor | Компилятор подменяет call site методом с `[InterceptsLocation(version, opaqueData)]`. Тот зовёт `StationCore_*(…, ChainBinding_*)` с уже известными именами вагонов для этой станции в этой цепочке. |
+| Ситуация | Поведение |
+|----------|-----------|
+| Без caller dispatch | Одна overload на `(string, decimal)`. Имена вагонов канонические для группы — два call site с разными именами параметров смешиваются. |
+| С caller dispatch | На `new TrainRoute()` штампуется `CallerChainKey`. Каждая `.Station` передаёт key + ordinal в `ResolveChainBinding_*` и получает compile-time `inputNames` / `returnMembers` для своей цепочки. |
 
-### Упрощённый вид сгенерированного interceptor
+### Упрощённый вид сгенерированного chain-dispatch
 
 ```csharp
-// Сгенерированный interceptor (упрощённо)
-[InterceptsLocation(1, "…opaque…")] // Program.cs:42
-public static TrainRoute Station_0(
-    this TrainRoute route, string stationName, TrainStationHandler_… handler)
+// Публичный extension (упрощённо)
+public static TrainRoute Station(this TrainRoute route, string stationName, TrainStationHandler_Abc handler)
 {
-    return TrainRouteStationExtensions.StationCore_Abc(
-        route, stationName, handler,
-        TrainRouteStationExtensions.ChainBinding_Abc_chain0_1);
+    return StationCore_Abc(route, stationName, handler, route.CallerChainKey, route.NextChainRegistrationOrdinal());
+}
+
+// Resolve по ключу цепочки и индексу станции
+internal static TrainRoute StationCore_Abc(..., string chainKey, int chainStationIndex)
+{
+    return StationCore_Abc(..., ResolveChainBinding_Abc(chainKey, chainStationIndex));
+}
+
+// Регистрация с уже известным binding
+internal static TrainRoute StationCore_Abc(..., ChainStationBinding_Abc binding)
+{
+    var inputNames = binding.InputNames;   // ["paymentId", "amount"] или ["orderId", "total"]
+    var returnMembers = binding.ReturnMembers;
+    return route.RegisterStation(stationName, manifest => { /* pull + handler + merge */ });
 }
 ```
 
-### Режимы ChainDispatch (TrainOP_ChainDispatchMode)
+### Caller dispatch (единственный режим)
 
-Настраивается через targets генератора (`TrainOP.Generators.targets`):
-
-| Режим | Когда |
-|-------|--------|
-| `caller` (default) | ctor+ordinal dispatch: идентичность цепочки штампуется на `new TrainRoute()` и дальше resolve идёт по `ChainKey` + `chainStationIndex` |
-| `reflection` | явный opt-out: имена вагонов читаются через `StationHandlerParameterNames` в runtime |
+Генератор всегда эмитит **ctor+ordinal dispatch**: идентичность цепочки штампуется на `new TrainRoute()`, resolve идёт по `CallerChainKey` + `chainStationIndex` через compile-time lookup tables.
 
 Бенчмарки: [`benchmarks/README.md`](../benchmarks/README.md).
 
@@ -436,26 +700,30 @@ Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 | Путь | Назначение |
 |------|------------|
 | `src/TrainOP` | Runtime: `Railway.cs`, `StationMerge`, `Train` |
-| `src/TrainOP.Generators` | Generator + analyzer + interceptors emitter |
+| `src/TrainOP.Generators` | Generator + analyzer |
 | `samples/TrainOP.Samples` | Консольные сценарии |
 | `tests/` | Runtime + generator + cross-assembly |
 | `docs/` | Руководства пользователя и этот документ |
-| `benchmarks/` | Reflection vs interceptors |
+| `benchmarks/` | Library vs manual pipelines |
 
 Ключевые файлы генератора:
 
 | Файл | Роль |
 |------|------|
-| `TrainRouteStationGenerator.cs` | Точка входа generator |
-| `ChainDetector.cs` | Обнаружение fluent-цепочек |
-| `TrainRouteStationInterceptorsEmitter.cs` | Эмит interceptors |
+| `TrainRouteStationGenerator.cs` | Точка входа: `Initialize` → `RegisterSourceOutput` |
+| `ChainStationCallIndex.cs` | Индекс chain bindings по location + chainId |
+| `TypeSignatureGroup.cs` | Группировка call site'ов, TOP007, chain vs canonical |
+| `MergedStationSchema.cs` | Объединённая схема перед emit |
+| `StationSyntaxHelper.cs` | Predicate + `TryGetData*Invocation` + `TryResolveHandler` (используются в `GetRouteHandlerCall` и analyzer) |
+| `HandlerInputSchemaBuilder.cs` | Wagon/framework classification → `StationHandlerBinding` |
+| `HandlerReturnInference.cs` | Return shape и member names из тела handler'а |
+| `ChainAwareStationCodegen.cs` | Таблицы `ResolveChainBinding_*` |
 | `StationAdapterBodyEmitter.cs` | Тело адаптера (Pull → invoke → merge) |
+| `ChainDetector.cs` | Обнаружение fluent-цепочек (используется и generator, и analyzer) |
 | `ChainValidationAnalyzer.cs` | DiagnosticAnalyzer: TOP* (кроме TOP007) |
 | `ChainGraphSimulator.cs` | Виртуальный walk манифеста по цепочке |
-| `ChainGraphValidator.cs` | Обёртка Simulate → diagnostics |
 | `BranchRouteJoinValidator.cs` | Сходимость веток (TOP008) |
 | `RouteFactoryPathAnalyzer.cs` / `RouteFactoryPathValidator.cs` | Return paths factory (TOP012/013) |
-| `TypeSignatureGroup.cs` | TOP007 при emit генератора |
 | `RouteSchemaExporter.cs` | Cross-assembly schema |
 
 ---
@@ -464,9 +732,9 @@ Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 
 1. Метафора и минимальный пример (раздел 1).
 2. Таблица merge (раздел 6) — без неё поведение возвратов неочевидно.
-3. Пайплайн генератора (раздел 2).
+3. Пайплайн генератора: **GetRouteHandlerCall** и **RegisterSourceOutput** (раздел 2).
 4. Работа анализатора (раздел 3) — чем TOP* ловятся до runtime.
-5. Зачем interceptors (раздел 4).
+5. Caller dispatch (раздел 4).
 6. Travel loop (раздел 5).
 7. Сводка TOP* (раздел 8), когда IDE краснеет.
 

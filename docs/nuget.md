@@ -15,18 +15,11 @@ TrainOP поставляется двумя пакетами:
 - **SDK-style** `.csproj` с поддержкой source generators
 - Версии пакетов **TrainOP** и **TrainOP.Generators** должны совпадать
 
-### Chain-dispatch и версия SDK
+### Chain-dispatch
 
-При конфликте имён вагонов у handler'ов с одной сигнатурой типов генератор выбирает режим по SDK хоста (или по `TrainOP_ChainDispatchMode`):
+При конфликте имён вагонов у handler'ов с одной сигнатурой типов генератор использует **caller dispatch** (ctor+ordinal): идентичность цепочки штампуется на `new TrainRoute()`, binding resolve идёт по `CallerChainKey` + порядковому индексу. Дополнительных MSBuild-свойств не требуется.
 
-| Режим | SDK | Механизм |
-|-------|-----|----------|
-| `caller` | любой | ctor+ordinal dispatch (caller identity), без Roslyn interceptors |
-| `reflection` | любой (явно) | Имена вагонов из `ParameterInfo` при регистрации |
-
-Для NativeAOT / aggressive trimming предпочтителен `caller`, потому что reflection зависит от сохранённых имён параметров.
-
-Сравнение скорости режимов: [`benchmarks/README.md`](../benchmarks/README.md).
+Сравнение скорости: [`benchmarks/README.md`](../benchmarks/README.md).
 
 ## Установка из nuget.org
 
@@ -40,16 +33,16 @@ dotnet add package TrainOP.Generators
 Указать версию явно:
 
 ```bash
-dotnet add package TrainOP --version 0.10.0
-dotnet add package TrainOP.Generators --version 0.10.0
+dotnet add package TrainOP --version 0.11.0
+dotnet add package TrainOP.Generators --version 0.11.0
 ```
 
 ### PackageReference в `.csproj`
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.10.0" />
-  <PackageReference Include="TrainOP.Generators" Version="0.10.0" />
+  <PackageReference Include="TrainOP" Version="0.11.0" />
+  <PackageReference Include="TrainOP.Generators" Version="0.11.0" />
 </ItemGroup>
 ```
 
@@ -110,8 +103,8 @@ dotnet add package TrainOP.Generators --source trainop-local
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="TrainOP" Version="0.10.0" />
-    <PackageReference Include="TrainOP.Generators" Version="0.10.0" />
+    <PackageReference Include="TrainOP" Version="0.11.0" />
+    <PackageReference Include="TrainOP.Generators" Version="0.11.0" />
   </ItemGroup>
 </Project>
 ```

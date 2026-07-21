@@ -8,7 +8,7 @@
     <NoWarn>$(NoWarn);RSEXPERIMENTAL002</NoWarn>
 
     <PackageId>TrainOP.Generators</PackageId>
-    <Version>0.10.0</Version>
+    <Version>0.11.0</Version>
     <Authors>Criperum</Authors>
     <Description>Source generators и analyzer для data-oriented .Station handlers</Description>
     <PackageTags>railway;rop;functional;source-generator;analyzer;roslyn</PackageTags>

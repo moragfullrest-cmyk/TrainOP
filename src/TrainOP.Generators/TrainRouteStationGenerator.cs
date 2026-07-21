@@ -1,4 +1,4 @@
-﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using System;
@@ -6,8 +6,8 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
-using TrainOP.Generators.Models;
-
+using TrainOP.Generators.Chain;
+using TrainOP.Generators.Handlers;
 namespace TrainOP.Generators
 {
     /// <summary>
@@ -28,75 +28,56 @@ namespace TrainOP.Generators
         /// </summary>
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            var stationCalls = context.SyntaxProvider.CreateSyntaxProvider(
-                static (node, _) =>
-                    StationSyntaxHelper.IsCandidateStationInvocation(node)
-                    || StationSyntaxHelper.IsCandidateServiceStationInvocation(node),
-                static (generatorContext, _) => GetRouteHandlerCall(generatorContext));
+            var stationSites = context.SyntaxProvider.CreateSyntaxProvider(
+                static (node, _) => RouteSiteDiscoverer.IsCandidateStationSite(node),
+                static (generatorContext, _) => RouteSiteDiscoverer.TryDiscoverStation(generatorContext)).Collect();
 
-            var combined = context.CompilationProvider
-                .Combine(stationCalls.Collect())
-                .Combine(context.AnalyzerConfigOptionsProvider);
+            var anchorSites = context.SyntaxProvider.CreateSyntaxProvider(
+                static (node, _) => RouteSiteDiscoverer.IsCandidateAnchorSite(node),
+                static (generatorContext, _) => RouteSiteDiscoverer.TryDiscoverAnchor(generatorContext)).Collect();
 
-            context.RegisterSourceOutput(combined, static (productionContext, source) =>
+            var allSites = stationSites
+                .Combine(anchorSites)
+                .Select(static (pair, _) => RouteSiteDiscoverer.MergeSites(pair.Left, pair.Right));
+
+            var combined = context.CompilationProvider.Combine(allSites);
+
+            context.RegisterSourceOutput(combined, (productionContext, source) =>
             {
-                var compilation = source.Left.Left;
-                var calls = source.Left.Right;
-                var chainDispatchMode = ChainDispatchModeReader.Read(source.Right);
+                var compilation = source.Left;
+                var sites = source.Right;
                 RouteSchemaExporter.Emit(productionContext, compilation);
-                var chainIndex = ChainStationCallIndex.Build(compilation);
+                var graph = RouteGraphAssembler.Build(sites, compilation);
                 var groups = new Dictionary<string, TypeSignatureGroup>(StringComparer.Ordinal);
                 var processedInvocationKeys = new HashSet<string>(StringComparer.Ordinal);
 
-                void AddCall(StationHandlerBinding handlerBinding, Location location, InvocationExpressionSyntax invocation)
+                foreach (var site in graph.StationSites
+                    .OrderBy(site => site.IdentityLocation.SourceSpan.Start))
                 {
-                    if (handlerBinding == null || invocation == null)
-                    {
-                        return;
-                    }
-
-                    var invocationLocation = invocation.GetLocation();
-                    var invocationKey = ChainStationCallIndex.BuildLocationKey(invocationLocation);
-                    if (invocationKey.Length == 0 || !processedInvocationKeys.Add(invocationKey))
-                    {
-                        return;
-                    }
-
-                    var typeSignature = DelegateTypeSignature.From(handlerBinding);
-                    var groupingKey = HandlerFuncTypeBuilder.BuildGroupingKey(handlerBinding, typeSignature.TypeId);
-                    if (!groups.TryGetValue(groupingKey, out var group))
-                    {
-                        group = new TypeSignatureGroup(typeSignature);
-                        groups[groupingKey] = group;
-                    }
-
-                    if (ChainStationCallIndex.TryResolveAll(chainIndex, invocationLocation, out var chainBindings)
-                        && chainBindings.Length > 0)
-                    {
-                        for (var i = 0; i < chainBindings.Length; i++)
-                        {
-                            group.Add(handlerBinding, location, chainBindings[i], productionContext);
-                        }
-                    }
-                    else
-                    {
-                        // Station invocation is present but does not belong to any detected chain.
-                        group.Add(handlerBinding, location, null, productionContext);
-                    }
+                    AddDiscoveredCall(
+                        groups,
+                        processedInvocationKeys,
+                        graph.ChainIndex,
+                        productionContext,
+                        site.HandlerBinding,
+                        site.HandlerLocation,
+                        site.Invocation);
                 }
 
-                foreach (var call in calls
-                    .Where(static call => call != null)
-                    .OrderBy(static call => call.Location.SourceSpan.Start))
-                {
-                    AddCall(call.HandlerBinding, call.Location, call.Invocation);
-                }
-
-                foreach (var chainBinding in chainIndex.Values
-                    .SelectMany(static x => x)
+                foreach (var chainBinding in graph.ChainIndex.Values
+                    .SelectMany(x => x)
                     .OrderBy(binding => binding.InvocationLocation.SourceSpan.Start))
                 {
-                    AddCall(
+                    if (chainBinding.Schema == null || chainBinding.Invocation == null)
+                    {
+                        continue;
+                    }
+
+                    AddDiscoveredCall(
+                        groups,
+                        processedInvocationKeys,
+                        graph.ChainIndex,
+                        productionContext,
                         chainBinding.Schema,
                         chainBinding.InvocationLocation,
                         chainBinding.Invocation);
@@ -112,61 +93,51 @@ namespace TrainOP.Generators
                     .OrderBy(x => x.DelegateTypeId, StringComparer.Ordinal)
                     .ToImmutableArray();
 
-                EmitExtensions(productionContext, mergedSchemas, chainDispatchMode);
+                EmitExtensions(productionContext, mergedSchemas);
             });
         }
 
-        /// <summary>
-        /// Extracts handler schema metadata from a candidate station or service-station invocation.
-        /// </summary>
-        private static StationCallInfo GetRouteHandlerCall(GeneratorSyntaxContext context)
+        private static void AddDiscoveredCall(
+            Dictionary<string, TypeSignatureGroup> groups,
+            HashSet<string> processedInvocationKeys,
+            IReadOnlyDictionary<string, ImmutableArray<ChainSiteBinding>> chainIndex,
+            SourceProductionContext productionContext,
+            StationHandlerBinding handlerBinding,
+            Location location,
+            InvocationExpressionSyntax invocation)
         {
-            var invocation = (InvocationExpressionSyntax)context.Node;
-            if (invocation.ArgumentList.Arguments.Count != 2)
+            if (handlerBinding == null || invocation == null)
             {
-                return null;
+                return;
             }
 
-            var semanticModel = context.SemanticModel;
-            var memberAccess = (MemberAccessExpressionSyntax)invocation.Expression;
-            var methodName = memberAccess.Name.Identifier.ValueText;
-            var forServiceStation = StationSyntaxHelper.IsServiceStationMethodName(methodName);
-            if (!forServiceStation
-                && !StationSyntaxHelper.IsStationMethodName(methodName))
+            var invocationLocation = invocation.GetLocation();
+            var invocationKey = ChainStationCallIndex.BuildLocationKey(invocationLocation);
+            if (invocationKey.Length == 0 || !processedInvocationKeys.Add(invocationKey))
             {
-                return null;
+                return;
             }
 
-            var receiverType = semanticModel.GetTypeInfo(memberAccess.Expression).Type;
-            if (!StationSyntaxHelper.IsTrainRouteReceiver(memberAccess.Expression, receiverType, semanticModel))
+            var typeSignature = DelegateTypeSignature.From(handlerBinding);
+            var groupingKey = HandlerFuncTypeCodegen.BuildGroupingKey(handlerBinding, typeSignature.TypeId);
+            if (!groups.TryGetValue(groupingKey, out var group))
             {
-                return null;
+                group = new TypeSignatureGroup(typeSignature);
+                groups[groupingKey] = group;
             }
 
-            if (StationSyntaxHelper.IsBuiltinTrainRouteHandler(invocation, semanticModel, methodName))
+            if (ChainStationCallIndex.TryResolveAll(chainIndex, invocationLocation, out var chainBindings)
+                && chainBindings.Length > 0)
             {
-                return null;
+                for (var i = 0; i < chainBindings.Length; i++)
+                {
+                    group.Add(handlerBinding, location, chainBindings[i], productionContext);
+                }
             }
-
-            var handlerArgument = invocation.ArgumentList.Arguments[1].Expression;
-            if (!StationSyntaxHelper.TryResolveHandler(handlerArgument, semanticModel, out var resolved)
-                || resolved == null)
+            else
             {
-                return null;
+                group.Add(handlerBinding, location, null, productionContext);
             }
-
-            if (forServiceStation && StationSyntaxHelper.IsLikelyBuiltinServiceStationHandler(resolved))
-            {
-                return null;
-            }
-
-            var handlerBinding = HandlerInputSchemaBuilder.TryBuild(resolved, semanticModel, forServiceStation);
-            if (handlerBinding == null)
-            {
-                return null;
-            }
-
-            return new StationCallInfo(handlerBinding, resolved.Location, invocation);
         }
 
         /// <summary>
@@ -174,12 +145,12 @@ namespace TrainOP.Generators
         /// </summary>
         private static void EmitExtensions(
             SourceProductionContext context,
-            ImmutableArray<MergedStationSchema> schemas,
-            ChainDispatchMode chainDispatchMode)
+            ImmutableArray<MergedStationSchema> schemas)
         {
             var source = new StringBuilder();
             var emittedSignatures = new HashSet<string>(StringComparer.Ordinal);
             var emittedMetadataKeys = new HashSet<string>(StringComparer.Ordinal);
+            var emittedChainBindingStruct = false;
             var metadataConsolidation = BuildMetadataConsolidation(schemas);
             source.AppendLine("using System;");
             source.AppendLine("using System.Threading;");
@@ -194,7 +165,7 @@ namespace TrainOP.Generators
             for (var i = 0; i < schemas.Length; i++)
             {
                 var merged = schemas[i];
-                var emissionKey = HandlerFuncTypeBuilder.BuildGroupingKey(merged.CanonicalBinding, merged.DelegateTypeId);
+                var emissionKey = HandlerFuncTypeCodegen.BuildGroupingKey(merged.CanonicalBinding, merged.DelegateTypeId);
                 if (!emittedSignatures.Add(emissionKey))
                 {
                     continue;
@@ -205,7 +176,7 @@ namespace TrainOP.Generators
                     source.AppendLine();
                 }
 
-                EmitSchemaMembers(source, merged, metadataConsolidation, emittedMetadataKeys, chainDispatchMode);
+                EmitSchemaMembers(source, merged, metadataConsolidation, emittedMetadataKeys, ref emittedChainBindingStruct);
                 emittedCount++;
             }
 
@@ -232,26 +203,18 @@ namespace TrainOP.Generators
             MergedStationSchema merged,
             IReadOnlyDictionary<string, MergedStationSchema> metadataConsolidation,
             HashSet<string> emittedMetadataKeys,
-            ChainDispatchMode chainDispatchMode)
+            ref bool emittedChainBindingStruct)
         {
             if (merged.UsesChainDispatch)
             {
-                if (chainDispatchMode == ChainDispatchMode.Reflection)
-                {
-                    EmitReflectionChainAwareSchemaMembers(source, merged);
-                }
-                else
-                {
-                    EmitChainAwareSchemaMembers(source, merged);
-                }
-
+                EmitChainAwareSchemaMembers(source, merged, ref emittedChainBindingStruct);
                 return;
             }
 
             var metadataKey = BuildMetadataKey(merged);
             var emitMetadata = emittedMetadataKeys.Add(metadataKey);
             var metadata = metadataConsolidation[metadataKey];
-            EmitCanonicalSchemaMembers(source, merged, metadata, emitMetadata, chainDispatchMode);
+            EmitCanonicalSchemaMembers(source, merged, metadata, emitMetadata);
         }
 
         /// <summary>
@@ -294,8 +257,17 @@ namespace TrainOP.Generators
         /// <summary>
         /// Emits chain-dispatched station adapters with compile-time binding lookup.
         /// </summary>
-        private static void EmitChainAwareSchemaMembers(StringBuilder source, MergedStationSchema merged)
+        private static void EmitChainAwareSchemaMembers(
+            StringBuilder source,
+            MergedStationSchema merged,
+            ref bool emittedChainBindingStruct)
         {
+            if (!emittedChainBindingStruct)
+            {
+                ChainAwareStationCodegen.EmitBindingStruct(source);
+                emittedChainBindingStruct = true;
+            }
+
             var handlerBinding = merged.CanonicalBinding;
             var delegateTypeId = merged.DelegateTypeId;
             var coreMethodName = "StationCore_" + delegateTypeId;
@@ -308,13 +280,13 @@ namespace TrainOP.Generators
             source.AppendLine();
 
             var delegateName = (handlerBinding.IsServiceStation ? "TrainServiceStationHandler_" : "TrainStationHandler_") + delegateTypeId;
-            if (HandlerFuncTypeBuilder.RequiresCustomDelegate(handlerBinding))
+            if (HandlerFuncTypeCodegen.RequiresCustomDelegate(handlerBinding))
             {
-                HandlerFuncTypeBuilder.EmitCustomDelegateDeclaration(source, handlerBinding, delegateName);
+                HandlerFuncTypeCodegen.EmitCustomDelegateDeclaration(source, handlerBinding, delegateName);
                 source.AppendLine();
             }
 
-            var handlerTypeName = HandlerFuncTypeBuilder.BuildHandlerTypeName(handlerBinding, delegateName);
+            var handlerTypeName = HandlerFuncTypeCodegen.BuildHandlerTypeName(handlerBinding, delegateName);
             var routeMethodName = handlerBinding.ExtensionMethodName;
             EmitOverloadResolutionPriority(source, handlerBinding);
             source.Append("        public static TrainRoute ")
@@ -349,8 +321,8 @@ namespace TrainOP.Generators
                 .Append(coreMethodName)
                 .Append("(this TrainRoute route, string stationName, ")
                 .Append(handlerTypeName)
-                .Append(" handler, ChainStationBinding_")
-                .Append(delegateTypeId)
+                .Append(" handler, ")
+                .Append(ChainAwareStationCodegen.BindingTypeName)
                 .AppendLine(" binding)");
             source.AppendLine("        {");
             source.AppendLine("            if (route == null) throw new ArgumentNullException(nameof(route));");
@@ -359,62 +331,17 @@ namespace TrainOP.Generators
             source.AppendLine("            var returnMembers = binding.ReturnMembers;");
             source.AppendLine("            var refFlags = binding.RefFlags;");
 
-            StationAdapterBodyEmitter.EmitRegistration(
+            StationAdapterBodyCodegen.EmitRegistration(
                 source,
                 handlerBinding,
-                new StationAdapterBodyEmitter.Options
+                new StationAdapterBodyCodegen.Options
                 {
-                    Pull = StationAdapterBodyEmitter.PullMode.NameArray,
+                    Pull = StationAdapterBodyCodegen.PullMode.NameArray,
                     UseNeutralWagonNames = true,
                     WagonNamesExpression = "inputNames",
                     ReturnMembersExpression = "returnMembers",
                     RefFlagsExpression = "refFlags",
                     PassRefFlagsToServiceMergeWhenPresent = true
-                });
-            source.AppendLine("        }");
-        }
-
-        /// <summary>
-        /// Emits chain-dispatch adapters that resolve wagon names via ParameterInfo (no interceptors).
-        /// </summary>
-        private static void EmitReflectionChainAwareSchemaMembers(StringBuilder source, MergedStationSchema merged)
-        {
-            var handlerBinding = merged.CanonicalBinding;
-            var delegateTypeId = merged.DelegateTypeId;
-            var delegateName = (handlerBinding.IsServiceStation ? "TrainServiceStationHandler_" : "TrainStationHandler_") + delegateTypeId;
-            if (HandlerFuncTypeBuilder.RequiresCustomDelegate(handlerBinding))
-            {
-                HandlerFuncTypeBuilder.EmitCustomDelegateDeclaration(source, handlerBinding, delegateName);
-                source.AppendLine();
-            }
-
-            var handlerTypeName = HandlerFuncTypeBuilder.BuildHandlerTypeName(handlerBinding, delegateName);
-            var routeMethodName = handlerBinding.ExtensionMethodName;
-            EmitOverloadResolutionPriority(source, handlerBinding);
-            source.Append("        public static TrainRoute ")
-                .Append(routeMethodName)
-                .Append("(this TrainRoute route, string stationName, ")
-                .Append(handlerTypeName)
-                .AppendLine(" handler)");
-            source.AppendLine("        {");
-            source.AppendLine("            if (route == null) throw new ArgumentNullException(nameof(route));");
-            source.AppendLine("            if (handler == null) throw new ArgumentNullException(nameof(handler));");
-            source.AppendLine("            var inputNames = StationHandlerParameterNames.GetWagonInputNames(handler);");
-            if (handlerBinding.HasRefWagons)
-            {
-                source.AppendLine("            var refFlags = StationHandlerParameterNames.GetWagonRefFlags(handler);");
-            }
-
-            StationAdapterBodyEmitter.EmitRegistration(
-                source,
-                handlerBinding,
-                new StationAdapterBodyEmitter.Options
-                {
-                    Pull = StationAdapterBodyEmitter.PullMode.NameArray,
-                    UseNeutralWagonNames = true,
-                    WagonNamesExpression = "inputNames",
-                    ReturnMembersExpression = TypedStationReturnCodegen.BuildCompileTimeReturnMembersExpression(handlerBinding),
-                    RefFlagsExpression = handlerBinding.HasRefWagons ? "refFlags" : null
                 });
             source.AppendLine("        }");
         }
@@ -426,8 +353,7 @@ namespace TrainOP.Generators
             StringBuilder source,
             MergedStationSchema merged,
             MergedStationSchema metadata,
-            bool emitMetadata,
-            ChainDispatchMode chainDispatchMode)
+            bool emitMetadata)
         {
             var handlerBinding = merged.CanonicalBinding;
             var delegateTypeId = merged.DelegateTypeId;
@@ -446,7 +372,7 @@ namespace TrainOP.Generators
                 }
 
                 source.Append("        private static readonly string[] ").Append(wagonNamesField).Append(" = ");
-                handlerBinding.Input.AppendWagonNamesArrayLiteral(source, Escape);
+                handlerBinding.Input.AppendWagonNamesArrayLiteral(source, StringHelpers.Escape);
                 source.AppendLine(";");
 
                 if (returnMembersField != null)
@@ -455,7 +381,7 @@ namespace TrainOP.Generators
                     source.Append("        private static readonly string[] ").Append(returnMembersField).Append(" = new string[] { ");
                     for (var i = 0; i < returnMembers.Length; i++)
                     {
-                        source.Append("\"").Append(Escape(returnMembers[i])).Append("\"");
+                        source.Append("\"").Append(StringHelpers.Escape(returnMembers[i])).Append("\"");
                         if (i < returnMembers.Length - 1)
                         {
                             source.Append(", ");
@@ -467,14 +393,14 @@ namespace TrainOP.Generators
 
                 source.AppendLine();
 
-                if (HandlerFuncTypeBuilder.RequiresCustomDelegate(handlerBinding))
+                if (HandlerFuncTypeCodegen.RequiresCustomDelegate(handlerBinding))
                 {
-                    HandlerFuncTypeBuilder.EmitCustomDelegateDeclaration(source, handlerBinding, delegateName);
+                    HandlerFuncTypeCodegen.EmitCustomDelegateDeclaration(source, handlerBinding, delegateName);
                     source.AppendLine();
                 }
             }
 
-            var handlerTypeName = HandlerFuncTypeBuilder.BuildHandlerTypeName(handlerBinding, delegateName);
+            var handlerTypeName = HandlerFuncTypeCodegen.BuildHandlerTypeName(handlerBinding, delegateName);
             var routeMethodName = handlerBinding.ExtensionMethodName;
             EmitOverloadResolutionPriority(source, handlerBinding);
             source.Append("        public static TrainRoute ")
@@ -485,35 +411,20 @@ namespace TrainOP.Generators
             source.AppendLine("        {");
             source.AppendLine("            if (route == null) throw new ArgumentNullException(nameof(route));");
             source.AppendLine("            if (handler == null) throw new ArgumentNullException(nameof(handler));");
+            source.AppendLine("            route.NextChainRegistrationOrdinal();");
 
-            if (chainDispatchMode == ChainDispatchMode.Caller)
-            {
-                // In caller mode, chain-dispatch adapters rely on `chainStationIndex` derived from
-                // `TrainRoute.NextChainRegistrationOrdinal()`. Canonical adapters must still advance
-                // the ordinal so later chain-dispatch stations are indexed against the full chain.
-                source.AppendLine("            route.NextChainRegistrationOrdinal();");
-            }
-
-            StationAdapterBodyEmitter.EmitRegistration(
+            StationAdapterBodyCodegen.EmitRegistration(
                 source,
                 handlerBinding,
-                new StationAdapterBodyEmitter.Options
+                new StationAdapterBodyCodegen.Options
                 {
-                    Pull = StationAdapterBodyEmitter.PullMode.LiteralNames,
+                    Pull = StationAdapterBodyCodegen.PullMode.LiteralNames,
                     UseNeutralWagonNames = false,
                     WagonNamesExpression = wagonNamesField,
                     ReturnMembersExpression = returnMembersField,
                     RefFlagsExpression = refFlagsField
                 });
             source.AppendLine("        }");
-        }
-
-        /// <summary>
-        /// Escapes string literals for inclusion in generated source code.
-        /// </summary>
-        private static string Escape(string value)
-        {
-            return GeneratedSourceEscape.Escape(value);
         }
     }
 }

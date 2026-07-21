@@ -1,5 +1,3 @@
-using TrainOP;
-
 namespace TrainOP.Samples;
 
 /// <summary>

@@ -1,15 +1,3 @@
 <Project>
-  <!--
-    Chain-dispatch mode:
-      caller      — ctor+ordinal dispatch without Roslyn interceptors (default)
-      reflection  — wagon-name resolution via ParameterInfo at registration time
-  -->
-  <PropertyGroup Condition="'$(TrainOP_ChainDispatchMode)' == ''">
-    <TrainOP_ChainDispatchMode>caller</TrainOP_ChainDispatchMode>
-  </PropertyGroup>
-
-  <!-- Flow mode into the generator. -->
-  <ItemGroup>
-    <CompilerVisibleProperty Include="TrainOP_ChainDispatchMode" />
-  </ItemGroup>
+  <!-- TrainOP.Generators MSBuild integration (reserved for future build properties). -->
 </Project>

@@ -1,6 +1,6 @@
 # Benchmarks
 
-Сравнение скорости и режимов TrainOP.
+Сравнение скорости TrainOP с ручным кодом.
 
 ## Запуск
 
@@ -14,33 +14,17 @@ dotnet run -c Release --project benchmarks/TrainOP.Benchmarks
 dotnet run -c Release --project benchmarks/TrainOP.Benchmarks -- -f * --job short
 ```
 
-Фильтры:
+Фильтр:
 
 ```bash
-# reflection vs caller
-dotnet run -c Release --project benchmarks/TrainOP.Benchmarks -- --filter *ChainDispatch*
-
-# библиотека vs ручной код
 dotnet run -c Release --project benchmarks/TrainOP.Benchmarks -- --filter *LibraryVsManual*
 ```
 
-## 1. Reflection vs caller
+## Библиотека vs ручной код
 
-| Адаптер | Режим | Механизм |
-|---------|-------|----------|
-| `TrainOP.Benchmarks.Reflection` | `reflection` | имена вагонов через `ParameterInfo` при регистрации |
-| `TrainOP.Benchmarks.Caller` | `caller` | ctor+ordinal dispatch without Roslyn interceptors |
+Класс `LibraryVsManualBenchmarks` сравнивает TrainOP (caller dispatch) с эквивалентными transforms без библиотеки (`ManualPipelineScenarios`).
 
-Общий сценарий (`Shared/ChainDispatchScenarios.cs`) компилируется в оба адаптера.
-
-| Категория | Смысл |
-|-----------|--------|
-| `BuildAndTravel_*` | регистрация станций + `Travel()` |
-| `TravelOnly_*` | повторный `Travel()` уже собранного `Train` |
-
-## 2. Библиотека vs ручной код
-
-Класс `LibraryVsManualBenchmarks` сравнивает caller-режим TrainOP с эквивалентными transforms без библиотеки (`ManualPipelineScenarios`).
+Сценарии chain-dispatch (`Shared/ChainDispatchScenarios.cs`) компилируются в адаптер `TrainOP.Benchmarks.Interceptors` (namespace `TrainOP.Benchmarks.Caller`).
 
 | Категория | Смысл |
 |-----------|--------|

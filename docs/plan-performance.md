@@ -33,9 +33,9 @@
 
 ### 1.4. Уже доступно без кода
 
-Рекомендация: **`TrainOP_ChainDispatchMode=caller`** (ctor+ordinal dispatch; default) — chain-dispatch без Roslyn interceptors; см. (`ChainDispatchBenchmarks`).
+Рекомендация: **caller dispatch** (ctor+ordinal; единственный режим) — chain-dispatch без Roslyn interceptors; см. `LibraryVsManualBenchmarks`.
 
-Идея альтернативы Station-interceptors (Caller* на `new TrainRoute` + resolve по key/Count) зафиксирована в [`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) §4.3 — **не в работе**, канон не менять без spike (фазы S0–S4, go/no-go §4.3.12).
+Caller dispatch реализован; см. [`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) §4.3 и [`architecture-internals.md`](architecture-internals.md).
 
 ---
 
@@ -132,11 +132,13 @@ flowchart LR
 
 ### P2 — Typed merge для chain-dispatch
 
-**Статус:** сделано (2026-07-17).
+**Статус:** сделано (2026-07-17); **уточнено (2026-07-21)** — unrolled `MergePlan` вместо runtime-циклов.
 
-**Суть:** расширить `TypedStationReturnCodegen` на chain-aware адаптеры (`EmitChainAware*`). Убрать runtime reflection через `WagonStationReturn` там, где return shape известен на compile-time. Interceptor/stable: `binding.ReturnMembers`; reflection: compile-time `string[]` из `ReturnShape.Members`.
+**Суть:** расширить `TypedStationReturnCodegen` на chain-aware адаптеры (`EmitChainAware*`). Убрать runtime reflection через `WagonStationReturn` там, где return shape известен на compile-time (`binding.ReturnMembers` или compile-time `string[]` из `ReturnShape.Members`).
 
-**Файлы:** `src/TrainOP.Generators/TypedStationReturnCodegen.cs`, `TrainRouteStationGenerator.cs`, при необходимости `ChainAwareStationCodegen.cs`.
+**2026-07-21:** typed merge больше не копирует `StationMerge.Apply` через `for`/`switch` по именам. `MergePlanBuilder` строит статический план (by-name, positional ItemN, partial unload, extra members); codegen эмитит прямые `LoadWagon`/`UnloadWagon` с `wagonNames[i]` и `stationReturn.{member}`.
+
+**Файлы:** `src/TrainOP.Generators/TypedStationReturnCodegen.cs`, `MergePlanBuilder.cs`, `MergePlan.cs`, `TrainRouteStationGenerator.cs`, при необходимости `ChainAwareStationCodegen.cs`.
 
 **Ожидание:** заметный выигрыш на сценариях бенчмарков Payment / LongPayment / Checkout (chain-dispatch).
 
@@ -144,11 +146,9 @@ flowchart LR
 
 **Статус:** сделано (2026-07-17).
 
-**Суть:** resolve `chainKey` + `chainStationIndex` (binding table) один раз при регистрации станции; travel lambda закрывается над стабильными `inputNames` / `returnMembers` / `refFlags`. Interceptor/stable: передача статического `ChainBinding_*` в overload `StationCore_*(..., binding)` без `ResolveChainBinding_*`.
+**Суть:** resolve `chainKey` + `chainStationIndex` (binding table) один раз при регистрации станции; travel lambda закрывается над стабильными `inputNames` / `returnMembers` / `refFlags`. Передача статического `ChainBinding_*` в overload `StationCore_*(..., binding)` без `ResolveChainBinding_*` на hot path.
 
-**Файлы:** `ChainAwareStationCodegen.cs`, `TrainRouteStationGenerator.cs`, `TrainRouteStationInterceptorsEmitter.cs`.
-
-**Ожидание:** средний выигрыш в interceptor/stable режиме.
+**Файлы:** `ChainAwareStationCodegen.cs`, `TrainRouteStationGenerator.cs`.
 
 ### P4a — Slim StationVisit (флаг + только TerminalSignal)
 

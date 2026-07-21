@@ -14,6 +14,5 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TrainOP.Benchmarks.Interceptors\TrainOP.Benchmarks.Interceptors.csproj" />
-    <ProjectReference Include="..\TrainOP.Benchmarks.Reflection\TrainOP.Benchmarks.Reflection.csproj" />
   </ItemGroup>
 </Project>

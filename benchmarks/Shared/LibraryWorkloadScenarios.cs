@@ -1,13 +1,6 @@
 using System.Threading;
-using TrainOP;
 
-#if TRAINOP_BENCHMARK_REFLECTION
-namespace TrainOP.Benchmarks.Reflection
-#elif TRAINOP_BENCHMARK_CALLER
 namespace TrainOP.Benchmarks.Caller
-#else
-#error Define TRAINOP_BENCHMARK_REFLECTION or TRAINOP_BENCHMARK_CALLER
-#endif
 {
     /// <summary>
     /// TrainOP workloads used for library-vs-manual speed comparison.

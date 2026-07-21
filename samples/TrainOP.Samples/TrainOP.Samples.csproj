@@ -8,6 +8,12 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!-- Emit generated adapters to obj/.../Generated for inspection (DebugRoslynComponent also builds this project). -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)\Generated</CompilerGeneratedFilesOutputPath>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\TrainOP\TrainOP.csproj" />
     <ProjectReference Include="..\..\src\TrainOP.Generators\TrainOP.Generators.csproj"

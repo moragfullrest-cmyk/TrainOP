@@ -350,7 +350,7 @@ await route.DispatchTrain().TravelAsync(cts.Token);
 | `TOP004` | Warning | Handler вернул `CargoManifest` — полная замена манифеста |
 | `TOP005` | Error | Data-handler вне легитимного якоря `TrainRoute` |
 | `TOP006` | Warning | Value tuple с default ItemN (нет явного имени и нет inference) |
-| `TOP007` | Error | Конфликт имён вагонов для одной сигнатуры handler'а (вне цепочки; внутри цепочки — caller dispatch или reflection fallback) |
+| `TOP007` | Error | Конфликт имён вагонов для одной сигнатуры handler'а (вне цепочки; внутри цепочки — caller dispatch) |
 | `TOP008` | Error | Нельзя соединить ветки маршрута перед downstream Station |
 | `TOP009` | Error | Handler не лямбда / anonymous / однозначный method group |
 | `TOP010` | Error | Handler возвращает `GreenSignal` / `RedSignal` вместо data / `RailwaySignals` |
@@ -360,12 +360,7 @@ await route.DispatchTrain().TravelAsync(cts.Token);
 
 ### Chain-dispatch
 
-При нескольких цепочках с одной сигнатурой типов, но разными именами вагонов:
-
-- `caller` (default) — ctor+ordinal dispatch, без Roslyn interceptors; `new TrainRoute()` идентифицирует цепочку
-- `reflection` — явный opt-out через `TrainOP_ChainDispatchMode=reflection` (имена вагонов через `ParameterInfo` при регистрации)
-
-NativeAOT: предпочтителен `caller`, так как `reflection` зависит от сохранённых имён параметров в metadata.
+При нескольких цепочках с одной сигнатурой типов, но разными именами вагонов генератор использует **caller dispatch**: ctor+ordinal — `new TrainRoute()` идентифицирует цепочку, каждая `.Station` получает compile-time binding по `CallerChainKey` + порядковому индексу.
 
 Cross-assembly: [cross-assembly-routes.md](cross-assembly-routes.md). Release tracking: `AnalyzerReleases.Shipped.md`.
 

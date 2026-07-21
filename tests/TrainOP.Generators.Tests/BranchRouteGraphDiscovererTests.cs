@@ -6,7 +6,9 @@ using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using TrainOP.Generators.Models;
+using TrainOP.Generators.Chain;
+using TrainOP.Generators.Handlers;
+using TrainOP.Generators.Route;
 using Xunit;
 
 namespace TrainOP.Generators.Tests
@@ -296,12 +298,12 @@ public static class Route
             foreach (var invocation in syntaxTree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
                 if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess
-                    || !string.Equals(memberAccess.Name.Identifier.ValueText, "Station", StringComparison.Ordinal))
+                    || !string.Equals(memberAccess.Name.Identifier.ValueText, TrainRouteMethodNames.Station, StringComparison.Ordinal))
                 {
                     continue;
                 }
 
-                var peeled = ReceiverExpressionPeel.UnwrapTransparent(memberAccess.Expression);
+                var peeled = ReceiverExpressionSyntaxPeel.UnwrapTransparent(memberAccess.Expression);
                 if (peeled is ConditionalExpressionSyntax
                     || peeled is SwitchExpressionSyntax
                     || (peeled is BinaryExpressionSyntax binary && binary.IsKind(SyntaxKind.CoalesceExpression)))

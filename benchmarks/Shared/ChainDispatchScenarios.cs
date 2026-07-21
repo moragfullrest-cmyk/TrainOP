@@ -1,16 +1,8 @@
-using TrainOP;
-
-#if TRAINOP_BENCHMARK_REFLECTION
-namespace TrainOP.Benchmarks.Reflection
-#elif TRAINOP_BENCHMARK_CALLER
 namespace TrainOP.Benchmarks.Caller
-#else
-#error Define TRAINOP_BENCHMARK_REFLECTION or TRAINOP_BENCHMARK_CALLER
-#endif
 {
     /// <summary>
-    /// Comparable chain-dispatch workloads for reflection vs interceptor adapters.
-    /// Call sites must live in the consuming assembly so the generator can emit mode-specific code.
+    /// Chain-dispatch workloads for benchmarks.
+    /// Call sites must live in the consuming assembly so the generator can emit caller dispatch code.
     /// </summary>
     public static class ChainDispatchScenarios
     {

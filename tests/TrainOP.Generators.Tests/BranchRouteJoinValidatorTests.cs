@@ -1,11 +1,10 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using System;
-using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using TrainOP.Generators.Models;
+using TrainOP.Generators.Route;
 using Xunit;
 
 namespace TrainOP.Generators.Tests
@@ -148,32 +147,6 @@ public static class Route
             Assert.Empty(validation.Diagnostics);
             Assert.Single(validation.MergedTerminalWagons);
             Assert.Equal("a", validation.MergedTerminalWagons[0].Name);
-        }
-
-        /// <summary>
-        /// <see cref="BranchRouteJoinMerger.TryMerge"/> mirrors <see cref="BranchRouteJoinValidator.Validate"/>.
-        /// </summary>
-        [Fact]
-        public void TryMerge_MatchingArms_ReturnsTrueWithMergedTerminals()
-        {
-            const string source = @"
-using TrainOP;
-
-public static class Route
-{
-    public static TrainRoute Build(bool useLeft) =>
-        (useLeft
-            ? new TrainRoute().Station(""Left"", () => new { value = 1 })
-            : new TrainRoute().Station(""Right"", () => new { value = 2 }))
-        .Station(""Join"", (int value) => new { value });
-}";
-
-            var joinSet = FindFirstJoin(source);
-            var merged = BranchRouteJoinMerger.TryMerge(joinSet, out var validation);
-
-            Assert.True(merged);
-            Assert.True(validation.CanMerge);
-            Assert.Single(validation.MergedTerminalWagons);
         }
 
         private static BranchRouteJoinValidation ValidateFirstJoin(string source)

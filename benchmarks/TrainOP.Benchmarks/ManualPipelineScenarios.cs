@@ -1,7 +1,7 @@
 namespace TrainOP.Benchmarks
 {
     /// <summary>
-    /// Hand-written equivalents of the interceptor adapter workloads (no TrainOP types).
+    /// Hand-written equivalents of the caller-dispatch benchmark workloads (no TrainOP types).
     /// </summary>
     public static class ManualPipelineScenarios
     {
@@ -34,7 +34,7 @@ namespace TrainOP.Benchmarks
 
         /// <summary>
         /// Imperative checkout happy-path with per-step cancellation checks and failure branching,
-        /// mirroring <see cref="Interceptors.LibraryWorkloadScenarios.BuildAndTravelCheckout"/>.
+        /// mirroring <see cref="TrainOP.Benchmarks.Caller.LibraryWorkloadScenarios.BuildAndTravelCheckout"/>.
         /// </summary>
         public static decimal TravelCheckout(System.Threading.CancellationToken cancellationToken = default)
         {

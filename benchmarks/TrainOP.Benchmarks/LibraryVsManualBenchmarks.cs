@@ -1,6 +1,5 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
-using TrainOP;
 using Library = TrainOP.Benchmarks.Caller.LibraryWorkloadScenarios;
 using LibraryChains = TrainOP.Benchmarks.Caller.ChainDispatchScenarios;
 
