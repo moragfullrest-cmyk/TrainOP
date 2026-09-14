@@ -16,10 +16,12 @@ public static class PaymentModule
 }
 ```
 
-Reference `TrainOP` and `TrainOP.Generators` in the library project. The generator emits:
+Reference `TrainOP` and `TrainOP.Generators` in the library project. The generator **emits** schema metadata on a generated partial type (do not hand-author these attributes in consumer code):
 
 - `[RouteSchemaFor(typeof(PaymentModule), "Build")]`
 - repeated `[RouteSchemaWagon(name, typeof(T))]` attributes
+
+Attribute types are public for reflection and tooling but marked `[EditorBrowsable(Never)]` in the IDE.
 
 ## Consumer application
 

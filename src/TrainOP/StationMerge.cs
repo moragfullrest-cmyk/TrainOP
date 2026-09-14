@@ -1,10 +1,12 @@
 using System;
+using System.ComponentModel;
 
 namespace TrainOP
 {
     /// <summary>
     /// Shared merge logic for station handler return values into a manifest.
     /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static class StationMerge
     {
         /// <summary>

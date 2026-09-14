@@ -699,7 +699,7 @@ Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 
 | Путь | Назначение |
 |------|------------|
-| `src/TrainOP` | Runtime: `Railway.cs`, `StationMerge`, `Train` |
+| `src/TrainOP` | Runtime: `TrainRouteRuntime.cs`, `StationMerge`, `Train` |
 | `src/TrainOP.Generators` | Generator + analyzer |
 | `samples/TrainOP.Samples` | Консольные сценарии |
 | `tests/` | Runtime + generator + cross-assembly |

@@ -1,10 +1,12 @@
 using System;
+using System.ComponentModel;
 
 namespace TrainOP
 {
     /// <summary>
     /// Links a generated route schema type to a factory method that returns <see cref="TrainRoute"/>.
     /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
     public sealed class RouteSchemaForAttribute : Attribute
     {

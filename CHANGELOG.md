@@ -6,9 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-09-14
+
 ### Changed
 
 - **CodegenWriter:** migrated all source emit paths to indent-stack API; removed `Builder` escape hatch and string-based `StatementIndent` from emit contexts.
+- **Public API discoverability:** marked generator-oriented runtime helpers and cross-assembly schema attributes with `[EditorBrowsable(Never)]` (`StationMerge`, `WagonStationReturn`, `RouteSchemaForAttribute`, `RouteSchemaWagonAttribute`) — same policy as `RegisterStation` and `CallerChainKeyFormat`.
+- **CI:** Release `dotnet pack` smoke for `TrainOP` and `TrainOP.Generators` on .NET 10 workflow job.
+
+### Documentation
+
+- **Release readiness:** refreshed weighted Preview score and API-surface checklist after EditorBrowsable and CI pack.
+- **Cross-assembly / core-api:** clarify that schema attributes are emitted by the generator, not hand-authored consumer API.
 
 ## [0.12.0] - 2026-07-21
 

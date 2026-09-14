@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Reflection;
 
 namespace TrainOP
@@ -9,6 +10,7 @@ namespace TrainOP
     /// Member discovery order matches the source generator (<c>HandlerReturnSchemaInference</c>):
     /// value-tuple elements first when applicable; otherwise public instance properties, then public instance fields.
     /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static class WagonStationReturn
     {
         /// <summary>

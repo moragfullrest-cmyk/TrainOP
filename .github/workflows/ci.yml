@@ -49,3 +49,9 @@ jobs:
       - name: Test
         if: matrix.dotnet == '10.0.x' || matrix.dotnet == '8.0.x'
         run: dotnet test TrainOP.sln -c Release --no-build --verbosity normal
+
+      - name: Pack packages
+        if: matrix.dotnet == '10.0.x'
+        run: |
+          dotnet pack src/TrainOP/TrainOP.csproj -c Release --no-build
+          dotnet pack src/TrainOP.Generators/TrainOP.Generators.csproj -c Release --no-build

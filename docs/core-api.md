@@ -364,6 +364,20 @@ await route.DispatchTrain().TravelAsync(cts.Token);
 
 Cross-assembly: [cross-assembly-routes.md](cross-assembly-routes.md). Release tracking: `AnalyzerReleases.Shipped.md`.
 
+## Advanced / generator surface (не для ручного API)
+
+Следующие типы остаются **public** (generated adapters и cross-assembly schema читают их через reflection), но скрыты из IntelliSense через `[EditorBrowsable(Never)]`:
+
+| Тип | Назначение |
+|-----|------------|
+| `TrainRoute.RegisterStation(...)` | Низкоуровневая регистрация адаптеров (генератор) |
+| `StationMerge` | Merge return handler → manifest / signal |
+| `WagonStationReturn` | Чтение members return value (fallback merge) |
+| `RouteSchemaForAttribute` / `RouteSchemaWagonAttribute` | Metadata exported schema (генератор) |
+| `CallerChainKeyFormat` | Формат caller-dispatch keys |
+
+Поддерживаемый пользовательский API — fluent `.Station` / `.ServiceStation`, `RailwaySignals`, `Travel()`.
+
 ## Схема выполнения
 
 ```mermaid

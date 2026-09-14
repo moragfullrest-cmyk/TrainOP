@@ -1,10 +1,12 @@
 using System;
+using System.ComponentModel;
 
 namespace TrainOP
 {
     /// <summary>
     /// Declares one terminal wagon on a generated route schema type (metadata-readable across assemblies).
     /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = true, Inherited = false)]
     public sealed class RouteSchemaWagonAttribute : Attribute
     {
