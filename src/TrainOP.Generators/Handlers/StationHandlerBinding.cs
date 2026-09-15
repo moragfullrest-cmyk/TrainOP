@@ -48,8 +48,14 @@ namespace TrainOP.Generators.Handlers
 
         public bool IncludeSignalIssue => Input.IncludeSignalIssue;
 
+        public bool IncludeSignalIssues => Input.IncludeSignalIssues;
+
         public string ExtensionMethodName => Input.StationKind.ToMethodName();
 
-        public bool RemoveOmittedRegularInputs => Input.Wagons.Length > 0;
+        /// <summary>
+        /// True when omitted non-ref input wagons should be unloaded after merge.
+        /// ServiceStation overlay never unloads: later stations require the original composition.
+        /// </summary>
+        public bool RemoveOmittedRegularInputs => !IsServiceStation && Input.Wagons.Length > 0;
     }
 }

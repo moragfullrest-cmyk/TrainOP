@@ -18,11 +18,11 @@ namespace TrainOP.Tests.DataOriented
             var route = new TrainRoute()
                 .Station("Seed", () => new { paymentId = "pay-seed", amount = 10m });
 
-            var report = route.DispatchTrain().Travel();
+            var report = route.Travel();
 
             Assert.True(report.ReachedDestination);
-            Assert.Equal("pay-seed", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
-            Assert.Equal(10m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
+            Assert.Equal("pay-seed", report.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(10m, report.Manifest.PullWagon<decimal>("amount"));
         }
 
         /// <summary>
@@ -36,10 +36,10 @@ namespace TrainOP.Tests.DataOriented
                 .Station("Discount", (string paymentId, decimal amount) =>
                     new { paymentId, amount = amount * 0.9m });
 
-            var report = route.DispatchTrain().Travel();
+            var report = route.Travel();
 
-            Assert.Equal("pay-1", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
-            Assert.Equal(90m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
+            Assert.Equal("pay-1", report.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(90m, report.Manifest.PullWagon<decimal>("amount"));
         }
 
         /// <summary>
@@ -53,7 +53,7 @@ namespace TrainOP.Tests.DataOriented
                 .Station("Partial", (string paymentId, decimal amount) =>
                     new { paymentId = paymentId + "-merged" });
 
-            var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
+            var manifest = route.Travel().Manifest;
 
             Assert.Equal("pay-partial-merged", manifest.PullWagon<string>("paymentId"));
             Assert.False(manifest.HasWagon("amount"));
@@ -71,7 +71,7 @@ namespace TrainOP.Tests.DataOriented
                 .Station("ByTuple", (string paymentId, decimal amount) =>
                     (paymentId: paymentId + "-tuple", amount: amount + 2m));
 
-            var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
+            var manifest = route.Travel().Manifest;
 
             Assert.Equal("pay-tuple-tuple", manifest.PullWagon<string>("paymentId"));
             Assert.Equal(6m, manifest.PullWagon<decimal>("amount"));
@@ -88,7 +88,7 @@ namespace TrainOP.Tests.DataOriented
                 .Station("ByTuple", (string paymentId, decimal amount) =>
                     (paymentId + "-tuple", amount + 2m));
 
-            var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
+            var manifest = route.Travel().Manifest;
 
             Assert.Equal("pay-tuple-tuple", manifest.PullWagon<string>("paymentId"));
             Assert.Equal(6m, manifest.PullWagon<decimal>("amount"));
@@ -109,7 +109,7 @@ namespace TrainOP.Tests.DataOriented
                 .Station("MustNotRun", (string paymentId, decimal amount) =>
                     new { paymentId = "nope", amount });
 
-            var report = route.DispatchTrain().Travel();
+            var report = route.Travel();
 
             Assert.False(report.ReachedDestination);
             Assert.Equal(2, report.Visits.Count);
@@ -134,7 +134,7 @@ namespace TrainOP.Tests.DataOriented
                         : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive");
                 });
 
-            var report = await route.DispatchTrain().TravelAsync();
+            var report = await route.TravelAsync();
 
             Assert.False(report.ReachedDestination);
             var red = Assert.IsType<RedSignal>(report.TerminalSignal);
@@ -143,20 +143,20 @@ namespace TrainOP.Tests.DataOriented
         }
 
         /// <summary>
-        /// Verifies that a Pass signal leaves the manifest unchanged.
+        /// Verifies that a White signal leaves the manifest unchanged.
         /// </summary>
         [Fact]
         public void Station_DataSkip_LeavesManifestUnchanged()
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { paymentId = "pay-skip", amount = 12m })
-                .Station("NoOp", (string paymentId, decimal amount) => RailwaySignals.Pass);
+                .Station("NoOp", (string paymentId, decimal amount) => RailwaySignals.White);
 
-            var report = route.DispatchTrain().Travel();
+            var report = route.Travel();
 
             Assert.True(report.ReachedDestination);
-            Assert.Equal("pay-skip", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
-            Assert.Equal(12m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
+            Assert.Equal("pay-skip", report.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(12m, report.Manifest.PullWagon<decimal>("amount"));
         }
 
         /// <summary>
@@ -171,22 +171,19 @@ namespace TrainOP.Tests.DataOriented
                     value > 0
                         ? RailwaySignals.Green(new { value })
                         : RailwaySignals.Red("NON_POSITIVE", "value must be positive"))
-                .ServiceStation("Recovery", (ref int value, RedSignal red) =>
-                {
-                    value = 1;
-                    return RailwaySignals.Pass;
-                })
+                .ServiceStation("Recovery", (int value, RedSignal red) =>
+                    RailwaySignals.Green(new { value = 1 }))
                 .Station("Double", (int value) => new { value = value * 2 });
 
-            var report = route.DispatchTrain().Travel();
+            var report = route.Travel();
 
             Assert.True(report.ReachedDestination);
             Assert.Equal(4, report.Visits.Count);
-            Assert.Equal(2, report.TerminalSignal.Manifest.PullWagon<int>("value"));
+            Assert.Equal(2, report.Manifest.PullWagon<int>("value"));
         }
 
         /// <summary>
-        /// Verifies that a service station returning a red signal stops the route after recovery is attempted.
+        /// Verifies that a service station returning a red signal leaves the route red so later regular stations are skipped.
         /// </summary>
         [Fact]
         public void ServiceStation_DataFail_StopsRouteAfterRecoveryAttempt()
@@ -195,17 +192,218 @@ namespace TrainOP.Tests.DataOriented
                 .Station("Seed", () => new { value = 0 })
                 .Station("Validate", (int value) =>
                     RailwaySignals.Red("NON_POSITIVE", "value must be positive"))
-                .ServiceStation("Recovery", (ref int value, RedSignal red) =>
+                .ServiceStation("Recovery", (int value, RedSignal red) =>
                     RailwaySignals.Red("CANNOT_RECOVER", "recovery declined: " + red.Issue.Code))
                 .Station("MustNotRun", (int value) => new { value });
 
-            var report = route.DispatchTrain().Travel();
+            var report = route.Travel();
 
             Assert.False(report.ReachedDestination);
             Assert.Equal(3, report.Visits.Count);
+            Assert.DoesNotContain(report.Visits, visit => visit.StationName == "MustNotRun");
             var red = Assert.IsType<RedSignal>(report.TerminalSignal);
             Assert.Equal("CANNOT_RECOVER", red.Issue.Code);
             Assert.Equal("Recovery", red.Issue.StationName);
+        }
+
+        /// <summary>
+        /// Verifies consecutive service stations after a failure: declining by returning the same red
+        /// lets the next recovery still see the original issue code.
+        /// </summary>
+        [Fact]
+        public void MultipleServiceStations_LaterHandler_RecoversOriginalFailure()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { value = 0 })
+                .Station("Validate", (int value) =>
+                    RailwaySignals.Red("STOCK_LIMIT", "out of stock"))
+                .ServiceStation("First", (int value, SignalIssue issue) =>
+                    issue.Code == "NON_POSITIVE"
+                        ? RailwaySignals.Green(new { value = 1 })
+                        : RailwaySignals.Red(issue.Code, issue.Message))
+                .ServiceStation("Second", (int value, SignalIssue issue) =>
+                    issue.Code == "STOCK_LIMIT"
+                        ? RailwaySignals.Green(new { value = 4 })
+                        : RailwaySignals.Red("NOPE", "still unsupported"))
+                .Station("Double", (int value) => new { value = value * 2 });
+
+            var report = route.Travel();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal(5, report.Visits.Count);
+            Assert.Equal("First", report.Visits[2].StationName);
+            Assert.False(report.Visits[2].IsGreen);
+            Assert.Equal("Second", report.Visits[3].StationName);
+            Assert.True(report.Visits[3].IsGreen);
+            Assert.Equal(8, report.Manifest.PullWagon<int>("value"));
+        }
+
+        /// <summary>
+        /// Verifies that when every service station after a failure declines, the terminal red is from the last hop.
+        /// </summary>
+        [Fact]
+        public void MultipleServiceStations_AllDecline_UsesLastRed()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { value = 0 })
+                .Station("Validate", (int value) =>
+                    RailwaySignals.Red("NON_POSITIVE", "value must be positive"))
+                .ServiceStation("First", (int value, SignalIssue issue) =>
+                    RailwaySignals.Red("SKIP_FIRST", "declined by first"))
+                .ServiceStation("Second", (int value, SignalIssue issue) =>
+                    RailwaySignals.Red("SKIP_SECOND", "declined by second"))
+                .Station("MustNotRun", (int value) => new { value });
+
+            var report = route.Travel();
+
+            Assert.False(report.ReachedDestination);
+            Assert.Equal(4, report.Visits.Count);
+            Assert.DoesNotContain(report.Visits, visit => visit.StationName == "MustNotRun");
+            var red = Assert.IsType<RedSignal>(report.TerminalSignal);
+            Assert.Equal("SKIP_SECOND", red.Issue.Code);
+            Assert.Equal("Second", red.Issue.StationName);
+        }
+
+        /// <summary>
+        /// Verifies positional recovery: each failure enters only the service station(s) that follow it.
+        /// </summary>
+        [Fact]
+        public void MultipleServiceStations_Recover_Twice_AlongRoute()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { value = 0 })
+                .Station("FailOnce", (int value) =>
+                    RailwaySignals.Red("FIRST", "first failure"))
+                .ServiceStation("RecoverFirst", (int value, SignalIssue issue) =>
+                    issue.Code == "FIRST"
+                        ? RailwaySignals.Green(new { value = 1 })
+                        : RailwaySignals.Red("SKIP", "not first"))
+                .Station("FailTwice", (int value) =>
+                    RailwaySignals.Red("SECOND", "second failure"))
+                .ServiceStation("RecoverSecond", (int value, SignalIssue issue) =>
+                    issue.Code == "SECOND"
+                        ? RailwaySignals.Green(new { value = 3 })
+                        : RailwaySignals.Red("SKIP", "not second"))
+                .Station("Double", (int value) => new { value = value * 2 });
+
+            var report = route.Travel();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal(6, report.Manifest.PullWagon<int>("value"));
+            Assert.Contains(report.Visits, visit => visit.StationName == "RecoverFirst" && visit.IsGreen);
+            Assert.Contains(report.Visits, visit => visit.StationName == "RecoverSecond" && visit.IsGreen);
+            Assert.Equal(1, System.Linq.Enumerable.Count(report.Visits, visit => visit.StationName == "RecoverFirst"));
+            Assert.Equal(1, System.Linq.Enumerable.Count(report.Visits, visit => visit.StationName == "RecoverSecond"));
+        }
+
+        /// <summary>
+        /// Verifies that a service station after green is skipped, and a later failure reaches its own recovery.
+        /// </summary>
+        [Fact]
+        public void ServiceStation_Skipped_AfterGreen_UntilLaterFailure()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { value = 1 })
+                .ServiceStation("TooEarly", (int value, RedSignal red) =>
+                    RailwaySignals.Green(new { value = 99 }))
+                .Station("Fail", (int value) =>
+                    RailwaySignals.Red("LATER", "fail after skip"))
+                .ServiceStation("Recover", (int value, SignalIssue issue) =>
+                    RailwaySignals.Green(new { value = 5 }))
+                .Station("Double", (int value) => new { value = value * 2 });
+
+            var report = route.Travel();
+
+            Assert.True(report.ReachedDestination);
+            Assert.DoesNotContain(report.Visits, visit => visit.StationName == "TooEarly");
+            Assert.Equal(10, report.Manifest.PullWagon<int>("value"));
+        }
+
+        /// <summary>
+        /// Verifies that ServiceStation overlay updates existing wagons from a green payload
+        /// without unloading omitted inputs (composition stays intact; TOP015 forbids new keys).
+        /// </summary>
+        [Fact]
+        public void ServiceStation_GreenPayload_OverlaysExistingWagonsOnly()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { paymentId = "pay-1", amount = 0m, traceId = "keep" })
+                .Station("Validate", (string paymentId, decimal amount) =>
+                    RailwaySignals.Red("INVALID", "amount must be positive"))
+                .ServiceStation("Recovery", (decimal amount, SignalIssue issue) =>
+                    RailwaySignals.Green(new { amount = 10m, traceId = "changed" }))
+                .Station("After", (string paymentId, decimal amount, string traceId) =>
+                    new { paymentId, amount, traceId });
+
+            var report = route.Travel();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal("pay-1", report.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(10m, report.Manifest.PullWagon<decimal>("amount"));
+            Assert.Equal("changed", report.Manifest.PullWagon<string>("traceId"));
+        }
+
+        /// <summary>
+        /// Verifies that White on ServiceStation does not write ref mutations back to the manifest.
+        /// </summary>
+        [Fact]
+        public void ServiceStation_Pass_DoesNotWritebackRefMutations()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { value = 0 })
+                .Station("Validate", (int value) => RailwaySignals.Red("NON_POSITIVE", "value must be positive"))
+                .ServiceStation("Recovery", (ref int value, RedSignal red) =>
+                {
+                    value = 1;
+                    return RailwaySignals.White;
+                })
+                .Station("Double", (int value) => new { value = value * 2 });
+
+            var report = route.Travel();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal(0, report.Manifest.PullWagon<int>("value"));
+        }
+
+        /// <summary>
+        /// Verifies that a red ServiceStation return leaves the live manifest unchanged.
+        /// </summary>
+        [Fact]
+        public void ServiceStation_Red_DoesNotChangeWagons()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { value = 7 })
+                .Station("Validate", (int value) => RailwaySignals.Red("NOPE", "stop"))
+                .ServiceStation("Recovery", (int value, RedSignal red) =>
+                    RailwaySignals.Red("CANNOT_RECOVER", "declined"));
+
+            var report = route.Travel();
+
+            Assert.False(report.ReachedDestination);
+            var red = Assert.IsType<RedSignal>(report.TerminalSignal);
+            Assert.Equal(7, report.Manifest.PullWagon<int>("value"));
+        }
+
+        /// <summary>
+        /// Verifies that async data-oriented ServiceStation can recover by returning overlay values.
+        /// </summary>
+        [Fact]
+        public async Task ServiceStation_AsyncByValue_OverlaysExistingWagons()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { value = 0 })
+                .Station("Validate", (int value) => RailwaySignals.Red("NON_POSITIVE", "value must be positive"))
+                .ServiceStation("Recovery", async (int value, RedSignal red, CancellationToken token) =>
+                {
+                    await Task.Delay(1, token);
+                    return new { value = 3 };
+                })
+                .Station("Double", (int value) => new { value = value * 2 });
+
+            var report = await route.TravelAsync();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal(6, report.Manifest.PullWagon<int>("value"));
         }
 
         /// <summary>
@@ -222,11 +420,11 @@ namespace TrainOP.Tests.DataOriented
                     return new { paymentId = paymentId + "-async", amount = amount * 2m };
                 });
 
-            var report = await route.DispatchTrain().TravelAsync();
+            var report = await route.TravelAsync();
 
             Assert.True(report.ReachedDestination);
-            Assert.Equal("pay-async-async", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
-            Assert.Equal(10m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
+            Assert.Equal("pay-async-async", report.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(10m, report.Manifest.PullWagon<decimal>("amount"));
         }
 
         /// <summary>
@@ -244,7 +442,7 @@ namespace TrainOP.Tests.DataOriented
                         amount = amount + 2m,
                     });
 
-            var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
+            var manifest = route.Travel().Manifest;
 
             Assert.Equal("pay-manifest-trace-42", manifest.PullWagon<string>("paymentId"));
             Assert.Equal(10m, manifest.PullWagon<decimal>("amount"));
@@ -265,10 +463,10 @@ namespace TrainOP.Tests.DataOriented
                 .Station("Double", (string paymentId, decimal amount) =>
                     new { paymentId, amount = amount * 2m });
 
-            var report = route.DispatchTrain().Travel();
+            var report = route.Travel();
 
-            Assert.Equal("external", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
-            Assert.Equal(10m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
+            Assert.Equal("external", report.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(10m, report.Manifest.PullWagon<decimal>("amount"));
         }
 
         /// <summary>
@@ -277,10 +475,10 @@ namespace TrainOP.Tests.DataOriented
         [Fact]
         public void Station_StaticBuildMethod_IsAnalysisAnchorPattern()
         {
-            var report = PaymentRoute.Build().DispatchTrain().Travel();
+            var report = PaymentRoute.Build().Travel();
 
             Assert.True(report.ReachedDestination);
-            Assert.Equal("anchored", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal("anchored", report.Manifest.PullWagon<string>("paymentId"));
         }
 
         /// <summary>
@@ -293,7 +491,7 @@ namespace TrainOP.Tests.DataOriented
                 .Station("Seed", () => new { value = 1, temporary = "keep" })
                 .Station("Mutate", (int value, string temporary) => new { value = value + 41 });
 
-            var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
+            var manifest = route.Travel().Manifest;
 
             Assert.Equal(42, manifest.PullWagon<int>("value"));
             Assert.False(manifest.HasWagon("temporary"));

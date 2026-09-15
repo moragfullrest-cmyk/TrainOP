@@ -11,8 +11,8 @@ namespace TrainOP.Benchmarks.Caller
         /// </summary>
         public static decimal BuildAndTravelPayment()
         {
-            var report = PaymentRoute().DispatchTrain().Travel();
-            return report.TerminalSignal.Manifest.PullWagon<decimal>("amount");
+            var report = PaymentRoute().Travel();
+            return report.Manifest.PullWagon<decimal>("amount");
         }
 
         /// <summary>
@@ -20,8 +20,8 @@ namespace TrainOP.Benchmarks.Caller
         /// </summary>
         public static decimal BuildAndTravelOrder()
         {
-            var report = OrderRoute().DispatchTrain().Travel();
-            return report.TerminalSignal.Manifest.PullWagon<decimal>("total");
+            var report = OrderRoute().Travel();
+            return report.Manifest.PullWagon<decimal>("total");
         }
 
         /// <summary>
@@ -39,27 +39,27 @@ namespace TrainOP.Benchmarks.Caller
         /// </summary>
         public static decimal BuildAndTravelLongPayment()
         {
-            var report = LongPaymentRoute().DispatchTrain().Travel();
-            return report.TerminalSignal.Manifest.PullWagon<decimal>("amount");
+            var report = LongPaymentRoute().Travel();
+            return report.Manifest.PullWagon<decimal>("amount");
         }
 
         /// <summary>
-        /// Creates a reusable train for travel-only benchmarks.
+        /// Creates a reusable payment route for travel-only benchmarks.
         /// </summary>
-        public static Train CreatePaymentTrain() => PaymentRoute().DispatchTrain();
+        public static TrainRoute CreatePaymentRoute() => PaymentRoute();
 
         /// <summary>
-        /// Creates a reusable long-route train for travel-only benchmarks.
+        /// Creates a reusable long payment route for travel-only benchmarks.
         /// </summary>
-        public static Train CreateLongPaymentTrain() => LongPaymentRoute().DispatchTrain();
+        public static TrainRoute CreateLongPaymentRoute() => LongPaymentRoute();
 
         /// <summary>
-        /// Travels an already built train.
+        /// Travels an already built route.
         /// </summary>
-        public static decimal Travel(Train train)
+        public static decimal Travel(TrainRoute route)
         {
-            var report = train.Travel();
-            return report.TerminalSignal.Manifest.PullWagon<decimal>("amount");
+            var report = route.Travel();
+            return report.Manifest.PullWagon<decimal>("amount");
         }
 
         private static TrainRoute PaymentRoute() => new TrainRoute()

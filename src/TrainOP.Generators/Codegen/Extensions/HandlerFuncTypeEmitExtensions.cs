@@ -147,6 +147,9 @@ namespace TrainOP.Generators
                     case HandlerInputKind.SignalIssue:
                         parameters.Add("global::TrainOP.SignalIssue");
                         break;
+                    case HandlerInputKind.SignalIssues:
+                        parameters.Add("global::System.Collections.Generic.IReadOnlyList<global::TrainOP.SignalIssue>");
+                        break;
                     case HandlerInputKind.CargoManifest:
                         parameters.Add("global::TrainOP.CargoManifest");
                         break;
@@ -189,6 +192,10 @@ namespace TrainOP.Generators
                         break;
                     case HandlerInputKind.SignalIssue:
                         writer.Append("SignalIssue ").Append(useNeutralParameterNames ? "pIssue" : "issue");
+                        break;
+                    case HandlerInputKind.SignalIssues:
+                        writer.Append("global::System.Collections.Generic.IReadOnlyList<SignalIssue> ")
+                            .Append(useNeutralParameterNames ? "pIssues" : "issues");
                         break;
                     case HandlerInputKind.CargoManifest:
                         writer.Append("CargoManifest ").Append(useNeutralParameterNames ? "pManifest" : "manifest");

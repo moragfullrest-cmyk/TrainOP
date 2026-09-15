@@ -6,11 +6,14 @@
 
 ## Документация
 
-Полное руководство — в папке [`docs/`](docs/README.md):
+Полное руководство — в папке [`docs/`](docs/README.md).
+
+**Учебник (чтение подряд):** [docs/textbook.md](docs/textbook.md) — принципы, использование и внутреннее устройство одним связным текстом.
 
 | Раздел | Ссылка |
 |--------|--------|
 | Оглавление | [docs/README.md](docs/README.md) |
+| Учебник | [docs/textbook.md](docs/textbook.md) |
 | Установка через NuGet | [docs/nuget.md](docs/nuget.md) |
 | Начало работы | [docs/getting-started.md](docs/getting-started.md) |
 | Основной API | [docs/core-api.md](docs/core-api.md) |
@@ -34,7 +37,7 @@ var route = new TrainRoute()
             : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"));
 
 // Вход — только seed сверху; Travel() без манифеста
-var report = route.DispatchTrain().Travel();
+var report = route.Travel();
 var paymentId = report.Get<string>("paymentId");
 var amount = report.Get<decimal>("amount");
 
@@ -66,7 +69,7 @@ dotnet add package TrainOP.Generators
 
 Генератор нужен для `.Station` data-oriented handlers.
 
-Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.12.1** — см. [CHANGELOG.md](CHANGELOG.md).
+Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.13.0** — см. [CHANGELOG.md](CHANGELOG.md).
 
 ### Локальная сборка пакетов
 
@@ -103,8 +106,7 @@ dotnet run -c Release --project benchmarks/TrainOP.Benchmarks
 | Термин | Тип | Роль |
 |--------|-----|------|
 | Манифест | `CargoManifest` | Мутабельное хранилище вагонов между станциями |
-| Маршрут | `TrainRoute` | Цепочка станций |
-| Поезд | `Train` | Исполнитель (`DispatchTrain().Travel()`) |
+| Маршрут | `TrainRoute` | Цепочка станций + `Travel` / `TravelAsync` |
 | Зелёный сигнал | `RailwaySignals.Green` / данные | Продолжить маршрут (merge в манифест) |
-| Красный сигнал | `RailwaySignals.Red` | Остановка с `SignalIssue` |
-| Отчёт | `RouteReport` | История визитов, `FailureCode` / `FailureMessage`, терминальные вагоны |
+| Красный сигнал | `RailwaySignals.Red` | Остановка с `SignalIssue` (без груза) |
+| Отчёт | `RouteReport` | История визитов, `FailureCode` / `FailureMessage`, `Manifest` |

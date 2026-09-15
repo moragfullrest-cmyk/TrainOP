@@ -33,6 +33,9 @@ namespace TrainOP.Generators
                 case HandlerInputKind.SignalIssue:
                     writer.Append(context.SignalIssueExpression);
                     break;
+                case HandlerInputKind.SignalIssues:
+                    writer.Append(context.SignalIssuesExpression);
+                    break;
                 case HandlerInputKind.CargoManifest:
                     writer.Append("manifest");
                     break;

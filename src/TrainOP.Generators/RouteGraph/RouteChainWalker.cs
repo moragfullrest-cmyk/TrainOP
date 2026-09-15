@@ -389,10 +389,20 @@ namespace TrainOP.Generators
         {
             next = current;
 
-            if (TryGetDirectServiceStationInvocation(current, out var serviceInvocation)
-                && TryCreateServiceStationLink(serviceInvocation, semanticModel, stationSitesByKey, out var serviceLink))
+            // Builtin RedSignal-only ServiceStation is not a data-oriented overlay
+            // (no RegisterStation ordinal). Still advance so factory-path simulation
+            // can reach the fluent endpoint instead of reporting TOP013.
+            if (TryGetDirectServiceStationInvocation(current, out var serviceInvocation))
             {
-                stations?.Add(serviceLink);
+                if (TryCreateServiceStationLink(
+                    serviceInvocation,
+                    semanticModel,
+                    stationSitesByKey,
+                    out var serviceLink))
+                {
+                    stations?.Add(serviceLink);
+                }
+
                 chainedInvocations?.Add(serviceInvocation);
                 next = serviceInvocation;
                 return true;

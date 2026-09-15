@@ -25,7 +25,7 @@ public static class PaymentRoute
               : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"));
 }
 
-var report = PaymentRoute.Build().DispatchTrain().Travel();
+var report = PaymentRoute.Build().Travel();
 var paymentId = report.Get<string>("paymentId");
 var amount = report.Get<decimal>("amount");
 ```
@@ -50,7 +50,7 @@ public static TrainRoute Build() =>
 | Принцип | Описание |
 |---------|----------|
 | **Data in** | Параметры handler'а = вагоны; имя параметра = ключ манифеста |
-| **Data out** | Анонимный тип / record / tuple / `RailwaySignals.Green` / `RailwaySignals.Red` / `RailwaySignals.Pass` |
+| **Data out** | Анонимный тип / record / tuple / `RailwaySignals.Green` / `RailwaySignals.Red` / `RailwaySignals.White` |
 | **Adapter generated** | Маппинг manifest ↔ handler — только в `*.g.cs` |
 | **Chain validated** | Компилятор проверяет поток вагонов по цепочке станций |
 | **Library at boundary** | TrainOP API только в точке сборки маршрута и в runtime-движке |
@@ -61,7 +61,7 @@ public static TrainRoute Build() =>
 
 1. `new TrainRoute()` + `.Station(...)` — единственный публичный API построения маршрута.
 2. `.Station(name, (params…) => data)` — handler; имена параметров = ключи вагонов.
-3. `DispatchTrain().Travel()` — запуск с пустым стартовым манифестом.
+3. `Travel()` — запуск с пустым стартовым манифестом.
 
 **Начальные данные** (не обязательная отдельная станция): если цепочка начинается с `new TrainRoute()` и upstream пуст, первая станция должна **произвести** вагоны — обычно handler без wagon-параметров (замыкание / аргументы `Build(...)`). Analyzer называет такую станцию *seed*; это роль в графе, а не требование имени или отдельного шага. При extension после factory (`PaymentModule.Build().Station(...)`) локальная seed-станция **не нужна** — вагоны приходят из upstream.
 
@@ -105,7 +105,7 @@ Parallel compile-time:
 
 ### 3.1. API ошибок
 
-**Выбор:** `RailwaySignals.Green` / `Red` / `Pass`.
+**Выбор:** `RailwaySignals.Green` / `Red` / `White`.
 
 | Возврат | Поведение адаптера |
 |---------|-------------------|
@@ -113,10 +113,10 @@ Parallel compile-time:
 | `(T1, T2, …)` ValueTuple | merge по ordinal = порядок wagon-параметров (§3.4) |
 | `RailwaySignals.Green(payload)` | merge `payload` → `Green` |
 | `RailwaySignals.Red(code, msg)` | `RedSignal` |
-| `RailwaySignals.Pass` | манифест без изменений |
+| `RailwaySignals.White` | манифест без изменений |
 | `CargoManifest` | escape hatch: заменяет манифест целиком; `TOP004` |
 
-Runtime-типы: `GreenPayload<T>`, `RedFailure`, `GreenPass` (`StationDataResult.cs`).
+Runtime-типы: `GreenPayload<T>`, `RedFailure`, `WhitePass` (`StationDataResult.cs`).
 
 ### 3.2. Якорь цепочки
 
@@ -157,7 +157,7 @@ PoC: `tests/TrainOP.RouteLib.Tests/`, `tests/TrainOP.RouteConsumer.Tests/`.
 
 ### 3.4. Маппинг возврата
 
-**Рекомендуется:** анонимные типы, records, **именованные кортежи** `(name: value, …)`, `RailwaySignals.Green` / `Red` / `Pass` — merge по **именам** полей.
+**Рекомендуется:** анонимные типы, records, **именованные кортежи** `(name: value, …)`, `RailwaySignals.Green` / `Red` / `White` — merge по **именам** полей.
 
 **Избегать:** выражения без имён, дающие default `ItemN` — `(expr1, expr2)`. Они поддерживаются, но merge идёт по ordinal = порядок wagon-параметров handler'а. Analyzer предупреждает на tuple literal: **TOP006** (default ItemN). Имена из inference `(paymentId, amount)` и явные `(Item1: x)` предупреждением не считаются.
 
@@ -209,7 +209,7 @@ Chain-dispatch (TOP007 при конфликте имён вне цепочки)
 | **1** | `TrainRouteStationGenerator`, адаптеры `.Station`, `StationMerge` |
 | **2** | `ChainDetector`, `ChainGraphSimulator`, `TOP001`–`TOP007` |
 | **3** | `TravelAsync`, `RouteReport.Get` / indexer |
-| **4** | `RailwaySignals.Red` / `Pass` в возврате handler'а |
+| **4** | `RailwaySignals.Red` / `White` в возврате handler'а |
 | **5** | `ref`-вагоны, `CargoManifest` escape, nullable-вагоны |
 | **6** | Удаление legacy API, docs, end-to-end sample |
 | **7** | Якоря `new TrainRoute()`, локальная после `new`, `TOP005` |
@@ -355,7 +355,7 @@ flowchart TD
   Idx --> Lookup["ResolveChainBinding_*(ChainKey, index)"]
   Lookup --> Reg["RegisterStation\nadapter с inputNames"]
   Reg --> Route
-  Dispatch["DispatchTrain()"] --> Travel["Travel"]
+  TravelNode["Travel()"] --> Report["RouteReport"]
 ```
 
 Binding разрешается **при register**, не на hot path `Travel`.

@@ -19,7 +19,7 @@ internal sealed class CrossAssemblyRouteExample : IExample
             .Station("Finalize", (string paymentId, decimal amount) =>
                 new { paymentId, amount, status = "completed" });
 
-        var report = route.DispatchTrain().Travel();
+        var report = route.Travel();
         var paymentId = report.Get<string>("paymentId");
         var amount = report.Get<decimal>("amount");
         var status = report.Get<string>("status");

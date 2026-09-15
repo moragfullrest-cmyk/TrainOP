@@ -31,6 +31,9 @@ namespace TrainOP.Generators
                 TrainRouteDiagnostics.RouteBranchJoinFailed,
                 TrainRouteDiagnostics.UnsupportedStationHandler,
                 TrainRouteDiagnostics.MultipleTrainRouteNewSameLine,
+                TrainRouteDiagnostics.ServiceStationAddsWagon,
+                TrainRouteDiagnostics.ServiceStationRemovesWagon,
+                TrainRouteDiagnostics.ServiceStationCargoManifestReplacement,
             ];
 
         /// <summary>

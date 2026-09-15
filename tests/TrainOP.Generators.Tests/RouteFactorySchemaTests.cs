@@ -5,6 +5,7 @@ using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using TrainOP.Generators.Wagons;
 using Xunit;
 
 namespace TrainOP.Generators.Tests
@@ -55,10 +56,37 @@ public static class PaymentModule
 
             var generated = TrainRouteStationGeneratorTestsHelper.RunAllGeneratedSources(source);
 
-            Assert.Contains("[RouteSchemaFor(typeof(global::PaymentModule), \"Build\")]", generated);
+            Assert.Contains("[RouteSchemaFor(typeof(global::PaymentModule), \"Build\"", generated);
+            Assert.Contains("CallerChainKey = \"", generated);
+            Assert.Contains("StationCount = 2", generated);
             Assert.Contains("[RouteSchemaWagon(\"amount\"", generated);
             Assert.Contains("[RouteSchemaWagon(\"paymentId\"", generated);
             Assert.Contains("internal static class PaymentModule_Build_Schema { }", generated);
+        }
+
+        /// <summary>
+        /// Verifies factory terminal schema emits input wagon keys after a default ItemN tuple return.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsInputWagonKeys_ForDefaultItemNTupleTerminal()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class PaymentModule
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            (paymentId + ""-disc"", amount * 0.9m));
+}";
+
+            var generated = TrainRouteStationGeneratorTestsHelper.RunAllGeneratedSources(source);
+
+            Assert.Contains("[RouteSchemaWagon(\"amount\"", generated);
+            Assert.Contains("[RouteSchemaWagon(\"paymentId\"", generated);
+            Assert.DoesNotContain("[RouteSchemaWagon(\"Item1\"", generated);
+            Assert.DoesNotContain("[RouteSchemaWagon(\"Item2\"", generated);
         }
 
         /// <summary>
@@ -93,6 +121,196 @@ public static class AppRoute
 
             Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
             Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+        }
+
+        /// <summary>
+        /// Verifies cross-assembly extension after a default ItemN factory terminal keeps mapped wagon keys.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_CrossAssemblyExtension_UsesItemNMappedTerminalWagons()
+        {
+            const string routeLibSource = @"
+using TrainOP;
+
+public static class PaymentModule
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            (paymentId + ""-disc"", amount * 0.9m));
+}";
+
+            const string consumerSource = @"
+using TrainOP;
+
+public static class AppRoute
+{
+    public static TrainRoute Build() =>
+        PaymentModule.Build()
+            .Station(""Finalize"", (decimal amount, string paymentId) =>
+                new { paymentId, status = ""completed"" });
+}";
+
+            var diagnostics = await RunCrossAssemblyAnalyzerAsync(routeLibSource, consumerSource);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP003");
+        }
+
+        /// <summary>
+        /// Verifies exported schema metadata carries CallerChainKey and StationCount for extension dispatch.
+        /// </summary>
+        [Fact]
+        public void Generator_CrossAssemblySchema_ExposesCallerChainKeyAndStationCount()
+        {
+            const string routeLibSource = @"
+using TrainOP;
+
+public static class PaymentModule
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m });
+}";
+
+            var routeLibTree = CSharpSyntaxTree.ParseText(routeLibSource, path: "RouteLib.cs");
+            var routeLibCompilation = CSharpCompilation.Create(
+                "RouteLibDispatchMeta",
+                new[] { routeLibTree },
+                TrainRouteValidationAnalyzerTests.GetMetadataReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            routeLibCompilation = RunGeneratorOnCompilation(routeLibCompilation, out var generated);
+            Assert.Contains("CallerChainKey = \"", generated);
+            Assert.Contains("StationCount = 2", generated);
+
+            var image = EmitToImage(routeLibCompilation);
+            var consumerCompilation = CSharpCompilation.Create(
+                "RouteConsumerDispatchMeta",
+                new[] { CSharpSyntaxTree.ParseText("public static class Marker { }", path: "Marker.cs") },
+                TrainRouteValidationAnalyzerTests.GetMetadataReferences()
+                    .Concat(new[] { MetadataReference.CreateFromImage(image) })
+                    .ToArray(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            var paymentModule = consumerCompilation.GetTypeByMetadataName("PaymentModule");
+            Assert.NotNull(paymentModule);
+            var buildMethod = paymentModule.GetMembers("Build").OfType<IMethodSymbol>().Single();
+
+            Assert.True(ExternalRouteSchemaResolver.TryResolve(
+                buildMethod,
+                consumerCompilation,
+                out ExternalRouteSchema schema));
+            Assert.True(schema.HasDispatchIdentity);
+            Assert.Equal(2, schema.StationCount);
+            Assert.Matches("^[0-9a-f]{16}$", schema.CallerChainKey);
+        }
+
+        /// <summary>
+        /// Verifies data-oriented ServiceStation registrations inside a factory are counted in StationCount
+        /// (they call RegisterStation and consume a chain ordinal; builtin RedSignal-only ServiceStation does not).
+        /// </summary>
+        [Fact]
+        public void Generator_FactoryWithServiceStation_EmitsStationCountIncludingServiceStation()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class ServiceFactory
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { id = 1 })
+        .Station(""Bump"", (int id) => new { id = id + 1 })
+        .ServiceStation(""Recover"", (ref int id, RedSignal red) => RailwaySignals.White);
+}";
+
+            var compilation = CSharpCompilation.Create(
+                "ServiceFactoryStationCount",
+                new[] { CSharpSyntaxTree.ParseText(source, path: "ServiceFactory.cs") },
+                TrainRouteValidationAnalyzerTests.GetMetadataReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            RunGeneratorOnCompilation(compilation, out var generated);
+            Assert.Contains("StationCount = 3", generated);
+            Assert.Contains("CallerChainKey = \"", generated);
+        }
+
+        /// <summary>
+        /// Verifies a legacy schema without CallerChainKey is treated as having no dispatch identity.
+        /// </summary>
+        [Fact]
+        public void ExternalRouteSchema_EmptyCallerChainKey_HasNoDispatchIdentity()
+        {
+            var schema = new ExternalRouteSchema(
+                ImmutableArray<WagonBinding>.Empty,
+                callerChainKey: "",
+                stationCount: 2);
+
+            Assert.False(schema.HasDispatchIdentity);
+            Assert.Equal(2, schema.StationCount);
+            Assert.True(string.IsNullOrEmpty(schema.CallerChainKey));
+
+            var withKey = new ExternalRouteSchema(
+                ImmutableArray<WagonBinding>.Empty,
+                callerChainKey: "abcd1234abcd1234",
+                stationCount: 1);
+            Assert.True(withKey.HasDispatchIdentity);
+        }
+
+        /// <summary>
+        /// Verifies metadata-only factory with a legacy schema (no CallerChainKey) does not invent index-0 bindings.
+        /// </summary>
+        [Fact]
+        public void RouteGraphAssembler_LegacySchemaWithoutCallerChainKey_SkipsConsumerExtensionBindings()
+        {
+            const string routeLibSource = @"
+using TrainOP;
+
+public static class LegacyModule
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .RegisterStation(""Seed"", manifest => manifest.LoadWagon(""id"", 1));
+}";
+
+            var routeLibCompilation = CSharpCompilation.Create(
+                "LegacyRouteLib",
+                new[] { CSharpSyntaxTree.ParseText(routeLibSource, path: "LegacyLib.cs") },
+                TrainRouteValidationAnalyzerTests.GetMetadataReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            // Intentionally no generator — consumer supplies a legacy schema without CallerChainKey.
+            var image = EmitToImage(routeLibCompilation);
+
+            const string consumerSource = @"
+using TrainOP;
+using System;
+
+[RouteSchemaFor(typeof(LegacyModule), ""Build"")]
+[RouteSchemaWagon(""id"", typeof(int))]
+internal static class LegacyModule_Build_Schema { }
+
+public static class Consumer
+{
+    public static TrainRoute Build() => LegacyModule.Build()
+        .Station(""Next"", (int id) => new { id });
+}";
+
+            var consumerCompilation = CSharpCompilation.Create(
+                "LegacyRouteConsumer",
+                new[] { CSharpSyntaxTree.ParseText(consumerSource, path: "Consumer.cs") },
+                TrainRouteValidationAnalyzerTests.GetMetadataReferences()
+                    .Concat(new[] { MetadataReference.CreateFromImage(image) })
+                    .ToArray(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            var sites = RouteSiteDiscoverer.CollectAll(consumerCompilation);
+            var graph = RouteGraphAssembler.Build(sites, consumerCompilation);
+
+            Assert.Empty(
+                graph.ChainIndex.Values
+                    .SelectMany(x => x)
+                    .Where(binding => binding.StationName == "Next"));
         }
 
         internal static async Task<ImmutableArray<Diagnostic>> RunCrossAssemblyAnalyzerAsync(

@@ -12,7 +12,9 @@ namespace TrainOP
         /// <summary>
         /// Creates a plan for a synchronous service station handler.
         /// </summary>
-        public ServiceStationPlan(string stationName, Func<RedSignal, CancellationToken, Signal> syncHandler)
+        public ServiceStationPlan(
+            string stationName,
+            Func<RedSignal, CargoManifest, CancellationToken, Signal> syncHandler)
         {
             StationName = stationName;
             SyncHandler = syncHandler;
@@ -21,7 +23,9 @@ namespace TrainOP
         /// <summary>
         /// Creates a plan for an asynchronous service station handler.
         /// </summary>
-        public ServiceStationPlan(string stationName, Func<RedSignal, CancellationToken, Task<Signal>> asyncHandler)
+        public ServiceStationPlan(
+            string stationName,
+            Func<RedSignal, CargoManifest, CancellationToken, Task<Signal>> asyncHandler)
         {
             StationName = stationName;
             AsyncHandler = asyncHandler;
@@ -35,11 +39,11 @@ namespace TrainOP
         /// <summary>
         /// Gets the synchronous red-signal handler, if configured.
         /// </summary>
-        public Func<RedSignal, CancellationToken, Signal> SyncHandler { get; }
+        public Func<RedSignal, CargoManifest, CancellationToken, Signal> SyncHandler { get; }
 
         /// <summary>
         /// Gets the asynchronous red-signal handler, if configured.
         /// </summary>
-        public Func<RedSignal, CancellationToken, Task<Signal>> AsyncHandler { get; }
+        public Func<RedSignal, CargoManifest, CancellationToken, Task<Signal>> AsyncHandler { get; }
     }
 }

@@ -15,8 +15,8 @@ dotnet add package TrainOP.Generators
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.12.1" />
-  <PackageReference Include="TrainOP.Generators" Version="0.12.1" />
+  <PackageReference Include="TrainOP" Version="0.13.0" />
+  <PackageReference Include="TrainOP.Generators" Version="0.13.0" />
 </ItemGroup>
 ```
 
@@ -58,7 +58,7 @@ var route = new TrainRoute()
             ? RailwaySignals.Green(new { paymentId, amount })
             : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"));
 
-var report = route.DispatchTrain().Travel();
+var report = route.Travel();
 var paymentId = report.Get<string>("paymentId");
 var amount = report.Get<decimal>("amount");
 
@@ -72,8 +72,8 @@ if (!report.ReachedDestination)
 
 ```
 CargoManifest (старт)
-    → Станция 1 → merge данных → продолжение
-    → Станция 2 → merge данных → продолжение
+    → Станция 1 → запись возврата в манифест → продолжение
+    → Станция 2 → запись возврата в манифест → продолжение
     → ...
     → RouteReport (визиты + финальный сигнал)
 ```
@@ -84,14 +84,14 @@ Handler станции — чистая функция над данными. И
 
 | Возврат | Поведение |
 |---------|-----------|
-| анонимный тип / record | merge в манифест → зелёный сигнал |
-| `RailwaySignals.Green(payload)` | merge payload → зелёный сигнал |
+| анонимный тип / record | поля записываются в манифест → зелёный сигнал |
+| `RailwaySignals.Green(...)` с данными | данные из аргумента записываются в манифест → зелёный сигнал |
 | `RailwaySignals.Red(code, msg)` | красный сигнал, маршрут останавливается |
-| `RailwaySignals.Pass` | манифест без изменений → зелёный сигнал (в т.ч. `ref`-вагоны: мутации в handler не попадают в манифест) |
+| `RailwaySignals.White` | манифест без изменений → продолжение маршрута (лунно-белый) (в т.ч. `ref`-вагоны: мутации в handler не попадают в манифест) |
 
-Восстановление после красного сигнала — через `ServiceStation` с тем же API (`Green` / `Red`). Подробнее — в [Основном API](core-api.md#станция-техобслуживания-servicestation).
+Восстановление после красного сигнала — через `ServiceStation` с тем же API (`Green` / `Red` / данные). Там в манифест можно записать только обновления уже существующих вагонов: состав не меняется (иначе **TOP015**–**TOP017**), потому что хвост маршрута уже ждёт эти вагоны, а техобслуживание может не вызваться. `ref` необязателен; `async` + `ref` по-прежнему запрещены языком (CS1988). Подробнее — в [Основном API](core-api.md#станция-техобслуживания-servicestation) и [параметрах `ref`](core-api.md#параметры-ref).
 
 ## Следующие шаги
 
-- [Основной API](core-api.md) — async, отмена, красные сигналы, отчёт маршрута
-- [Вложенные маршруты и ветвление](core-api.md#вложенные-маршруты-и-ветвление) — подмаршруты и станция-развилка через data-oriented `.Station`
+- [Основной API](core-api.md) — async, `ref`, отмена, красные сигналы, отчёт маршрута
+- [Вложенные маршруты и ветвление](core-api.md#вложенные-маршруты-и-ветвление) — подмаршруты и станция-развилка через `.Station` над данными

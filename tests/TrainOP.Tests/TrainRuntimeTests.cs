@@ -19,11 +19,10 @@ namespace TrainOP.Tests
         {
             var report = new TrainRoute()
                 .Station("Seed", () => new { id = "ok" })
-                .DispatchTrain()
                 .Travel();
 
             Assert.True(report.ReachedDestination);
-            Assert.Equal("ok", report.TerminalSignal.Manifest.PullWagon<string>("id"));
+            Assert.Equal("ok", report.Manifest.PullWagon<string>("id"));
             Assert.Equal("ok", report["id"]);
             Assert.Equal("ok", report.Get<string>("id"));
         }
@@ -36,7 +35,6 @@ namespace TrainOP.Tests
         {
             var report = new TrainRoute()
                 .Station("Seed", () => new { id = "ok" })
-                .DispatchTrain()
                 .Travel();
 
             var exception = Assert.Throws<KeyNotFoundException>(() => _ = report["missing"]);
@@ -57,10 +55,10 @@ namespace TrainOP.Tests
                     return new { counter = counter * 2 };
                 });
 
-            var report = await route.DispatchTrain().TravelAsync();
+            var report = await route.TravelAsync();
 
             Assert.True(report.ReachedDestination);
-            Assert.Equal(20, report.TerminalSignal.Manifest.PullWagon<int>("counter"));
+            Assert.Equal(20, report.Manifest.PullWagon<int>("counter"));
         }
 
         /// <summary>
@@ -73,11 +71,11 @@ namespace TrainOP.Tests
                 .Station("AsyncOnly", async (CancellationToken token) =>
                 {
                     await Task.Delay(1, token);
-                    return RailwaySignals.Pass;
+                    return RailwaySignals.White;
                 });
 
             var exception = Assert.Throws<InvalidOperationException>(() =>
-                route.DispatchTrain().Travel());
+                route.Travel());
 
             Assert.Contains("Use TravelAsync", exception.Message);
         }
@@ -93,14 +91,14 @@ namespace TrainOP.Tests
                 .Station("Wait", async (CancellationToken token) =>
                 {
                     await Task.Delay(200, token);
-                    return RailwaySignals.Pass;
+                    return RailwaySignals.White;
                 });
 
             using var cts = new CancellationTokenSource();
             cts.Cancel();
 
             await Assert.ThrowsAsync<OperationCanceledException>(() =>
-                route.DispatchTrain().TravelAsync(cts.Token));
+                route.TravelAsync(cts.Token));
         }
 
         /// <summary>
@@ -114,14 +112,14 @@ namespace TrainOP.Tests
                 .Station("CancelableSync", (CancellationToken token) =>
                 {
                     token.ThrowIfCancellationRequested();
-                    return RailwaySignals.Pass;
+                    return RailwaySignals.White;
                 });
 
             using var cts = new CancellationTokenSource();
             cts.Cancel();
 
             Assert.Throws<OperationCanceledException>(() =>
-                route.DispatchTrain().Travel(cts.Token));
+                route.Travel(cts.Token));
         }
 
         /// <summary>
@@ -136,7 +134,7 @@ namespace TrainOP.Tests
                     throw new InvalidOperationException("sync exploded")))
                 .Station("MustNotRun", () => new { afterBoom = true });
 
-            var report = route.DispatchTrain().Travel();
+            var report = route.Travel();
 
             Assert.False(report.ReachedDestination);
             Assert.Equal(2, report.Visits.Count);
@@ -146,7 +144,7 @@ namespace TrainOP.Tests
             Assert.Contains("sync exploded", red.Issue.Message);
             var exception = Assert.IsType<InvalidOperationException>(red.Issue.Exception);
             Assert.Equal("sync exploded", exception.Message);
-            Assert.False(red.Manifest.HasWagon("afterBoom"));
+            Assert.False(report.Manifest.HasWagon("afterBoom"));
         }
 
         /// <summary>
@@ -164,7 +162,7 @@ namespace TrainOP.Tests
                 })
                 .Station("MustNotRun", () => new { afterBoom = true });
 
-            var report = await route.DispatchTrain().TravelAsync();
+            var report = await route.TravelAsync();
 
             Assert.False(report.ReachedDestination);
             Assert.Equal(2, report.Visits.Count);
@@ -174,7 +172,7 @@ namespace TrainOP.Tests
             Assert.Contains("async exploded", red.Issue.Message);
             var exception = Assert.IsType<InvalidOperationException>(red.Issue.Exception);
             Assert.Equal("async exploded", exception.Message);
-            Assert.False(red.Manifest.HasWagon("afterBoom"));
+            Assert.False(report.Manifest.HasWagon("afterBoom"));
         }
 
         /// <summary>
@@ -190,11 +188,11 @@ namespace TrainOP.Tests
                 .ServiceStation("SignalControlAsync", (ref bool marker, RedSignal red) =>
                 {
                     marker = true;
-                    return RailwaySignals.Pass;
+                    return RailwaySignals.White;
                 })
                 .Station("AfterRecovery", (bool marker) => new { after = "ok", marker });
 
-            var report = await route.DispatchTrain().TravelAsync();
+            var report = await route.TravelAsync();
 
             Assert.True(report.ReachedDestination);
             Assert.Equal(4, report.Visits.Count);
@@ -206,8 +204,256 @@ namespace TrainOP.Tests
             Assert.True(report.Visits[2].IsGreen);
             Assert.Equal("AfterRecovery", report.Visits[3].StationName);
             Assert.True(report.Visits[3].IsGreen);
-            Assert.True(report.TerminalSignal.Manifest.PullWagon<bool>("marker"));
-            Assert.Equal("ok", report.TerminalSignal.Manifest.PullWagon<string>("after"));
+            Assert.True(report.Manifest.PullWagon<bool>("marker"));
+            Assert.Equal("ok", report.Manifest.PullWagon<string>("after"));
+        }
+
+        /// <summary>
+        /// Verifies that builtin RegisterStation returning White preserves the current manifest.
+        /// </summary>
+        [Fact]
+        public void RegisterStation_Pass_PreservesCargo()
+        {
+            var route = new TrainRoute()
+                .RegisterStation("Seed", manifest => manifest.LoadWagon("id", "keep-me"))
+                .RegisterStation("NoOp", _ => RailwaySignals.White);
+
+            var report = route.Travel();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal("keep-me", report.Manifest.PullWagon<string>("id"));
+        }
+
+        /// <summary>
+        /// Verifies that builtin RegisterStation returning RedFailure sets FailureCode without InvalidCastException.
+        /// </summary>
+        [Fact]
+        public void RegisterStation_RedFailure_SetsFailureCode()
+        {
+            var route = new TrainRoute()
+                .RegisterStation("Seed", manifest => manifest.LoadWagon("id", "cargo"))
+                .RegisterStation("Boom", _ => RailwaySignals.Red("STOP", "halted"));
+
+            var report = route.Travel();
+
+            Assert.False(report.ReachedDestination);
+            Assert.Equal("STOP", report.FailureCode);
+            Assert.Equal("halted", report.FailureMessage);
+            Assert.Equal("cargo", report.Manifest.PullWagon<string>("id"));
+            var red = Assert.IsType<RedSignal>(report.TerminalSignal);
+            Assert.Equal("Boom", red.Issue.StationName);
+        }
+
+        /// <summary>
+        /// Verifies that builtin ServiceStation returning White preserves cargo after recovery.
+        /// </summary>
+        [Fact]
+        public void ServiceStation_Pass_PreservesCargo()
+        {
+            var route = new TrainRoute()
+                .RegisterStation("Seed", manifest => manifest.LoadWagon("id", "recovered"))
+                .RegisterStation("Boom", _ => RailwaySignals.Red("BOOM", "simulated"))
+                .ServiceStation("Recover", red => RailwaySignals.White);
+
+            var report = route.Travel();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal("recovered", report.Manifest.PullWagon<string>("id"));
+            Assert.Equal(3, report.Visits.Count);
+            Assert.Equal("Recover", report.Visits[2].StationName);
+            Assert.True(report.Visits[2].IsGreen);
+        }
+
+        /// <summary>
+        /// Verifies that builtin ServiceStation returning RedFailure sets FailureCode without InvalidCastException.
+        /// </summary>
+        [Fact]
+        public void ServiceStation_RedFailure_SetsFailureCode()
+        {
+            var route = new TrainRoute()
+                .RegisterStation("Seed", manifest => manifest.LoadWagon("id", "cargo"))
+                .RegisterStation("Boom", _ => RailwaySignals.Red("BOOM", "simulated"))
+                .ServiceStation("Recover", red => RailwaySignals.Red("NOPE", "declined"));
+
+            var report = route.Travel();
+
+            Assert.False(report.ReachedDestination);
+            Assert.Equal("NOPE", report.FailureCode);
+            Assert.Equal("declined", report.FailureMessage);
+            Assert.Equal("cargo", report.Manifest.PullWagon<string>("id"));
+            var red = Assert.IsType<RedSignal>(report.TerminalSignal);
+            Assert.Equal("Recover", red.Issue.StationName);
+        }
+
+        /// <summary>
+        /// Verifies that PullWagon and RouteReport.Get accept null wagon values for null-compatible types.
+        /// </summary>
+        [Fact]
+        public void NullWagon_PullWagonAndGet_AllowNullForReferenceTypes()
+        {
+            var manifest = new CargoManifest().LoadWagon("note", null);
+            Assert.Null(manifest.PullWagon<string>("note"));
+
+            var report = new TrainRoute()
+                .RegisterStation("Seed", m => m.LoadWagon("note", null))
+                .Travel();
+
+            Assert.Null(report.Get<string>("note"));
+            Assert.Null(report["note"]);
+        }
+
+        /// <summary>
+        /// Verifies that PullWagon throws InvalidCastException for null into a non-nullable value type without NRE.
+        /// </summary>
+        [Fact]
+        public void NullWagon_PullWagon_ThrowsInvalidCastForValueType()
+        {
+            var manifest = new CargoManifest().LoadWagon("count", null);
+
+            var exception = Assert.Throws<InvalidCastException>(() => manifest.PullWagon<int>("count"));
+            Assert.Contains("null", exception.Message);
+            Assert.Contains(typeof(int).FullName, exception.Message);
+        }
+
+        /// <summary>
+        /// Verifies that Travel snapshots the plan at start; later builder mutations affect only the next Travel.
+        /// </summary>
+        [Fact]
+        public void Travel_SnapshotsRouteAtStart_LaterMutationsAffectNextTravelOnly()
+        {
+            var route = new TrainRoute()
+                .RegisterStation("Only", manifest => manifest.LoadWagon("id", "ok"));
+
+            var first = route.Travel();
+            route.RegisterStation("Extra", manifest => manifest.LoadWagon("extra", "seen"));
+            var second = route.Travel();
+
+            Assert.True(first.ReachedDestination);
+            Assert.Equal(1, first.Visits.Count);
+            Assert.Equal("Only", first.Visits[0].StationName);
+            Assert.Equal("ok", first.Manifest.PullWagon<string>("id"));
+            Assert.False(first.Manifest.HasWagon("extra"));
+
+            Assert.True(second.ReachedDestination);
+            Assert.Equal(2, second.Visits.Count);
+            Assert.Equal("Extra", second.Visits[1].StationName);
+            Assert.Equal("seen", second.Manifest.PullWagon<string>("extra"));
+        }
+
+        /// <summary>
+        /// Verifies that an unknown non-green Signal subtype is rejected instead of a blind RedSignal cast.
+        /// </summary>
+        [Fact]
+        public void RegisterStation_UnknownNonGreenSignal_ThrowsInvalidOperationException()
+        {
+            var route = new TrainRoute()
+                .RegisterStation("Alien", _ => new AlienRedSignal());
+
+            var exception = Assert.Throws<InvalidOperationException>(() => route.Travel());
+            Assert.Contains(nameof(AlienRedSignal), exception.Message);
+            Assert.Contains("unsupported", exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Verifies that RedFailure with a whitespace code fails via SignalIssue validation (not InvalidCastException).
+        /// </summary>
+        [Fact]
+        public void RegisterStation_WhitespaceRedFailureCode_ThrowsArgumentException()
+        {
+            var route = new TrainRoute()
+                .RegisterStation("Seed", manifest => manifest.LoadWagon("id", "cargo"))
+                .RegisterStation("Boom", _ => RailwaySignals.Red(" ", "halted"));
+
+            var exception = Assert.Throws<ArgumentException>(() => route.Travel());
+            Assert.Contains("code", exception.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Verifies White normalization on the async travel path preserves cargo.
+        /// </summary>
+        [Fact]
+        public async Task RegisterStation_Pass_TravelAsync_PreservesCargo()
+        {
+            var route = new TrainRoute()
+                .RegisterStation("Seed", manifest => manifest.LoadWagon("id", "async-keep"))
+                .RegisterStation("NoOp", _ => RailwaySignals.White);
+
+            var report = await route.TravelAsync();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal("async-keep", report.Manifest.PullWagon<string>("id"));
+        }
+
+        /// <summary>
+        /// Verifies RedFailure normalization on the async travel path sets FailureCode.
+        /// </summary>
+        [Fact]
+        public async Task RegisterStation_RedFailure_TravelAsync_SetsFailureCode()
+        {
+            var route = new TrainRoute()
+                .RegisterStation("Seed", manifest => manifest.LoadWagon("id", "cargo"))
+                .RegisterStation("Boom", _ => RailwaySignals.Red("ASYNC_STOP", "halted"));
+
+            var report = await route.TravelAsync();
+
+            Assert.False(report.ReachedDestination);
+            Assert.Equal("ASYNC_STOP", report.FailureCode);
+            Assert.Equal("halted", report.FailureMessage);
+            Assert.Equal("cargo", report.Manifest.PullWagon<string>("id"));
+        }
+
+        /// <summary>
+        /// Verifies RouteReport.Get throws InvalidCastException for null into a value type without NRE.
+        /// </summary>
+        [Fact]
+        public void NullWagon_RouteReportGet_ThrowsInvalidCastForValueType()
+        {
+            var report = new TrainRoute()
+                .RegisterStation("Seed", m => m.LoadWagon("count", null))
+                .Travel();
+
+            var exception = Assert.Throws<InvalidCastException>(() => report.Get<int>("count"));
+            Assert.Contains("null", exception.Message);
+        }
+
+        /// <summary>
+        /// Verifies data-oriented Station returning White keeps prior wagons (adapter + runtime normalize path).
+        /// </summary>
+        [Fact]
+        public void DataOriented_Station_Pass_PreservesCargo()
+        {
+            var report = new TrainRoute()
+                .Station("Seed", () => new { id = "keep" })
+                .Station("NoOp", (string id) => RailwaySignals.White)
+                .Travel();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal("keep", report.Get<string>("id"));
+        }
+
+        /// <summary>
+        /// Verifies data-oriented Station returning Red sets FailureCode and keeps cargo.
+        /// </summary>
+        [Fact]
+        public void DataOriented_Station_Red_SetsFailureCode()
+        {
+            var report = new TrainRoute()
+                .Station("Seed", () => new { id = "cargo" })
+                .Station("Boom", (string id) => RailwaySignals.Red("DATA_STOP", "halted"))
+                .Travel();
+
+            Assert.False(report.ReachedDestination);
+            Assert.Equal("DATA_STOP", report.FailureCode);
+            Assert.Equal("halted", report.FailureMessage);
+            Assert.Equal("cargo", report.Get<string>("id"));
+        }
+
+        /// <summary>
+        /// Unsupported non-green Signal used to verify normalize/reject behavior.
+        /// </summary>
+        private sealed class AlienRedSignal : Signal
+        {
+            public override bool IsGreen => false;
         }
     }
 }

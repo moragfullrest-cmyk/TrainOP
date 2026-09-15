@@ -48,6 +48,7 @@ namespace TrainOP.Generators
             var includeManifest = false;
             var includeRedSignal = false;
             var includeSignalIssue = false;
+            var includeSignalIssues = false;
             var hasCancellationToken = false;
             var fallbackLocation = handlerLocation ?? handlerExpression?.GetLocation();
 
@@ -74,11 +75,6 @@ namespace TrainOP.Generators
                             continue;
 
                         case HandlerInputKind.CargoManifest:
-                            if (stationKind.IsServiceStation())
-                            {
-                                return null;
-                            }
-
                             includeManifest = true;
                             continue;
 
@@ -92,12 +88,21 @@ namespace TrainOP.Generators
                             continue;
 
                         case HandlerInputKind.SignalIssue:
-                            if (stationKind.IsServiceStation())
+                            if (!stationKind.IsServiceStation())
                             {
                                 return null;
                             }
 
                             includeSignalIssue = true;
+                            continue;
+
+                        case HandlerInputKind.SignalIssues:
+                            if (!stationKind.IsServiceStation())
+                            {
+                                return null;
+                            }
+
+                            includeSignalIssues = true;
                             continue;
                     }
                 }
@@ -130,26 +135,17 @@ namespace TrainOP.Generators
                     pullTypeDisplay));
             }
 
-            if (stationKind.IsServiceStation()
-                && wagons.Count == 0
-                && includeRedSignal)
-            {
-                return null;
-            }
-
             if (stationKind.IsServiceStation())
             {
-                if (!includeRedSignal)
+                // RedSignal (+ optional CargoManifest / CancellationToken) with no wagons is the built-in escape hatch.
+                if (wagons.Count == 0)
                 {
                     return null;
                 }
 
-                for (var i = 0; i < wagons.Count; i++)
+                if (!includeRedSignal && !includeSignalIssue && !includeSignalIssues)
                 {
-                    if (!wagons[i].IsByReference)
-                    {
-                        return null;
-                    }
+                    return null;
                 }
             }
 
@@ -165,6 +161,7 @@ namespace TrainOP.Generators
                 includeManifest,
                 includeRedSignal,
                 includeSignalIssue,
+                includeSignalIssues,
                 hasCancellationToken);
 
             var returnShape = HandlerReturnSchemaInference.Infer(

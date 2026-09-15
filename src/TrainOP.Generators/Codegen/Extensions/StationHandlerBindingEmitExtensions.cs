@@ -46,11 +46,6 @@ namespace TrainOP.Generators
             EmitRegistrationOpen(writer, schema, context.StationLabelExpression);
             using (writer.Block(closeSuffix: ");"))
             {
-                if (schema.IsServiceStation)
-                {
-                    writer.AppendLine("var manifest = red.Manifest;");
-                }
-
                 EmitPull(writer, schema, context);
                 EmitHandlerInvocation(writer, schema, context);
                 EmitRefLocalValuesIfNeeded(writer, schema, context.UseNeutralWagonNames);
@@ -155,7 +150,7 @@ namespace TrainOP.Generators
                         .Append(TrainRouteMethodNames.ServiceStation)
                         .Append("(")
                         .Append(stationLabelExpression)
-                        .Append(", async (red, token) =>");
+                        .Append(", async (red, manifest, token) =>");
                     writer.EndLine();
                 }
                 else
@@ -164,7 +159,7 @@ namespace TrainOP.Generators
                         .Append(TrainRouteMethodNames.ServiceStation)
                         .Append("(")
                         .Append(stationLabelExpression)
-                        .Append(", (red, token) =>");
+                        .Append(", (red, manifest, token) =>");
                     writer.EndLine();
                 }
 
@@ -226,11 +221,15 @@ namespace TrainOP.Generators
             var signalIssue = context.UseNeutralWagonNames
                 ? "issue"
                 : (redVariable ?? "red") + ".Issue";
+            var signalIssues = context.UseNeutralWagonNames
+                ? "issues"
+                : (redVariable ?? "red") + ".Issues";
             var argumentContext = new CallArgumentContext(
                 context.UseNeutralWagonNames,
                 tokenVariable,
                 redVariable,
-                signalIssue);
+                signalIssue,
+                signalIssues);
 
             var stationReturnType = GetStationReturnTypeDisplay(schema);
             if (schema.IsAsync)
@@ -310,23 +309,6 @@ namespace TrainOP.Generators
             var refFlagsField = schema.HasRefWagons ? context.RefFlagsExpression : null;
             var refLocalValues = schema.HasRefWagons ? "refLocalValues" : null;
 
-            if (schema.IsServiceStation
-                && context.PassRefFlagsToServiceMergeWhenPresent
-                && !string.IsNullOrEmpty(context.RefFlagsExpression))
-            {
-                writer.AppendIndented("return StationMerge.ToServiceSignal(manifest, stationReturn, ")
-                    .Append(context.StationLabelExpression)
-                    .Append(", ")
-                    .Append(context.WagonNamesExpression)
-                    .Append(", ")
-                    .Append(context.RefFlagsExpression)
-                    .Append(", ")
-                    .Append(refLocalValues ?? "null")
-                    .Append(");");
-                writer.EndLine();
-                return;
-            }
-
             EmitStationReturnMerge(
                 writer,
                 schema,
@@ -355,7 +337,9 @@ namespace TrainOP.Generators
                         "stationReturn",
                         refFlagsField,
                         refLocalValuesExpression,
-                        schema.RemoveOmittedRegularInputs));
+                        schema.RemoveOmittedRegularInputs,
+                        schema.IsServiceStation,
+                        schema.ReturnShape.UseGenericReturn));
                 return;
             }
 
@@ -383,6 +367,8 @@ namespace TrainOP.Generators
                     .Append(stationLabelExpression)
                     .Append(", ")
                     .Append(wagonNamesField)
+                    .Append(", ")
+                    .Append(returnMembersField ?? "null")
                     .Append(", ")
                     .Append(refFlagsField ?? "null")
                     .Append(", ")

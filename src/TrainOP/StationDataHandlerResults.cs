@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace TrainOP
 {
@@ -49,10 +50,18 @@ namespace TrainOP
         /// Creates a red failure request with the provided code and message.
         /// </summary>
         public RedFailure(string code, string message)
-            : base(new CargoManifest())
+            : this(code, message, null)
+        {
+        }
+
+        /// <summary>
+        /// Creates a red failure request with optional prior issues from nested route stops.
+        /// </summary>
+        public RedFailure(string code, string message, IReadOnlyList<SignalIssue> priorIssues)
         {
             Code = code ?? throw new ArgumentNullException(nameof(code));
             Message = message ?? throw new ArgumentNullException(nameof(message));
+            PriorIssues = priorIssues ?? Array.Empty<SignalIssue>();
         }
 
         /// <summary>
@@ -69,23 +78,27 @@ namespace TrainOP
         /// Gets the failure message.
         /// </summary>
         public string Message { get; }
+
+        /// <summary>
+        /// Gets prior issues to preserve when this failure is mapped to a <see cref="RedSignal"/>.
+        /// </summary>
+        internal IReadOnlyList<SignalIssue> PriorIssues { get; }
     }
 
     /// <summary>
-    /// Pass-through result: manifest is left unchanged and the route continues with a green signal.
+    /// Lunar-white (pass-through) result: manifest is left unchanged and the route continues.
     /// </summary>
-    public sealed class GreenPass : Signal
+    public sealed class WhitePass : Signal
     {
         /// <summary>
-        /// Gets the singleton pass-through instance.
+        /// Gets the singleton lunar-white pass-through instance.
         /// </summary>
-        public static GreenPass Instance { get; } = new GreenPass();
+        public static WhitePass Instance { get; } = new WhitePass();
 
         /// <summary>
-        /// Creates the singleton pass-through instance.
+        /// Creates the singleton lunar-white pass-through instance.
         /// </summary>
-        private GreenPass()
-            : base(new CargoManifest())
+        private WhitePass()
         {
         }
 

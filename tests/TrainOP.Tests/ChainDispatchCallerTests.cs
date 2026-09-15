@@ -13,11 +13,11 @@ namespace TrainOP.Tests.DataOriented
         [Fact]
         public void SeparateChains_PaymentRoute_UsesPaymentWagonNames()
         {
-            var report = SeparateChainRoutes.Payment().DispatchTrain().Travel();
+            var report = SeparateChainRoutes.Payment().Travel();
 
             Assert.True(report.ReachedDestination);
-            Assert.Equal("pay-1", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
-            Assert.Equal(90m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
+            Assert.Equal("pay-1", report.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(90m, report.Manifest.PullWagon<decimal>("amount"));
         }
 
         /// <summary>
@@ -26,11 +26,11 @@ namespace TrainOP.Tests.DataOriented
         [Fact]
         public void SeparateChains_OrderRoute_UsesOrderWagonNames()
         {
-            var report = SeparateChainRoutes.Order().DispatchTrain().Travel();
+            var report = SeparateChainRoutes.Order().Travel();
 
             Assert.True(report.ReachedDestination);
-            Assert.Equal("ord-1", report.TerminalSignal.Manifest.PullWagon<string>("orderId"));
-            Assert.Equal(51m, report.TerminalSignal.Manifest.PullWagon<decimal>("total"));
+            Assert.Equal("ord-1", report.Manifest.PullWagon<string>("orderId"));
+            Assert.Equal(51m, report.Manifest.PullWagon<decimal>("total"));
         }
 
         /// <summary>
@@ -39,15 +39,47 @@ namespace TrainOP.Tests.DataOriented
         [Fact]
         public void SeparateChains_BothRoutesRunIndependently_WithoutCrossContamination()
         {
-            var paymentReport = SeparateChainRoutes.Payment().DispatchTrain().Travel();
-            var orderReport = SeparateChainRoutes.Order().DispatchTrain().Travel();
+            var paymentReport = SeparateChainRoutes.Payment().Travel();
+            var orderReport = SeparateChainRoutes.Order().Travel();
 
-            Assert.Equal(90m, paymentReport.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
-            Assert.Equal(51m, orderReport.TerminalSignal.Manifest.PullWagon<decimal>("total"));
-            Assert.False(paymentReport.TerminalSignal.Manifest.HasWagon("orderId"));
-            Assert.False(paymentReport.TerminalSignal.Manifest.HasWagon("total"));
-            Assert.False(orderReport.TerminalSignal.Manifest.HasWagon("paymentId"));
-            Assert.False(orderReport.TerminalSignal.Manifest.HasWagon("amount"));
+            Assert.Equal(90m, paymentReport.Manifest.PullWagon<decimal>("amount"));
+            Assert.Equal(51m, orderReport.Manifest.PullWagon<decimal>("total"));
+            Assert.False(paymentReport.Manifest.HasWagon("orderId"));
+            Assert.False(paymentReport.Manifest.HasWagon("total"));
+            Assert.False(orderReport.Manifest.HasWagon("paymentId"));
+            Assert.False(orderReport.Manifest.HasWagon("amount"));
+        }
+
+        /// <summary>
+        /// Verifies factory-extension chain-dispatch keeps distinct wagon names for the same CLR handler shape.
+        /// </summary>
+        [Fact]
+        public void FactoryExtension_ConflictingIntSignatures_ReadsCorrectWagonNames()
+        {
+            var alphaReport = FactoryExtensionConflictRoutes.Alpha().Travel();
+            var betaReport = FactoryExtensionConflictRoutes.Beta().Travel();
+
+            Assert.True(alphaReport.ReachedDestination);
+            Assert.True(betaReport.ReachedDestination);
+            Assert.Equal(1, alphaReport.Manifest.PullWagon<int>("alpha"));
+            Assert.Equal(2, betaReport.Manifest.PullWagon<int>("beta"));
+            Assert.False(alphaReport.Manifest.HasWagon("beta"));
+            Assert.False(betaReport.Manifest.HasWagon("alpha"));
+        }
+
+        /// <summary>
+        /// Verifies factory with two inner stations + consumer extension uses ordinal offset at runtime.
+        /// </summary>
+        [Fact]
+        public void FactoryExtension_TwoInnerStations_ConsumerReadsFactoryWagons()
+        {
+            var report = FactoryExtensionOffsetRoutes.Build().Travel();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal("p", report.Manifest.PullWagon<string>("paymentId"));
+            Assert.True(report.Manifest.PullWagon<bool>("ok"));
+            Assert.Equal(3, report.Visits.Count);
+            Assert.Equal("Finalize", report.Visits[2].StationName);
         }
 
         /// <summary>
@@ -56,13 +88,13 @@ namespace TrainOP.Tests.DataOriented
         [Fact]
         public void SeparateChains_VoidHandlers_MutateCorrectWagons()
         {
-            var paymentReport = VoidChainRoutes.Payment().DispatchTrain().Travel();
-            var orderReport = VoidChainRoutes.Order().DispatchTrain().Travel();
+            var paymentReport = VoidChainRoutes.Payment().Travel();
+            var orderReport = VoidChainRoutes.Order().Travel();
 
-            Assert.Equal("pay-1-touched", paymentReport.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
-            Assert.Equal(101m, paymentReport.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
-            Assert.Equal("ord-1-touched", orderReport.TerminalSignal.Manifest.PullWagon<string>("orderId"));
-            Assert.Equal(51m, orderReport.TerminalSignal.Manifest.PullWagon<decimal>("total"));
+            Assert.Equal("pay-1-touched", paymentReport.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(101m, paymentReport.Manifest.PullWagon<decimal>("amount"));
+            Assert.Equal("ord-1-touched", orderReport.Manifest.PullWagon<string>("orderId"));
+            Assert.Equal(51m, orderReport.Manifest.PullWagon<decimal>("total"));
         }
 
         /// <summary>
@@ -73,8 +105,8 @@ namespace TrainOP.Tests.DataOriented
         {
             var (paymentReport, orderReport) = LocalChainRoutes.BuildBoth();
 
-            Assert.Equal(90m, paymentReport.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
-            Assert.Equal(51m, orderReport.TerminalSignal.Manifest.PullWagon<decimal>("total"));
+            Assert.Equal(90m, paymentReport.Manifest.PullWagon<decimal>("amount"));
+            Assert.Equal(51m, orderReport.Manifest.PullWagon<decimal>("total"));
         }
 
         internal static class SeparateChainRoutes
@@ -88,6 +120,29 @@ namespace TrainOP.Tests.DataOriented
                 .Station("Seed", () => new { orderId = "ord-1", total = 50m })
                 .Station("Validate", (string orderId, decimal total) =>
                     new { orderId, total = total + 1m });
+        }
+
+        internal static class FactoryExtensionConflictRoutes
+        {
+            public static TrainRoute Alpha() => new TrainRoute()
+                .Station("Seed", () => new { alpha = 1 })
+                .Station("Use", (int alpha) => new { alpha });
+
+            public static TrainRoute Beta() => CreateBetaSeed()
+                .Station("Use", (int beta) => new { beta });
+
+            private static TrainRoute CreateBetaSeed() => new TrainRoute()
+                .Station("Seed", () => new { beta = 2 });
+        }
+
+        internal static class FactoryExtensionOffsetRoutes
+        {
+            public static TrainRoute Build() => CreateSeed()
+                .Station("Finalize", (string paymentId) => new { paymentId, ok = true });
+
+            private static TrainRoute CreateSeed() => new TrainRoute()
+                .Station("Seed", () => new { paymentId = "p" })
+                .Station("Step", (string paymentId) => new { paymentId });
         }
 
         internal static class VoidChainRoutes
@@ -123,7 +178,7 @@ namespace TrainOP.Tests.DataOriented
                     .Station("Validate", (string orderId, decimal total) =>
                         new { orderId, total = total + 1m });
 
-                return (payment.DispatchTrain().Travel(), order.DispatchTrain().Travel());
+                return (payment.Travel(), order.Travel());
             }
         }
     }

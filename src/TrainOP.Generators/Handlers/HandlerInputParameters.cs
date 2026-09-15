@@ -19,6 +19,7 @@ namespace TrainOP.Generators.Handlers
             bool includeManifest,
             bool includeRedSignal,
             bool includeSignalIssue,
+            bool includeSignalIssues,
             bool hasCancellationToken)
         {
             Wagons = wagons.IsDefault ? ImmutableArray<WagonBinding>.Empty : wagons;
@@ -26,6 +27,7 @@ namespace TrainOP.Generators.Handlers
             IncludeManifest = includeManifest;
             IncludeRedSignal = includeRedSignal;
             IncludeSignalIssue = includeSignalIssue;
+            IncludeSignalIssues = includeSignalIssues;
             HasCancellationToken = hasCancellationToken;
             HasRefWagons = ComputeHasRefWagons(Wagons);
             CallOrder = BuildCallOrder(
@@ -34,6 +36,7 @@ namespace TrainOP.Generators.Handlers
                 includeManifest,
                 includeRedSignal,
                 includeSignalIssue,
+                includeSignalIssues,
                 hasCancellationToken);
         }
 
@@ -52,8 +55,11 @@ namespace TrainOP.Generators.Handlers
         /// <summary>Handler accepts <c>RedSignal</c>.</summary>
         public bool IncludeRedSignal { get; }
 
-        /// <summary>Handler accepts <c>SignalIssue</c>.</summary>
+        /// <summary>Handler accepts <c>SignalIssue</c> (last / immediate stop).</summary>
         public bool IncludeSignalIssue { get; }
+
+        /// <summary>Handler accepts <c>IReadOnlyList&lt;SignalIssue&gt;</c> (full chain).</summary>
+        public bool IncludeSignalIssues { get; }
 
         /// <summary>Handler accepts <c>CancellationToken</c>.</summary>
         public bool HasCancellationToken { get; }
@@ -63,7 +69,8 @@ namespace TrainOP.Generators.Handlers
 
         /// <summary>
         /// Parameters in the order used by generated delegates and handler invocations.
-        /// ServiceStation: wagons, RedSignal, token. Station: red/issue/manifest, wagons, token.
+        /// ServiceStation: wagons, RedSignal, SignalIssue, SignalIssues, CargoManifest, token.
+        /// Station: RedSignal (rare), CargoManifest, wagons, token.
         /// </summary>
         public ImmutableArray<HandlerCallSlot> CallOrder { get; }
 
@@ -132,10 +139,11 @@ namespace TrainOP.Generators.Handlers
             bool includeManifest,
             bool includeRedSignal,
             bool includeSignalIssue,
+            bool includeSignalIssues,
             bool hasCancellationToken)
         {
             var slots = ImmutableArray.CreateBuilder<HandlerCallSlot>(
-                wagons.Length + 4);
+                wagons.Length + 5);
 
             if (stationKind.IsServiceStation())
             {
@@ -145,17 +153,27 @@ namespace TrainOP.Generators.Handlers
                 {
                     slots.Add(HandlerCallSlot.Special(HandlerInputKind.RedSignal));
                 }
+
+                if (includeSignalIssue)
+                {
+                    slots.Add(HandlerCallSlot.Special(HandlerInputKind.SignalIssue));
+                }
+
+                if (includeSignalIssues)
+                {
+                    slots.Add(HandlerCallSlot.Special(HandlerInputKind.SignalIssues));
+                }
+
+                if (includeManifest)
+                {
+                    slots.Add(HandlerCallSlot.Special(HandlerInputKind.CargoManifest));
+                }
             }
             else
             {
                 if (includeRedSignal)
                 {
                     slots.Add(HandlerCallSlot.Special(HandlerInputKind.RedSignal));
-                }
-
-                if (includeSignalIssue)
-                {
-                    slots.Add(HandlerCallSlot.Special(HandlerInputKind.SignalIssue));
                 }
 
                 if (includeManifest)

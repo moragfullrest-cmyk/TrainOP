@@ -27,11 +27,6 @@ namespace TrainOP.Generators
                 return HandlerSchemaResult.Failed(HandlerSchemaFailure.NotTrainRouteReceiver);
             }
 
-            if (StationSyntaxHelper.IsBuiltinTrainRouteHandler(invocation, semanticModel, stationKind.ToMethodName()))
-            {
-                return HandlerSchemaResult.Failed(HandlerSchemaFailure.BuiltinHandler);
-            }
-
             var handlerExpression = invocation.ArgumentList.Arguments[1].Expression;
             if (!StationSyntaxHelper.TryResolveHandler(handlerExpression, semanticModel, out var resolved)
                 || resolved == null)
@@ -41,12 +36,26 @@ namespace TrainOP.Generators
                     handlerLocation: handlerExpression.GetLocation());
             }
 
+            // Cold compilation lists TrainRoute.ServiceStation as an overload candidate for any
+            // .ServiceStation call. RedSignal handlers (optional CancellationToken) are true builtins;
+            // data-oriented handlers (wagons + RedSignal) must still resolve so factory StationCount / adapters emit.
             if (stationKind.IsServiceStation()
                 && IsLikelyBuiltinServiceStationHandler(resolved))
             {
                 return HandlerSchemaResult.Failed(
                     HandlerSchemaFailure.BuiltinServiceHandler,
                     handlerLocation: resolved.Location);
+            }
+
+            // Skip the TrainRoute.* builtin-symbol check for data ServiceStation: candidates always
+            // include TrainRoute.ServiceStation before generated extensions exist.
+            if (!stationKind.IsServiceStation()
+                && StationSyntaxHelper.IsBuiltinTrainRouteHandler(
+                    invocation,
+                    semanticModel,
+                    stationKind.ToMethodName()))
+            {
+                return HandlerSchemaResult.Failed(HandlerSchemaFailure.BuiltinHandler);
             }
 
             var stationName = StationSyntaxHelper.ResolveStationNameForAnalysis(
@@ -100,7 +109,8 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Heuristically detects built-in RedSignal-only service station handlers.
+        /// Heuristically detects built-in RedSignal service station handlers
+        /// (<c>RedSignal</c> with optional <c>CargoManifest</c> / <c>CancellationToken</c>, no data-oriented wagons).
         /// </summary>
         internal static bool IsLikelyBuiltinServiceStationHandler(ResolvedHandler resolved)
         {
@@ -110,12 +120,34 @@ namespace TrainOP.Generators
             }
 
             var parameters = resolved.Symbol.Parameters;
-            if (parameters.Length != 1)
+            if (parameters.Length == 1)
             {
-                return false;
+                return IsRedSignalParameter(resolved, parameters[0]);
             }
 
-            var parameter = parameters[0];
+            if (parameters.Length == 2
+                && IsRedSignalParameter(resolved, parameters[0]))
+            {
+                if (FrameworkParameterSchemaClassifier.IsCancellationToken(parameters[1].Type)
+                    || FrameworkParameterSchemaClassifier.IsCargoManifest(parameters[1].Type))
+                {
+                    return true;
+                }
+            }
+
+            if (parameters.Length == 3
+                && IsRedSignalParameter(resolved, parameters[0])
+                && FrameworkParameterSchemaClassifier.IsCargoManifest(parameters[1].Type)
+                && FrameworkParameterSchemaClassifier.IsCancellationToken(parameters[2].Type))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsRedSignalParameter(ResolvedHandler resolved, IParameterSymbol parameter)
+        {
             if (FrameworkParameterSchemaClassifier.IsRedSignal(parameter.Type))
             {
                 return true;
@@ -148,8 +180,8 @@ namespace TrainOP.Generators
             {
                 if (memberAccess.Expression is IdentifierNameSyntax identifier
                     && string.Equals(identifier.Identifier.ValueText, parameterName, StringComparison.Ordinal)
-                    && (string.Equals(memberAccess.Name.Identifier.ValueText, "Manifest", StringComparison.Ordinal)
-                        || string.Equals(memberAccess.Name.Identifier.ValueText, "Issue", StringComparison.Ordinal)))
+                    && (string.Equals(memberAccess.Name.Identifier.ValueText, "Issue", StringComparison.Ordinal)
+                        || string.Equals(memberAccess.Name.Identifier.ValueText, "Issues", StringComparison.Ordinal)))
                 {
                     return true;
                 }

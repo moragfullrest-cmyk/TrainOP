@@ -19,7 +19,7 @@ internal sealed class PartialWagonReturnExample : IExample
             .Station("PartialUpdate", (CargoManifest manifest, string paymentId, decimal amount) =>
                 new { paymentId = paymentId + "-" + manifest.PullWagon<string>("traceId") });
 
-        var report = route.DispatchTrain().Travel();
+        var report = route.Travel();
 
         ExampleOutput.WriteReport(report);
     }

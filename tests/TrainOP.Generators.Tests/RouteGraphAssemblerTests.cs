@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.IO;
 using System.Linq;
@@ -86,6 +87,57 @@ public static class FactoryRoute
             Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
             Assert.NotNull(consumerChain.Anchor.FactoryMethod);
             Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod.Name);
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_FactoryWithTwoInnerStations_OffsetsConsumerIndex()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class FactoryOffsetRoute
+{
+    public static TrainRoute Build() => CreateSeed()
+        .Station(""Finalize"", (string paymentId) => new { paymentId, ok = true });
+
+    private static TrainRoute CreateSeed() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""p"" })
+        .Station(""Step"", (string paymentId) => new { paymentId });
+}";
+
+            var syntaxTree = CSharpSyntaxTree.ParseText(source, path: @"C:\repo\FactoryOffset.cs");
+            var compilation = CSharpCompilation.Create(
+                "RouteGraphAssemblerOffsetTests",
+                new[] { syntaxTree },
+                GetMetadataReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            var sites = RouteSiteDiscoverer.CollectAll(compilation);
+            var graph = RouteGraphAssembler.Build(sites, compilation);
+
+            var consumerBinding = graph.ChainIndex.Values
+                .SelectMany(x => x)
+                .Single(b => b.StationName == "Finalize");
+
+            Assert.Equal(2, consumerBinding.StationIndex);
+
+            var root = syntaxTree.GetRoot();
+            var createSeed = root.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(m => m.Identifier.ValueText == "CreateSeed");
+            var objectCreation = createSeed.DescendantNodes()
+                .OfType<ObjectCreationExpressionSyntax>()
+                .Single(n => n.Type is IdentifierNameSyntax id
+                    && id.Identifier.ValueText == "TrainRoute");
+            var semanticModel = compilation.GetSemanticModel(syntaxTree);
+            var createSeedSymbol = semanticModel.GetDeclaredSymbol(createSeed) as IMethodSymbol;
+            var ctorAnchor = new RouteChainAnchor(
+                RouteChainAnchorKind.ObjectCreation,
+                objectCreation,
+                objectCreation.GetLocation(),
+                createSeedSymbol);
+
+            Assert.Equal(CallerChainKeyBuilder.Build(ctorAnchor, compilation), consumerBinding.ChainId);
         }
 
         [Fact]

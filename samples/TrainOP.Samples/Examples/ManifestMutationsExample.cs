@@ -18,7 +18,7 @@ internal sealed class ManifestMutationsExample : IExample
             .Station("Seed", () => new { counter = 1, temporary = "keep" })
             .Station("Mutate", (int counter, string temporary) => new { counter = counter + 41 });
 
-        var report = route.DispatchTrain().Travel();
+        var report = route.Travel();
 
         ExampleOutput.WriteReport(report);
     }

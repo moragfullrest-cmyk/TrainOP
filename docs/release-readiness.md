@@ -1,12 +1,12 @@
 # Чеклист готовности TrainOP к релизу
 
-Срез: **2026-09-14** · версия в csproj: **0.12.1** · целевой статус сейчас: **NuGet Preview (0.x)**
+Срез: **2026-09-15** · версия в csproj: **0.13.0** · целевой статус сейчас: **NuGet Preview (0.x)**
 
 | Показатель | Скор |
 |------------|------|
 | Фундамент продукта (блок A) | **~92%** |
-| NuGet Preview, взвешенно (блок B) | **~73%** |
-| Стабильный 1.0, ориентир (B+C) | **~45%** |
+| NuGet Preview, взвешенно (блок B) | **~74%** |
+| Стабильный 1.0, ориентир (B+C) | **~46%** |
 
 Проценты экспертные: доля закрытия конкретного гейта, не покрытие кода тестами.
 
@@ -18,9 +18,9 @@
 |---|--------|---|--------|
 | A1 | Публичный API data-oriented (seed `Travel`, `RailwaySignals`, `RouteReport`) | 92% | Ядро стабильно; advanced helpers скрыты через `EditorBrowsable`, но остаются public для generated code |
 | A2 | Лицензия MIT + `PackageLicenseExpression` в пакетах | 100% | Готово |
-| A3 | Документация пользователя (`getting-started`, `core-api`, `nuget`, samples) | 85% | TFM и TOP IDs согласованы; advanced API описан отдельно |
+| A3 | Документация пользователя (`getting-started`, `core-api`, `nuget`, samples) | 88% | TFM и TOP IDs (через TOP017) согласованы; advanced API описан отдельно |
 | A4 | Тесты runtime + generators + analyzer (~138 Fact/Theory) | 85% | Хорошо; нет coverage-отчёта и автоматического прогона samples |
-| A5 | CI build + test (ubuntu/windows, .NET 10) | 100% | Готово для compile/test |
+| A5 | CI build + test (ubuntu/windows, .NET 10) + library smoke на 8/9 | 100% | SDK 8/9: только library build; SDK 10: solution + pack |
 | A6 | Упаковка Generators (`analyzers/dotnet/cs` + `.targets`) | 80% | Схема верная; нет PackageReadme у Generators |
 | A7 | Seed-only вход (`Travel()` без манифеста) | 100% | Канон зафиксирован; публичного `Travel(CargoManifest)` нет |
 
@@ -33,29 +33,29 @@
 | # | Пункт | % | Что осталось |
 |---|--------|---|--------------|
 | 1 | Согласовать TFM docs ↔ пакет | **80%** | Single-TFM `netstandard2.0`; docs обновлены под TFM и chain-dispatch режимы |
-| 2 | CHANGELOG с историей 0.1 → 0.12 | **90%** | `CHANGELOG.md` включает 0.12.1; ранние версии кратко |
-| 3 | Git-тег, согласованный с `Version` | **90%** | Version=0.12.1; тег `v0.12.1` после merge в `master` |
+| 2 | CHANGELOG с историей 0.1 → 0.13 | **92%** | `CHANGELOG.md` включает 0.13.0; ранние версии кратко |
+| 3 | Git-тег, согласованный с `Version` | **90%** | Version=0.13.0; тег `v0.13.0` после merge в `master` |
 | 4 | CI: `dotnet pack` (артефакты `.nupkg`) | **100%** | Smoke pack на .NET 10 job |
 | 5 | CI/ритуал publish (хотя бы ручной on tag) | **0%** | Нет release workflow / публикации |
 | 6 | Known limitations в пользовательских docs (7D / фаза 8) | **75%** | `core-api`, `cross-assembly-routes.md`, tuple warning TOP006 (default ItemN) |
 | 7 | Исправить `TRNxxxx` → `TOPxxxx` в `docs/nuget.md` | **100%** | Исправлено |
-| 8 | Явный статус Preview для analyzer (или перенос правил в Shipped) | **70%** | TOP001–TOP013 перенесены в `AnalyzerReleases.Shipped.md` (0.7.0) |
+| 8 | Явный статус Preview для analyzer (или перенос правил в Shipped) | **90%** | TOP001–TOP013 в 0.7.0; TOP014–TOP017 shipped в 0.13.0 |
 
-Среднее арифметическое по п. 1–8: **~76%**. Главный разрыв до публикации — **publish path** (п. 5).
+Среднее арифметическое по п. 1–8: **~78%**. Главный разрыв до публикации — **publish path** (п. 5).
 
 ### Веса минимального Preview (рекомендуемый скор)
 
 | Пункт | Вес | % | Вклад |
 |-------|-----|---|-------|
 | 1 TFM | 25% | 80% | 20.0 |
-| 2 CHANGELOG | 15% | 90% | 13.5 |
+| 2 CHANGELOG | 15% | 92% | 13.8 |
 | 3 Тег версии | 10% | 90% | 9.0 |
 | 4 CI pack | 20% | 100% | 20.0 |
 | 5 Publish path | 10% | 0% | 0 |
 | 6 Limitations | 10% | 75% | 7.5 |
 | 7 TOP IDs в docs | 5% | 100% | 5.0 |
-| 8 Analyzer preview/ship | 5% | 70% | 3.5 |
-| **Итого Preview readiness** | 100% | — | **~78.5%** |
+| 8 Analyzer preview/ship | 5% | 90% | 4.5 |
+| **Итого Preview readiness** | 100% | — | **~79.75%** |
 
 > С учётом готового фундамента (A) отдельно: «библиотека как продукт» ≠ «готова к публикации». Публикация требует закрытия B (особенно п. 5).
 
@@ -66,7 +66,7 @@
 | # | Пункт | % | Что осталось |
 |---|--------|---|--------------|
 | 9 | SourceLink + `.snupkg` | **0%** | Не настроено |
-| 10 | Перенос diagnostic IDs в `AnalyzerReleases.Shipped.md` | **70%** | TOP001–TOP013 shipped в 0.7.0 |
+| 10 | Перенос diagnostic IDs в `AnalyzerReleases.Shipped.md` | **85%** | TOP001–TOP013 (0.7.0) + TOP014–TOP017 (0.13.0) |
 | 11 | Заморозка / сужение публичной поверхности | **45%** | `EditorBrowsable` на `RegisterStation`, schema attributes, `StationMerge`, `WagonStationReturn`, `CallerChainKeyFormat`; для 1.0 — `internal` или formal advanced API |
 | 12 | Политика nullable (`enable` или явный отказ) | **0%** | `Nullable` disable в обоих пакетах |
 | 13 | Dependabot / Renovate на Roslyn pin | **0%** | Нет |
@@ -74,7 +74,7 @@
 | 15 | Фаза 7D *или* окончательный отказ с docs | **10%** | Отложено; поведение TOP005 задокументировано как ограничение |
 | 16 | Фаза 8 cross-assembly *или* окончательный отказ с docs | **80%** | Реализовано + `cross-assembly-routes.md` |
 
-**По блоку C (среднее): ~26%**
+**По блоку C (среднее): ~27%**
 
 ---
 
@@ -83,8 +83,8 @@
 | Контур | Скор выполненности | Вердикт |
 |--------|--------------------|---------|
 | Фундамент продукта (A) | **~92%** | Достаточно для внутренней разработки и preview |
-| NuGet Preview (B, взвешенный) | **~78%** | Можно резать preview NuGet после publish workflow и тега |
-| Стабильный 1.0 (B+C) | **~45%** | Рано; нужен SourceLink, nullable policy, API freeze |
+| NuGet Preview (B, взвешенный) | **~80%** | Можно резать preview NuGet после publish workflow и тега |
+| Стабильный 1.0 (B+C) | **~46%** | Рано; нужен SourceLink, nullable policy, API freeze |
 
 ### Порядок закрытия (кратко)
 

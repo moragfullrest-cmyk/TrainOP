@@ -6,6 +6,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-15
+
+### Breaking
+
+- **Travel-only launch:** public `DispatchTrain()` and `Train` removed. Run with `route.Travel()` / `TravelAsync()`; each call snapshots the plan and starts with an empty manifest.
+- **Signal without cargo:** `Signal` / `GreenSignal` / `RedSignal` no longer carry `Manifest`. Terminal wagons live on `RouteReport.Manifest`. Internal factories are `RailwaySignals.Green()` and `RailwaySignals.Red(issue[, priorIssues])`.
+- **ServiceStation escape hatch:** low-level handlers take `CargoManifest` separately from `RedSignal` (`(red, manifest) => …`); `red.Manifest` is gone. Data-oriented ServiceStation may also declare a `CargoManifest` framework parameter.
+
+### Fixed
+
+- **Factory-extension chain-dispatch:** exported schema now carries `CallerChainKey` and `StationCount` so consumer stations after a public factory resolve the same caller-dispatch key as the factory’s internal `new TrainRoute()`; `CallerChainKeyBuilder` / `FactoryDispatchMetadata` no longer invent ordinal `0` for older schemas without a key.
+- **ItemN simulator parity / runtime harden:** `ChainGraphSimulator` and `TrainRouteRuntime` updates landed in this release for default-ItemN tuple binding consistency and related runtime hardening.
+- **Async ServiceStation escape hatch:** builtin detector now treats `(RedSignal, CancellationToken)` / `(RedSignal, CargoManifest, …)` as the runtime overload; chain walk skips that overlay without breaking factory-path simulation, and `RailwaySignals.Red` / `White` keep a known terminal wagon set, so async recovery handlers no longer raise TOP009 or TOP013.
+
+### Added
+
+- **TOP014:** error when a method has more than one `new TrainRoute()` on the same source line (caller-mode identity); tracked in `AnalyzerReleases` and shipped under Release 0.13.0.
+- **TOP015 / TOP016 / TOP017:** analyzer errors when a data-oriented `ServiceStation` return would change manifest composition (add a wagon, omit a non-`ref` input, or return `CargoManifest`).
+- **Red signal issue chains:** `RedSignal.Issues`, `RouteReport.FailureIssues`, and `RailwaySignals.Red(code, message, priorIssues)` for preserving nested sub-route failures when a parent station stops the route.
+- **ServiceStation issue injection:** data-oriented handlers may take `SignalIssue` (last/immediate stop) and/or `IReadOnlyList<SignalIssue>` (full chain) without requiring a `RedSignal` parameter; codegen wires `red.Issue` / `red.Issues`.
+- **Sample:** `FrameworkParametersExample` covers every Station/ServiceStation framework parameter (`CargoManifest`, `CancellationToken`, `SignalIssue`, `IReadOnlyList<SignalIssue>`, `RedSignal`).
+
+### Changed
+
+- **Lunar-white signal:** `RailwaySignals.Pass` / `GreenPass` renamed to `RailwaySignals.White` / `WhitePass` (unchanged-manifest continue), aligning the DSL with railway signal colors (green / white / red).
+- **Positional ServiceStation travel:** service stations are hops in the same route plan as ordinary stations. Travel enters an ordinary hop only after green and a service hop only after red; otherwise the hop is skipped. Mid-route red no longer triggers a global recovery list.
+- **ServiceStation overlay:** data-oriented recovery uses the same input/return contract as `Station` (by-value wagons, `Green` payload, async). Merge updates existing manifest keys only — it does not add or remove wagons, because later stations already require that composition and recovery may not run. Attempts to change composition are compile-time errors (TOP015–TOP017).
+- **CI:** SDK 8 / 9 jobs build only `TrainOP` and `TrainOP.Generators` libraries; full solution restore/build/test and pack remain on .NET 10.
+
+### Documentation
+
+- **core-api / getting-started / architecture-internals / textbook:** documented `ref` wagon rules, CS1988 (`async` cannot capture by-ref parameters), ServiceStation overlay merge (composition preserved; TOP015–TOP017), positional ServiceStation travel, and TOP014.
+- **nuget / getting-started / README:** package version snippets bumped to 0.13.0; Travel-only examples.
+- **release-readiness:** refreshed for 0.13.0 after CI pack and analyzer shipping.
+
 ## [0.12.1] - 2026-09-14
 
 ### Changed

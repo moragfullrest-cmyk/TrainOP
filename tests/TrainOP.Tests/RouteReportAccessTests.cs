@@ -16,7 +16,7 @@ namespace TrainOP.Tests.DataOriented
         {
             var route = PaymentRoute.Build();
 
-            var report = route.DispatchTrain().Travel();
+            var report = route.Travel();
             var paymentId = report.Get<string>("paymentId");
             var amount = report.Get<decimal>("amount");
 
@@ -31,7 +31,7 @@ namespace TrainOP.Tests.DataOriented
         public void Travel_ProvidesReport_OnSuccessfulRoute()
         {
             var route = PaymentRoute.Build();
-            var report = route.DispatchTrain().Travel();
+            var report = route.Travel();
             var paymentId = report.Get<string>("paymentId");
             var amount = report.Get<decimal>("amount");
 
@@ -55,7 +55,7 @@ namespace TrainOP.Tests.DataOriented
                     return new { paymentId = paymentId + "-async", amount = amount * 2m };
                 });
 
-            var report = await route.DispatchTrain().TravelAsync();
+            var report = await route.TravelAsync();
             var paymentId = report.Get<string>("paymentId");
             var amount = report.Get<decimal>("amount");
 
@@ -74,7 +74,7 @@ namespace TrainOP.Tests.DataOriented
                 .Station("Partial", (string paymentId, decimal amount) =>
                     new { paymentId = paymentId + "-merged" });
 
-            var report = route.DispatchTrain().Travel();
+            var report = route.Travel();
             var paymentId = report.Get<string>("paymentId");
             var traceId = report.Get<string>("traceId");
 
@@ -92,7 +92,7 @@ namespace TrainOP.Tests.DataOriented
                 .Station("Seed", () => new { value = 0 })
                 .Station("Validate", (int value) => RailwaySignals.Red("ERR", "bad value"));
 
-            var report = route.DispatchTrain().Travel();
+            var report = route.Travel();
 
             Assert.False(report.ReachedDestination);
             Assert.Equal("ERR", report.FailureCode);

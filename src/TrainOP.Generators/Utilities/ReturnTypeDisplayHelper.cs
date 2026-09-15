@@ -24,7 +24,7 @@ namespace TrainOP.Generators
         /// </summary>
         public static bool IsExplicitSignalReturn(ITypeSymbol returnType)
         {
-            return IsRedFailure(returnType) || IsGreenPass(returnType);
+            return IsRedFailure(returnType) || IsWhitePass(returnType);
         }
 
         /// <summary>
@@ -110,9 +110,9 @@ namespace TrainOP.Generators
             return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.RedFailure", StringComparison.Ordinal);
         }
 
-        private static bool IsGreenPass(ITypeSymbol typeSymbol)
+        private static bool IsWhitePass(ITypeSymbol typeSymbol)
         {
-            return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.GreenPass", StringComparison.Ordinal);
+            return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.WhitePass", StringComparison.Ordinal);
         }
     }
 }

@@ -22,7 +22,7 @@ internal sealed class AsyncRouteExample : IExample
                 return new { counter = counter * 2 };
             });
 
-        var report = route.DispatchTrain().TravelAsync().GetAwaiter().GetResult();
+        var report = route.TravelAsync().GetAwaiter().GetResult();
 
         ExampleOutput.WriteReport(report);
     }

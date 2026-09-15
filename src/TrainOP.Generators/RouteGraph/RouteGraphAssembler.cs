@@ -48,7 +48,7 @@ namespace TrainOP.Generators
 
                 if (site.Kind == RouteSiteKind.Anchor)
                 {
-                    RegisterAnchor(anchorByKey, site.ToAnchor());
+                    RegisterAnchor(anchorByKey, site.ToAnchor(), compilation);
                 }
             }
 
@@ -65,7 +65,12 @@ namespace TrainOP.Generators
                 }
 
                 chains.Add(chain);
-                var chainId = CallerChainKeyBuilder.Build(anchor);
+                if (!TryResolveDispatchIdentity(anchor, compilation, out var chainId, out var upstreamStationCount))
+                {
+                    // Factory schema without CallerChainKey/StationCount: do not emit wrong index-0 bindings.
+                    continue;
+                }
+
                 for (var stationIndex = 0; stationIndex < chain.Stations.Length; stationIndex++)
                 {
                     var station = chain.Stations[stationIndex];
@@ -76,7 +81,7 @@ namespace TrainOP.Generators
 
                     var binding = new ChainSiteBinding(
                         chainId,
-                        stationIndex,
+                        upstreamStationCount + stationIndex,
                         station.StationName,
                         station.Invocation,
                         station.Handler);
@@ -111,6 +116,36 @@ namespace TrainOP.Generators
                 chainsByInvocationKey);
         }
 
+        private static bool TryResolveDispatchIdentity(
+            RouteChainAnchor anchor,
+            Compilation compilation,
+            out string chainId,
+            out int upstreamStationCount)
+        {
+            chainId = string.Empty;
+            upstreamStationCount = 0;
+
+            if (anchor.Kind == RouteChainAnchorKind.MethodInvocation
+                || anchor.Kind == RouteChainAnchorKind.FactorySchema)
+            {
+                if (!FactoryDispatchMetadata.TryResolve(
+                        anchor.FactoryMethod,
+                        compilation,
+                        out chainId,
+                        out upstreamStationCount)
+                    || string.IsNullOrEmpty(chainId))
+                {
+                    return false;
+                }
+
+                return true;
+            }
+
+            chainId = CallerChainKeyBuilder.Build(anchor, compilation);
+            upstreamStationCount = 0;
+            return !string.IsNullOrEmpty(chainId);
+        }
+
         private static RouteChain BuildChain(
             RouteChainAnchor anchor,
             Compilation compilation,
@@ -135,14 +170,15 @@ namespace TrainOP.Generators
 
         private static void RegisterAnchor(
             IDictionary<string, RouteChainAnchor> anchorByKey,
-            RouteChainAnchor anchor)
+            RouteChainAnchor anchor,
+            Compilation compilation)
         {
             if (anchor == null)
             {
                 return;
             }
 
-            var anchorKey = BuildAnchorKey(anchor);
+            var anchorKey = BuildAnchorKey(anchor, compilation);
             if (string.IsNullOrEmpty(anchorKey))
             {
                 return;
@@ -157,9 +193,9 @@ namespace TrainOP.Generators
             anchorByKey[anchorKey] = MergeAnchors(existing, anchor);
         }
 
-        private static string BuildAnchorKey(RouteChainAnchor anchor)
+        private static string BuildAnchorKey(RouteChainAnchor anchor, Compilation compilation)
         {
-            var chainId = CallerChainKeyBuilder.Build(anchor);
+            var chainId = CallerChainKeyBuilder.Build(anchor, compilation);
             if (string.IsNullOrEmpty(chainId))
             {
                 return string.Empty;

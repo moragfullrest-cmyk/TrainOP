@@ -12,22 +12,22 @@ namespace TrainOP.Benchmarks.Caller
         /// </summary>
         public static decimal BuildAndTravelCheckout(CancellationToken cancellationToken = default)
         {
-            var report = CheckoutRoute().DispatchTrain().Travel(cancellationToken);
-            return report.TerminalSignal.Manifest.PullWagon<decimal>("amount");
+            var report = CheckoutRoute().Travel(cancellationToken);
+            return report.Manifest.PullWagon<decimal>("amount");
         }
 
         /// <summary>
-        /// Pre-builds the checkout train for travel-only benchmarks.
+        /// Pre-builds the checkout route for travel-only benchmarks.
         /// </summary>
-        public static Train CreateCheckoutTrain() => CheckoutRoute().DispatchTrain();
+        public static TrainRoute CreateCheckoutRoute() => CheckoutRoute();
 
         /// <summary>
-        /// Travels a pre-built checkout train.
+        /// Travels a pre-built checkout route.
         /// </summary>
-        public static decimal Travel(Train train, CancellationToken cancellationToken = default)
+        public static decimal Travel(TrainRoute route, CancellationToken cancellationToken = default)
         {
-            var report = train.Travel(cancellationToken);
-            return report.TerminalSignal.Manifest.PullWagon<decimal>("amount");
+            var report = route.Travel(cancellationToken);
+            return report.Manifest.PullWagon<decimal>("amount");
         }
 
         private static TrainRoute CheckoutRoute() => new TrainRoute()
@@ -78,7 +78,7 @@ namespace TrainOP.Benchmarks.Caller
                 if (red.Issue.Code == "STOCK_LIMIT")
                 {
                     units = 10;
-                    return RailwaySignals.Pass;
+                    return RailwaySignals.White;
                 }
 
                 return RailwaySignals.Red("UNRECOVERABLE", "cannot recover from " + red.Issue.Code);

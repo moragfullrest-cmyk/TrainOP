@@ -43,6 +43,12 @@ namespace TrainOP.Generators
                 return true;
             }
 
+            if (IsSignalIssues(typeSymbol))
+            {
+                kind = HandlerInputKind.SignalIssues;
+                return true;
+            }
+
             return false;
         }
 
@@ -93,6 +99,28 @@ namespace TrainOP.Generators
         {
             return typeSymbol != null
                 && string.Equals(typeSymbol.ToDisplayString(), "TrainOP.SignalIssue", StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Determines whether the type is <c>IReadOnlyList&lt;SignalIssue&gt;</c>.
+        /// </summary>
+        public static bool IsSignalIssues(ITypeSymbol typeSymbol)
+        {
+            if (!(typeSymbol is INamedTypeSymbol named)
+                || !named.IsGenericType
+                || named.TypeArguments.Length != 1
+                || !string.Equals(named.Name, "IReadOnlyList", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var ns = named.ContainingNamespace?.ToDisplayString();
+            if (!string.Equals(ns, "System.Collections.Generic", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return IsSignalIssue(named.TypeArguments[0]);
         }
     }
 }

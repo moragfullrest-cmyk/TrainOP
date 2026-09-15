@@ -2,20 +2,20 @@
 
 Документ для разработчика, который знает C#, но только поверхностно — source generators, Roslyn analyzers и caller dispatch. Здесь полный путь от `.Station(...)` в исходнике до `RouteReport` в runtime.
 
-Связанные документы: [getting-started](getting-started.md), [core-api](core-api.md), [cross-assembly-routes](cross-assembly-routes.md).
+Связанные документы: [учебник](textbook.md) (последовательное введение), [getting-started](getting-started.md), [core-api](core-api.md), [cross-assembly-routes](cross-assembly-routes.md).
 
 ---
 
 ## Главная идея в одном абзаце
 
-Вы пишете fluent-маршрут из лямбд. **Генератор** читает имена параметров как ключи вагонов, выводит форму возврата и эмитит типизированные расширения. **Анализатор** симулирует поток вагонов по цепочке и репортит TOP* до runtime. **Caller dispatch** различает call site'ы с одной CLR-сигнатурой через `CallerChainKey` + порядковый индекс станции. **Runtime** тянет поезд по списку адаптеров и мержит возвраты в `CargoManifest`.
+Вы пишете fluent-маршрут из лямбд. **Генератор** читает имена параметров как ключи вагонов, выводит форму возврата и эмитит типизированные расширения. **Анализатор** симулирует поток вагонов по цепочке и репортит TOP* до runtime. **Caller dispatch** различает call site'ы с одной CLR-сигнатурой через `CallerChainKey` + порядковый индекс станции. **Runtime** тянет поезд по списку адаптеров и записывает возвраты станций в `CargoManifest`.
 
 ```mermaid
 flowchart LR
   A["Исходник\n.Station(...)"] --> B["Generator\nсхема handler"]
   B --> C["Extensions.g.cs\ncaller dispatch"]
   C --> D["RegisterStation\nадаптер"]
-  D --> E["Train.Travel"]
+  D --> E["TrainRoute.Travel"]
   E --> F["RouteReport"]
 ```
 
@@ -28,11 +28,10 @@ Railway Oriented Programming: станции — шаги пайплайна, з
 | Термин | Тип | Роль |
 |--------|-----|------|
 | Манифест | `CargoManifest` | словарь `string → object` между станциями |
-| Маршрут | `TrainRoute` | builder: `.Station` / `.ServiceStation` |
-| Поезд | `Train` | исполнитель `Travel` / `TravelAsync` |
-| Сигнал | `GreenSignal` / `RedSignal` | продолжение или остановка |
+| Маршрут | `TrainRoute` | builder + `Travel` / `TravelAsync` |
+| Сигнал | `Signal` / `GreenSignal` / `RedSignal` | только управление (без манифеста) |
 | DSL | `RailwaySignals.*` | что возвращает data-handler |
-| Отчёт | `RouteReport` | визиты, failure, `Get<T>(wagon)` |
+| Отчёт | `RouteReport` | визиты, failure, `Manifest`, `Get<T>(wagon)` |
 
 ### Минимальный маршрут
 
@@ -46,7 +45,7 @@ var route = new TrainRoute()
             ? RailwaySignals.Green(new { paymentId, amount })
             : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"));
 
-var report = route.DispatchTrain().Travel();
+var report = route.Travel();
 var paymentId = report.Get<string>("paymentId");
 var amount = report.Get<decimal>("amount");
 ```
@@ -78,7 +77,7 @@ flowchart LR
 | 1 | `RouteSiteDiscoverer` + `HandlerSchemaResolver` | SyntaxProvider transform: predicate → semantic parse → `RouteSite` (Station / ServiceStation / Anchor) |
 | 2 | `TryResolveHandler` | Лямбда, anonymous method, method group / local function из **текущей** compilation (иначе `null`; TOP009 — в analyzer) |
 | 3 | `HandlerInputSchemaBuilder` | Wagon inputs vs framework: `CargoManifest`, `RedSignal`, `SignalIssue`, `CancellationToken`, `ref` |
-| 4 | `HandlerReturnInference` | Anonymous/record, value tuple, `GreenPayload`, `RedFailure`, `GreenPass`, `Task<T>`, void |
+| 4 | `HandlerReturnInference` | Anonymous/record, value tuple, `GreenPayload`, `RedFailure`, `WhitePass`, `Task<T>`, void |
 | 5 | `RouteGraphAssembler` + `RouteGraph` | Сборка fluent-графа, `CallerChainKey`, `stationIndex`, `ChainSiteBinding` |
 | 6 | `TypeSignatureGroup` / `MergedStationSchema` | Группировка по сигнатуре делегата |
 | 7 | Emit | `TrainRouteStation.Extensions.g.cs` (canonical или chain-aware адаптеры) |
@@ -159,7 +158,7 @@ Handler schema строится **один раз** в discovery; `ChainDetector
 | 2 | `IsTrainRouteReceiver(memberAccess.Expression, receiverType, semanticModel)` | Receiver — или `TrainRoute`, или выражение, **рекурсивно** сводимое к TrainRoute (`new TrainRoute()`, fluent `.Station(...)`, `?:`, `??`, switch expression) |
 | 3 | `IsBuiltinTrainRouteHandler` | Вызов **встроенного** `TrainRoute.Station` / `ServiceStation` (не generated extension) — пропуск |
 | 4 | `TryResolveHandler(arg[1], semanticModel, out resolved)` | Handler — лямбда, anonymous method или однозначный method group / local function **с исходником в текущей compilation** |
-| 5 | `IsLikelyBuiltinServiceStationHandler` (только ServiceStation) | Отсечь legacy handler `(RedSignal red) => …` без data-oriented вагонов |
+| 5 | `IsLikelyBuiltinServiceStationHandler` (только ServiceStation) | Отсечь built-in handler `(RedSignal red)` / `(RedSignal red, CancellationToken token)` без data-oriented вагонов |
 | 6 | `HandlerInputSchemaBuilder.TryBuild(resolved, …)` | Построить полную схему: wagon inputs, framework-параметры, return shape |
 | 7 | Извлечь `stationName` | Literal `"Name"` → `Token.ValueText`; иначе fallback `Arguments[0].ToString().Trim('"')` |
 
@@ -190,13 +189,14 @@ Handler schema строится **один раз** в discovery; `ChainDetector
 **Входы (`HandlerInputParameters`):**
 
 - каждый параметр классифицируется: **Wagon** (имя → ключ вагона), `CargoManifest`, `RedSignal`, `SignalIssue`, `CancellationToken`;
-- `ref`/`out` wagon → `WagonBinding.IsByRef`;
+- `ref` wagon → `WagonBinding.IsByRef` (только `RefKind.Ref`; `in`/`out` не считаются обратной записью в манифест);
+- ServiceStation принимает вагоны по значению или `ref` (как Station); в манифест пишутся только обновления уже существующих ключей, без добавления и снятия;
 - optional nullable value types → `IsOptional`;
 - порядок слотов сохраняется в `HandlerCallSlot[]` для codegen invoke.
 
 **Выход (`HandlerOutputParameters` / `ReturnShape`):**
 
-- `HandlerReturnInference` по типу return и телу handler'а: void, anonymous/record, value tuple, `Task<T>`, `RailwaySignals.Green/Red/Pass`, `CargoManifest`, unknown;
+- `HandlerReturnInference` по типу return и телу handler'а: void, anonymous/record, value tuple, `Task<T>`, `RailwaySignals.Green/Red/White`, `CargoManifest`, unknown;
 - для tuple/record — member names (или `ItemN` → позже TOP006 в analyzer).
 
 Если схема невалидна — `TryDiscoverStation` → `null`.
@@ -431,7 +431,7 @@ flowchart TB
 1. Проверяет, что все required wagon inputs есть в Live (иначе **TOP001**).
 2. Сверяет типы Live vs параметр (**TOP002**).
 3. Если вагон был Removed, а снова нужен — **TOP003**.
-4. Учитывает return: добавляет/обновляет вагоны, снимает omitted regular inputs (как в runtime merge).
+4. Учитывает return: добавляет/обновляет вагоны, снимает обычные входы, которых нет в возврате (как при записи возврата во время выполнения).
 5. `return CargoManifest` → **TOP004** (warning).
 6. Tuple без имён → **TOP006**.
 7. `GreenSignal`/`RedSignal` вместо DSL → **TOP010**.
@@ -465,10 +465,11 @@ flowchart TB
 
 | Код | Кто репортит | Где логика |
 |-----|--------------|------------|
-| TOP001–TOP006, TOP008–TOP013 | **Analyzer** | `ChainValidationAnalyzer` + simulator / join / factory |
+| TOP001–TOP006, TOP008–TOP014 | **Analyzer** | `ChainValidationAnalyzer` + simulator / join / factory / same-line |
 | TOP007 | **Generator** | `TypeSignatureGroup`: два call site с одной type-сигнатурой, но разными именами вагонов (конфликт канона группы) |
 | TOP005 / TOP009 | Analyzer | orphans / unsupported form |
 | TOP010 | Analyzer (и учитывается при schema) | runtime Signal return |
+| TOP014 | Analyzer | несколько `new TrainRoute()` на одной строке |
 
 `WagonParameterAnalyzer` — не DiagnosticAnalyzer, а хелпер: `ref`, nullable value-type, effective type для совместимости вагонов (им пользуются и generator, и симуляция).
 
@@ -543,18 +544,17 @@ internal static TrainRoute StationCore_Abc(..., ChainStationBinding_Abc binding)
 flowchart LR
   Seed["Seed\nзагрузка вагонов"] --> Adapter["Adapter\nPullWagon + handler"]
   Adapter --> Merge["StationMerge\nданные → Signal"]
-  Merge --> Travel["Train.Travel\nпо плану станций"]
-  Travel --> Report["RouteReport\nтерминал / failure"]
+  Merge --> Travel["TrainRoute.Travel\nпо плану станций"]
+  Travel --> Report["RouteReport\nсигнал + Manifest"]
 ```
 
 | Шаг | Что происходит |
 |-----|----------------|
 | `RegisterStation` | Сгенерированный адаптер кладётся в список `StationPlan` на `TrainRoute` |
-| `DispatchTrain` | Снимок планов → `Train` (+ optional `ServiceStationPlan`) |
-| `Travel` | Пустой `CargoManifest`; по очереди вызов каждого адаптера |
-| Adapter | `PullWagon` по именам → handler → `StationMerge` / `ToSignal` → Green\|Red |
-| Green | Манифест из сигнала идёт на следующую станцию; визит пишется в отчёт |
-| Red | Опционально `ServiceStation`; green → продолжить, иначе стоп + `FailureCode` / `FailureMessage` |
+| `Travel` / `TravelAsync` | Снимок плана + пустой `CargoManifest`; обход: обычная после зелёного, сервисная после красного, иначе пропуск |
+| Adapter | `PullWagon` по именам → handler → запись возврата в манифест рейса → Green\|Red (без груза в сигнале) |
+| Зелёный | Манифест рейса идёт дальше; визит пишется; следующие обычные входят, сервисные пропускаются |
+| Красный | Визит пишется; следующие сервисные входят, обычные пропускаются; если красный в конце плана — стоп + `FailureCode` / `FailureMessage` |
 | Exception | Кроме `OperationCanceledException` → Red с `STATION_EXCEPTION` / `SERVICE_STATION_EXCEPTION` |
 
 ### Sync vs Async
@@ -570,12 +570,14 @@ var route = new TrainRoute()
         return new { counter = counter * 2 };
     });
 
-var report = await route.DispatchTrain().TravelAsync();
+var report = await route.TravelAsync();
 ```
 
 ### ServiceStation
 
-Одна «аварийная» станция на маршрут. На Red получает `RedSignal` (и при необходимости `ref` вагоны). Успешное восстановление продолжает оставшиеся станции.
+Шаг в общем плане маршрута. Вход только после красного предыдущего шага; после зелёного — пропуск. На входе получает `RedSignal` (и при необходимости вагоны, `SignalIssue` / цепочку). Успешное восстановление (зелёный / `White`) снова открывает обычные станции дальше по плану.
+
+Data-oriented ServiceStation работает как обычная станция (по значению или `ref`, `Green` / `Red` / `White` / данные), но запись возврата **не меняет состав** манифеста: только обновление уже существующих ключей. Добавление вагона (**TOP015**), опуск входного non-`ref` (**TOP016**) или `CargoManifest` (**TOP017**) — ошибки analyzer'а. Хвост маршрута уже проверен на исходный набор вагонов, а техобслуживание вызывается только на красном. C# запрещает `async` + `ref`/`in`/`out` (**CS1988**); асинхронное восстановление с вагонами — по значению. Запасной вариант без вагонов — `(RedSignal red, CargoManifest manifest)` / `(RedSignal red, CargoManifest manifest, CancellationToken token)` и правки через `manifest.LoadWagon`. Пользовательский контракт — [core-api.md → параметры `ref`](core-api.md#параметры-ref).
 
 ```csharp
 var route = new TrainRoute()
@@ -584,35 +586,33 @@ var route = new TrainRoute()
         amount > 0
             ? RailwaySignals.Green(new { paymentId, amount })
             : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"))
-    .ServiceStation("Recovery", (ref string paymentId, ref decimal amount, RedSignal red) =>
-    {
-        paymentId = "pay-recover";
-        amount = 50m;
-        return RailwaySignals.Pass;
-    })
+    .ServiceStation("Recovery", (string paymentId, decimal amount, RedSignal red) =>
+        RailwaySignals.Green(new { paymentId, amount = 50m }))
     .Station("ApplyDiscount", (string paymentId, decimal amount) =>
         new { paymentId, amount = amount * 0.9m });
 ```
 
 ---
 
-## 6. Семантика merge
+## 6. Как возврат попадает в манифест
 
-Handler обычно не трогает манифест руками. Он возвращает данные; адаптер вызывает `StationMerge` (`src/TrainOP/StationMerge.cs`).
+Handler обычно не трогает манифест руками. Он возвращает данные; адаптер записывает их в манифест (`StationMerge` в `src/TrainOP/StationMerge.cs`).
 
 | Возврат handler'а | Поведение |
 |-------------------|-----------|
-| anonymous / record / named tuple | merge членов → Green |
-| `RailwaySignals.Green(payload)` | unwrap payload → merge → Green |
+| anonymous / record / named tuple | поля записываются в манифест → Green |
+| `RailwaySignals.Green(...)` с данными | данные из аргумента записываются в манифест → Green |
 | `RailwaySignals.Red(code, msg)` | `RedSignal` + `SignalIssue`, стоп |
-| `RailwaySignals.Pass` | манифест без изменений (**без** ref writeback) |
-| `void` / `new { }` | partial: `ref` пишутся, обычные input-вагоны выгружаются |
-| `CargoManifest` | полная замена (предупреждение TOP004) |
+| `RailwaySignals.White` | манифест без изменений (**без** записи `ref`) |
+| `void` / `new { }` | Station: частичный возврат — `ref` пишутся, обычные входные вагоны выгружаются. ServiceStation: опуск non-`ref` входа — **TOP016** |
+| `CargoManifest` | Station: полная замена (TOP004). ServiceStation: **TOP017** |
 | `GreenSignal` / `RedSignal` | запрещено — **TOP010** |
 
-### Partial return
+### Частичный возврат
 
-Если станция принимает `paymentId` и `amount`, а возвращает только `new { amount = 90m }`, вагон `paymentId` снимается с манифеста (как «обычный input, не вернутый»). Лишние вагоны, которые станция **не** принимала, остаются.
+Если станция принимает `paymentId` и `amount`, а возвращает только `new { amount = 90m }`, вагон `paymentId` снимается с манифеста (как «обычный вход, не вернутый»). Лишние вагоны, которые станция **не** принимала, остаются.
+
+**ServiceStation** состав не меняет: analyzer запрещает добавление (**TOP015**) и снятие входов (**TOP016**); симуляция техобслуживания — no-op по live-составу, хвост проверяется так, будто сервисная станция могла не вызваться. Runtime overlay по-прежнему не добавляет и не снимает ключи (защитный слой).
 
 ### Value tuple
 
@@ -638,8 +638,8 @@ Handler обычно не трогает манифест руками. Он в�
 
 - `CargoManifest` — читать лишнее без формального input;
 - `CancellationToken`;
-- для ServiceStation — `RedSignal` / `SignalIssue`;
-- `ref` wagon parameters — writeback через сгенерированные `refLocalValues`.
+- для ServiceStation — `RedSignal` / `SignalIssue` (последний) / `IReadOnlyList<SignalIssue>` (цепочка);
+- `ref` параметры вагонов — обратная запись через сгенерированные `refLocalValues` (только `RefKind.Ref`; несовместимо с `async` из‑за CS1988). На ServiceStation `ref` необязателен.
 
 Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 
@@ -663,9 +663,13 @@ Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 
 ### D. Partial wagon return
 
-`PartialWagonReturnExample.cs` — демонстрация снятия omitted inputs.
+`PartialWagonReturnExample.cs` — демонстрация снятия входных вагонов, которых нет в возврате.
 
-### E. Cross-assembly
+### E. Framework-параметры Station / ServiceStation
+
+`FrameworkParametersExample.cs` — `CargoManifest`, `CancellationToken`, `SignalIssue`, `IReadOnlyList<SignalIssue>`, `RedSignal` (в т.ч. цепочка issues из подмаршрута).
+
+### F. Cross-assembly
 
 `tests/TrainOP.RouteLib.Tests/PaymentModule.cs` + `tests/TrainOP.RouteConsumer.Tests/AppRoute.cs` — public factory со schema export.
 
@@ -690,6 +694,7 @@ Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 | TOP011 | External factory без schema | Info | Analyzer (factory resolve) |
 | TOP012 | Factory paths с разным терминалом | Error | Analyzer (factory paths) |
 | TOP013 | Factory path с unknown terminal | Error | Analyzer (factory paths) |
+| TOP014 | Больше одного `new TrainRoute()` на одной строке | Error | Analyzer (validation) |
 
 Описания: `src/TrainOP.Generators/TrainRouteDiagnostics.cs`.
 
@@ -699,7 +704,7 @@ Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 
 | Путь | Назначение |
 |------|------------|
-| `src/TrainOP` | Runtime: `TrainRouteRuntime.cs`, `StationMerge`, `Train` |
+| `src/TrainOP` | Runtime: `TrainRouteRuntime.cs`, `StationMerge`, `StationAdapter` |
 | `src/TrainOP.Generators` | Generator + analyzer |
 | `samples/TrainOP.Samples` | Консольные сценарии |
 | `tests/` | Runtime + generator + cross-assembly |
@@ -731,7 +736,7 @@ Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 ## Порядок чтения
 
 1. Метафора и минимальный пример (раздел 1).
-2. Таблица merge (раздел 6) — без неё поведение возвратов неочевидно.
+2. Как возврат попадает в манифест (раздел 6) — без этого поведение возвратов неочевидно.
 3. Пайплайн генератора: **GetRouteHandlerCall** и **RegisterSourceOutput** (раздел 2).
 4. Работа анализатора (раздел 3) — чем TOP* ловятся до runtime.
 5. Caller dispatch (раздел 4).

@@ -4,7 +4,8 @@ namespace TrainOP
 {
     /// <summary>
     /// Converts station handler return values into route signals for generated adapters.
-    /// Special returns (RedFailure / GreenPass / Signal / payload / CargoManifest) are classified once.
+    /// Special returns (RedFailure / WhitePass / Signal / payload / CargoManifest) are classified once.
+    /// Cargo is written into the run manifest; signals carry control only.
     /// </summary>
     internal static class StationAdapter
     {
@@ -26,7 +27,7 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(manifest));
             }
 
-            if (TryConvertPassthroughSignal(manifest, stationReturn, stationName, out var passthrough))
+            if (TryConvertPassthroughSignal(stationReturn, stationName, out var passthrough))
             {
                 return passthrough;
             }
@@ -38,7 +39,8 @@ namespace TrainOP
 
             if (stationReturn is CargoManifest replacement)
             {
-                return RailwaySignals.Green(replacement);
+                manifest.ReplaceWith(replacement);
+                return RailwaySignals.Green();
             }
 
             var merged = StationMerge.Apply(
@@ -49,17 +51,23 @@ namespace TrainOP
                 returnMemberNames,
                 byReferenceWagons,
                 refLocalValues);
-            return RailwaySignals.Green(merged);
+            if (!ReferenceEquals(merged, manifest))
+            {
+                manifest.ReplaceWith(merged);
+            }
+
+            return RailwaySignals.Green();
         }
 
         /// <summary>
-        /// Converts a service-station return value to a signal using ref writeback only.
+        /// Converts a service-station return value to a signal, overlaying existing wagons only.
         /// </summary>
         public static Signal ToServiceSignal(
             CargoManifest manifest,
             object stationReturn,
             string stationName,
             string[] wagonNames,
+            string[] returnMemberNames,
             bool[] byReferenceWagons,
             object[] refLocalValues)
         {
@@ -68,48 +76,44 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(manifest));
             }
 
-            if (stationReturn is RedFailure fail)
-            {
-                return RailwaySignals.Red(
-                    manifest,
-                    new SignalIssue(fail.Code, fail.Message, stationName));
-            }
-
-            var merged = StationMerge.ApplyRefOnly(
-                manifest,
-                wagonNames,
-                byReferenceWagons,
-                refLocalValues);
-
-            if (TryConvertPassthroughSignal(merged, stationReturn, stationName, out var passthrough))
+            if (TryConvertPassthroughSignal(stationReturn, stationName, out var passthrough))
             {
                 return passthrough;
             }
 
-            return RailwaySignals.Green(merged);
+            var merged = StationMerge.ApplyOverlay(
+                manifest,
+                stationReturn,
+                wagonNames,
+                returnMemberNames,
+                byReferenceWagons,
+                refLocalValues);
+            if (!ReferenceEquals(merged, manifest))
+            {
+                manifest.ReplaceWith(merged);
+            }
+
+            return RailwaySignals.Green();
         }
 
         /// <summary>
-        /// Handles returns that are already route-facing signals (or RedFailure / GreenPass requests).
+        /// Handles returns that are already route-facing signals (or RedFailure / WhitePass requests).
         /// Shared by Station and ServiceStation conversion paths.
         /// </summary>
         private static bool TryConvertPassthroughSignal(
-            CargoManifest manifest,
             object stationReturn,
             string stationName,
             out Signal signal)
         {
             if (stationReturn is RedFailure fail)
             {
-                signal = RailwaySignals.Red(
-                    manifest,
-                    new SignalIssue(fail.Code, fail.Message, stationName));
+                signal = MapRedFailure(fail, stationName);
                 return true;
             }
 
-            if (stationReturn is GreenPass)
+            if (stationReturn is WhitePass)
             {
-                signal = RailwaySignals.Green(manifest);
+                signal = RailwaySignals.Green();
                 return true;
             }
 
@@ -121,6 +125,15 @@ namespace TrainOP
 
             signal = null;
             return false;
+        }
+
+        /// <summary>
+        /// Maps a data-oriented red failure request to a route red signal.
+        /// </summary>
+        private static Signal MapRedFailure(RedFailure fail, string stationName)
+        {
+            var issue = new SignalIssue(fail.Code, fail.Message, stationName);
+            return RailwaySignals.Red(issue, fail.PriorIssues);
         }
 
         /// <summary>

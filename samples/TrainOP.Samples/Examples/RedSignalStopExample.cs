@@ -22,7 +22,7 @@ internal sealed class RedSignalStopExample : IExample
                     : RailwaySignals.Red("REQ_MISSING", "request-id is required"))
             .Station("MustNotRun", (string requestId) => new { forbidden = true });
 
-        var report = route.DispatchTrain().Travel();
+        var report = route.Travel();
 
         ExampleOutput.WriteReport(report);
     }

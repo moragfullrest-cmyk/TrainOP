@@ -140,7 +140,7 @@ public static class SyncCancellationRoute
         .Station(""CancelableSync"", (CancellationToken token) =>
         {
             token.ThrowIfCancellationRequested();
-            return RailwaySignals.Pass;
+            return RailwaySignals.White;
         })
         .Station(""Boom"", (CancellationToken _) =>
         {
@@ -332,7 +332,7 @@ public static class ServiceMethodGroupRoute
         if (red.Issue.Code == ""ERR"")
         {
             value = 1;
-            return RailwaySignals.Pass;
+            return RailwaySignals.White;
         }
 
         return RailwaySignals.Red(""NOPE"", ""skip"");
@@ -394,7 +394,7 @@ public static class RecoveryRoute
             if (red.Issue.Code == ""ERR"")
             {
                 value = 1;
-                return RailwaySignals.Pass;
+                return RailwaySignals.White;
             }
 
             return RailwaySignals.Red(""NOPE"", ""skip"");
@@ -408,9 +408,67 @@ public static class RecoveryRoute
             Assert.Contains("TrainServiceStationHandler_", generated);
             Assert.Contains("ref global::System.Int32 p0", generated);
             Assert.Contains("RedSignal pRed", generated);
-            Assert.Contains("red.Manifest", generated);
+            Assert.Contains("(red, manifest, token)", generated);
+            Assert.DoesNotContain("red.Manifest", generated);
             Assert.DoesNotContain("red.Issue", generated);
             Assert.Contains("StationMerge.ToServiceSignal", generated);
+        }
+
+        /// <summary>
+        /// Verifies that by-value ServiceStation wagons emit overlay merge instead of requiring ref.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsServiceStationExtension_ForByValueWagons()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class RecoveryRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { value = 0 })
+        .Station(""Validate"", (int value) => RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", (int value, SignalIssue issue) => new { value = 1 })
+        .Station(""After"", (int value) => new { value = value + 1 });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("public static TrainRoute ServiceStation(this TrainRoute route", generated);
+            Assert.Contains("Func<global::System.Int32, global::TrainOP.SignalIssue", generated);
+            Assert.DoesNotContain("ref global::System.Int32", generated);
+            Assert.Contains("HasWagon(", generated);
+            Assert.DoesNotContain("UnloadWagon(", generated);
+        }
+
+        /// <summary>
+        /// Verifies that async data-oriented ServiceStation with by-value wagons emits an adapter.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsServiceStationExtension_ForAsyncByValueWagons()
+        {
+            const string source = @"
+using System.Threading;
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class AsyncRecoveryRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { value = 0 })
+        .Station(""Validate"", (int value) => RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", async (int value, RedSignal red, CancellationToken token) =>
+        {
+            await Task.Delay(1, token);
+            return new { value = 1 };
+        });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("TrainServiceStationHandler_", generated);
+            Assert.Contains("async (red, manifest, token) =>", generated);
+            Assert.DoesNotContain("ref global::System.Int32", generated);
         }
 
         /// <summary>
@@ -431,11 +489,12 @@ public static class LongRoute
             units <= 10
                 ? RailwaySignals.Green(new { orderId, amount, units })
                 : RailwaySignals.Red(""STOCK_LIMIT"", ""too many""))
-        .ServiceStation(""TerminalLogger"", red =>
+        .ServiceStation(""TerminalLogger"", (RedSignal red, CargoManifest manifest) =>
         {
             var issue = red.Issue;
-            var orderId = red.Manifest.PullWagon<string>(""orderId"");
-            return RailwaySignals.Green(red.Manifest.LoadWagon(""units"", 10));
+            var orderId = manifest.PullWagon<string>(""orderId"");
+            manifest.LoadWagon(""units"", 10);
+            return RailwaySignals.Green();
         });
 }";
 
@@ -443,6 +502,36 @@ public static class LongRoute
 
             Assert.DoesNotContain("new string[] { \"red\" }", generated);
             Assert.DoesNotContain("PullWagon<>(\"red\")", generated);
+            Assert.DoesNotContain("TrainServiceStationHandler_", generated);
+        }
+
+        /// <summary>
+        /// Verifies that the generator does not emit extensions for async built-in ServiceStation
+        /// handlers with CancellationToken.
+        /// </summary>
+        [Fact]
+        public void Generator_DoesNotEmit_ForBuiltinAsyncRedSignalCancellationTokenServiceStation()
+        {
+            const string source = @"
+using System.Threading;
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class AsyncRecoverRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { amount = -1m })
+        .Station(""Validate"", (decimal amount) => RailwaySignals.Red(""INVALID"", ""negative""))
+        .ServiceStation(""Recovery"", async (RedSignal red, CargoManifest manifest, CancellationToken token) =>
+        {
+            await Task.Delay(1, token);
+            manifest.LoadWagon(""amount"", 1m);
+            return RailwaySignals.White;
+        });
+}";
+
+            var generated = RunGenerators(source);
+
             Assert.DoesNotContain("TrainServiceStationHandler_", generated);
         }
 
@@ -467,6 +556,43 @@ public static class IssueRoute
             var generated = RunGenerators(source);
 
             Assert.DoesNotContain("TrainServiceStationHandler_", generated);
+        }
+
+        /// <summary>
+        /// Verifies data-oriented ServiceStation can inject SignalIssue (last) and Issues (chain) without RedSignal.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsServiceStationExtension_ForSignalIssueAndIssues()
+        {
+            const string source = @"
+using System.Collections.Generic;
+using TrainOP;
+
+public static class IssueChainRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { value = 0 })
+        .Station(""Validate"", (int value) => RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", (ref int value, SignalIssue issue, IReadOnlyList<SignalIssue> issues) =>
+        {
+            if (issue.Code == ""ERR"" && issues.Count == 1)
+            {
+                value = 1;
+                return RailwaySignals.White;
+            }
+
+            return RailwaySignals.Red(""NOPE"", ""skip"");
+        });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("TrainServiceStationHandler_", generated);
+            Assert.Contains("SignalIssue pIssue", generated);
+            Assert.Contains("IReadOnlyList<SignalIssue> pIssues", generated);
+            Assert.Contains("red.Issue", generated);
+            Assert.Contains("red.Issues", generated);
+            Assert.DoesNotContain("RedSignal pRed", generated);
         }
 
         /// <summary>
@@ -902,7 +1028,8 @@ public static class MixedReturnRoute
         }
 
         /// <summary>
-        /// Verifies that ReturnMembers are emitted only when all handlers in a group share one return shape.
+        /// Verifies that a partial object return emits ReturnMembers for returned fields only,
+        /// not omitted input wagons. Seed's ReturnMembers are a separate delegate group.
         /// </summary>
         [Fact]
         public void Generator_EmitsReturnMembersOnly_WhenHandlersShareSingleReturnShape()
@@ -920,7 +1047,11 @@ public static class PartialReturnRoute
 
             var generated = RunGenerators(source);
 
-            var returnMembersStart = generated.IndexOf("ReturnMembers_", StringComparison.Ordinal);
+            const string partialWagonNames = "new string[] { \"paymentId\", \"amount\" };";
+            var wagonNamesIndex = generated.IndexOf(partialWagonNames, StringComparison.Ordinal);
+            Assert.True(wagonNamesIndex >= 0, "Partial handler WagonNames were not emitted.");
+
+            var returnMembersStart = generated.IndexOf("ReturnMembers_", wagonNamesIndex, StringComparison.Ordinal);
             Assert.True(returnMembersStart >= 0);
             var returnMembersEnd = generated.IndexOf("};", returnMembersStart, StringComparison.Ordinal);
             var returnMembersBlock = generated.Substring(returnMembersStart, returnMembersEnd - returnMembersStart);

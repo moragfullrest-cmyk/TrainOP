@@ -70,8 +70,18 @@ namespace TrainOP.Generators
                             continue;
                         }
 
+                        FactoryDispatchMetadata.TryResolveFromBody(
+                            methodSymbol,
+                            compilation,
+                            out var callerChainKey,
+                            out var stationCount);
+
                         hasSchemas = true;
-                        new RouteFactorySchema(methodSymbol, validation.TerminalWagons).Emit(writer);
+                        new RouteFactorySchema(
+                            methodSymbol,
+                            validation.TerminalWagons,
+                            callerChainKey,
+                            stationCount).Emit(writer);
                     }
                 }
             }

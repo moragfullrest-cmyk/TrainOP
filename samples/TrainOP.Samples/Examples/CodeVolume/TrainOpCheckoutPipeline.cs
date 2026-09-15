@@ -19,7 +19,6 @@ namespace TrainOP.Samples.CodeVolume
             CancellationToken cancellationToken)
         {
             var report = await BuildRoute(request)
-                .DispatchTrain()
                 .TravelAsync(cancellationToken)
                 .ConfigureAwait(false);
 
@@ -78,12 +77,11 @@ namespace TrainOP.Samples.CodeVolume
                 amount <= 0m
                     ? RailwaySignals.Red("PAYMENT_REJECTED", "amount must be positive")
                     : RailwaySignals.Green(new { orderId, amount, units, customerId }))
-            .ServiceStation("Recover", (ref int units, RedSignal red) =>
+            .ServiceStation("Recover", (int units, RedSignal red) =>
             {
                 if (red.Issue.Code == "STOCK_LIMIT")
                 {
-                    units = 10;
-                    return RailwaySignals.Pass;
+                    return RailwaySignals.Green(new { units = 10 });
                 }
 
                 return RailwaySignals.Red("UNRECOVERABLE", "cannot recover from " + red.Issue.Code);

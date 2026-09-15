@@ -1,3 +1,12 @@
+## Release 0.13.0
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+TOP014 | TrainOP.Generators | Error | More than one new TrainRoute() call on the same source line in a method
+TOP015 | TrainOP.Generators | Error | ServiceStation return introduces a wagon not already in the live manifest
+TOP016 | TrainOP.Generators | Error | ServiceStation return omits a non-ref input wagon
+TOP017 | TrainOP.Generators | Error | ServiceStation returns CargoManifest (full replacement)
+
 ## Release 0.7.0
 
 Rule ID | Category | Severity | Notes

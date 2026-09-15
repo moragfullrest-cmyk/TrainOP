@@ -68,7 +68,7 @@ public static class Route
         /// An unresolved arm (<c>GetRoute()</c>) fails the join with TOP008.
         /// </summary>
         [Fact]
-        public void Validate_TernaryUnresolvedArm_CannotMerge_ReportsTop015()
+        public void Validate_TernaryUnresolvedArm_CannotMerge_ReportsTop008()
         {
             const string source = @"
 using TrainOP;
@@ -99,7 +99,7 @@ public static class Route
         /// Conflicting types for the same wagon name across arms fail with TOP008.
         /// </summary>
         [Fact]
-        public void Validate_TernaryConflictingWagonTypes_CannotMerge_ReportsTop015()
+        public void Validate_TernaryConflictingWagonTypes_CannotMerge_ReportsTop008()
         {
             const string source = @"
 using TrainOP;

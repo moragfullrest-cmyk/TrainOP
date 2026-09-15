@@ -20,7 +20,9 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            return schema.Output.CanEmitTypedDataMerge(schema.IsServiceStation, returnMembersField);
+            return schema.Output.CanEmitTypedDataMerge(
+                returnMembersField,
+                allowGenericReturn: schema.IsServiceStation);
         }
 
         /// <summary>

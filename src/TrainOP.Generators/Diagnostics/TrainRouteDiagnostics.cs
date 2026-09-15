@@ -134,7 +134,7 @@ namespace TrainOP.Generators
         public static readonly DiagnosticDescriptor RuntimeSignalReturn = new DiagnosticDescriptor(
             id: "TOP010",
             title: "Station returns runtime route signal",
-            messageFormat: "Station '{0}' returns '{1}'; use data returns or RailwaySignals.Green / Red / Pass instead of GreenSignal or RedSignal",
+            messageFormat: "Station '{0}' returns '{1}'; use data returns or RailwaySignals.Green / Red / White instead of GreenSignal or RedSignal",
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
@@ -157,6 +157,39 @@ namespace TrainOP.Generators
             id: "TOP014",
             title: "More than one TrainRoute() call on the same line",
             messageFormat: "Method '{0}' contains more than one new TrainRoute() call on the same source line {1}; split TrainRoute creations across different lines in caller mode",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when a ServiceStation return introduces a wagon that is not already in the live manifest.
+        /// </summary>
+        public static readonly DiagnosticDescriptor ServiceStationAddsWagon = new DiagnosticDescriptor(
+            id: "TOP015",
+            title: "ServiceStation return adds a wagon",
+            messageFormat: "ServiceStation '{0}' return introduces wagon '{1}', which would change the manifest composition; service stations may only update existing wagons",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when a ServiceStation return omits a non-ref input wagon (would unload on a normal station).
+        /// </summary>
+        public static readonly DiagnosticDescriptor ServiceStationRemovesWagon = new DiagnosticDescriptor(
+            id: "TOP016",
+            title: "ServiceStation return removes an input wagon",
+            messageFormat: "ServiceStation '{0}' omits input wagon '{1}', which would change the manifest composition; service stations may only update existing wagons",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when a ServiceStation returns CargoManifest (full replacement).
+        /// </summary>
+        public static readonly DiagnosticDescriptor ServiceStationCargoManifestReplacement = new DiagnosticDescriptor(
+            id: "TOP017",
+            title: "ServiceStation returns CargoManifest",
+            messageFormat: "ServiceStation '{0}' returns CargoManifest, which would replace the entire manifest; service stations may only update existing wagons",
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);

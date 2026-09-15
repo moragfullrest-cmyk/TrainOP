@@ -20,16 +20,16 @@ internal sealed class DataOrientedRedSignalExample : IExample
                 amount > 0
                     ? RailwaySignals.Green(new { paymentId, amount })
                     : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"))
-            .ServiceStation("Recovery", (ref string paymentId, ref decimal amount, RedSignal red) =>
+            .ServiceStation("Recovery", (string paymentId, decimal amount, RedSignal red) =>
             {
                 paymentId = "pay-recover";
                 amount = 50m;
-                return RailwaySignals.Pass;
+                return RailwaySignals.Green(new { paymentId, amount });
             })
             .Station("ApplyDiscount", (string paymentId, decimal amount) =>
                 new { paymentId, amount = amount * 0.9m });
 
-        var report = route.DispatchTrain().Travel();
+        var report = route.Travel();
         ExampleOutput.WriteReport(report);
     }
 }

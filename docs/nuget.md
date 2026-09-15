@@ -33,16 +33,16 @@ dotnet add package TrainOP.Generators
 Указать версию явно:
 
 ```bash
-dotnet add package TrainOP --version 0.12.1
-dotnet add package TrainOP.Generators --version 0.12.1
+dotnet add package TrainOP --version 0.13.0
+dotnet add package TrainOP.Generators --version 0.13.0
 ```
 
 ### PackageReference в `.csproj`
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.12.1" />
-  <PackageReference Include="TrainOP.Generators" Version="0.12.1" />
+  <PackageReference Include="TrainOP" Version="0.13.0" />
+  <PackageReference Include="TrainOP.Generators" Version="0.13.0" />
 </ItemGroup>
 ```
 
@@ -103,8 +103,8 @@ dotnet add package TrainOP.Generators --source trainop-local
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="TrainOP" Version="0.11.0" />
-    <PackageReference Include="TrainOP.Generators" Version="0.11.0" />
+    <PackageReference Include="TrainOP" Version="0.13.0" />
+    <PackageReference Include="TrainOP.Generators" Version="0.13.0" />
   </ItemGroup>
 </Project>
 ```
@@ -116,7 +116,7 @@ var route = new TrainRoute()
     .Station("Seed", () => new { id = 1 })
     .Station("Next", (int id) => new { id = id + 1 });
 
-var report = route.DispatchTrain().Travel();
+var report = route.Travel();
 var id = report.Get<int>("id");
 ```
 

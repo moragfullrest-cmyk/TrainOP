@@ -61,6 +61,20 @@ namespace TrainOP
         }
 
         /// <summary>
+        /// Unwraps a <see cref="GreenPayload{T}"/> station return to its inner payload for merge.
+        /// Other return values are returned unchanged.
+        /// </summary>
+        public static object UnwrapGreenPayloadReturn(object stationReturn)
+        {
+            if (stationReturn is IGreenPayload greenPayload)
+            {
+                return greenPayload.GetValue();
+            }
+
+            return stationReturn;
+        }
+
+        /// <summary>
         /// Tries to read a member value from a typed source by name.
         /// </summary>
         public static bool TryGetMemberValue<T>(T source, string memberName, out object value)

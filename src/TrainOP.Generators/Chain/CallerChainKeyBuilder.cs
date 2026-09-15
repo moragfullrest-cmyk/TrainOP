@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using System.Linq;
 using TrainOP.Generators.Route;
 
 namespace TrainOP.Generators
@@ -12,39 +11,53 @@ namespace TrainOP.Generators
         /// <summary>
         /// Builds a chain key for a detected chain anchor.
         /// </summary>
-        public static string Build(RouteChainAnchor anchor)
+        public static string Build(RouteChainAnchor anchor, Compilation compilation = null)
         {
             if (anchor == null)
             {
                 return string.Empty;
             }
 
-            // For ctor-stamped identity, runtime uses caller member name.
-            // For factory anchors, the ctor runs inside the factory method, so we stamp by factory method metadata.
-            var memberName =
-                (anchor.Kind == RouteChainAnchorKind.MethodInvocation
-                    || anchor.Kind == RouteChainAnchorKind.FactorySchema)
-                ? anchor.FactoryMethod?.Name
-                : anchor.ContainingMethod?.Name;
+            if (anchor.Kind == RouteChainAnchorKind.MethodInvocation
+                || anchor.Kind == RouteChainAnchorKind.FactorySchema)
+            {
+                if (FactoryDispatchMetadata.TryResolve(
+                        anchor.FactoryMethod,
+                        compilation,
+                        out var factoryKey,
+                        out _)
+                    && !string.IsNullOrEmpty(factoryKey))
+                {
+                    return factoryKey;
+                }
 
+                // Old schema without CallerChainKey / unresolvable factory body: do not guess method location.
+                return string.Empty;
+            }
+
+            // ObjectCreation & LocalVariable: RouteChainWalker provides the ctor call-site location.
+            var memberName = anchor.ContainingMethod?.Name;
             if (string.IsNullOrEmpty(memberName))
             {
                 memberName = "global";
             }
 
-            // File/line are taken from the location that best approximates ctor call-site.
-            // For ObjectCreation & LocalVariable anchors, RouteChainWalker already provides the location of the ctor call expression.
-            // For factory anchors, we approximate with the factory method location; common expression-bodied factories keep them aligned.
-            var location =
-                (anchor.Kind == RouteChainAnchorKind.MethodInvocation
-                    || anchor.Kind == RouteChainAnchorKind.FactorySchema)
-                ? anchor.FactoryMethod?.Locations.FirstOrDefault()
-                : anchor.Location;
+            return BuildFromLocation(anchor.Location, memberName);
+        }
 
+        /// <summary>
+        /// Builds a chain key from a syntax location and member name (1-based caller line).
+        /// </summary>
+        internal static string BuildFromLocation(Location location, string memberName)
+        {
             if (location == null)
             {
-                // If we cannot read an IMethodSymbol location (e.g., metadata-only), fall back to anchor location.
                 return string.Empty;
+            }
+
+            if (string.IsNullOrEmpty(memberName))
+            {
+                memberName = "global";
             }
 
             var lineSpan = location.GetLineSpan();
@@ -57,4 +70,3 @@ namespace TrainOP.Generators
         }
     }
 }
-

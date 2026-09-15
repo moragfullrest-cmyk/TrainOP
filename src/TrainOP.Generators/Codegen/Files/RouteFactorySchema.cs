@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Text;
 using System.Collections.Immutable;
 using TrainOP.Generators.Wagons;
 
@@ -13,10 +12,16 @@ namespace TrainOP.Generators
         /// <summary>
         /// Creates a route factory schema from a factory method and its terminal wagons.
         /// </summary>
-        public RouteFactorySchema(IMethodSymbol method, ImmutableArray<WagonBinding> terminalWagons)
+        public RouteFactorySchema(
+            IMethodSymbol method,
+            ImmutableArray<WagonBinding> terminalWagons,
+            string callerChainKey,
+            int stationCount)
         {
             Method = method;
             TerminalWagons = terminalWagons;
+            CallerChainKey = callerChainKey ?? string.Empty;
+            StationCount = stationCount < 0 ? 0 : stationCount;
         }
 
         /// <summary>Exported factory method symbol.</summary>
@@ -24,6 +29,12 @@ namespace TrainOP.Generators
 
         /// <summary>Terminal wagon slots discovered for the factory path.</summary>
         public ImmutableArray<WagonBinding> TerminalWagons { get; }
+
+        /// <summary>Caller chain key for the factory's <c>new TrainRoute()</c> site.</summary>
+        public string CallerChainKey { get; }
+
+        /// <summary>Number of Station/ServiceStation registrations inside the factory.</summary>
+        public int StationCount { get; }
 
         /// <summary>
         /// Emits schema attributes on a generated holder type.
@@ -36,7 +47,17 @@ namespace TrainOP.Generators
                 .Append(ownerDisplay)
                 .Append("), \"")
                 .Append(Method.Name)
-                .Append("\")]");
+                .Append("\"");
+
+            if (!string.IsNullOrEmpty(CallerChainKey))
+            {
+                writer.Append(", CallerChainKey = \"")
+                    .Append(StringHelpers.Escape(CallerChainKey))
+                    .Append("\", StationCount = ")
+                    .Append(StationCount);
+            }
+
+            writer.Append(")]");
             writer.EndLine();
 
             for (var i = 0; i < TerminalWagons.Length; i++)

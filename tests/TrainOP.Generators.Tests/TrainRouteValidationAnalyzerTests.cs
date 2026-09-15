@@ -153,6 +153,55 @@ public static class BrokenRoute
         }
 
         /// <summary>
+        /// Verifies that default ItemN tuple returns keep input wagon keys so later stations are not TOP001.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_DoesNotReportTop001_WhenDefaultItemNTupleMapsToInputWagonKeys()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class ItemNParityRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            (paymentId + ""-disc"", amount * 0.9m))
+        .Station(""Finalize"", (string paymentId, decimal amount) =>
+            new { paymentId, amount });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP006");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP003");
+        }
+
+        /// <summary>
+        /// Verifies that a partial default ItemN tuple still unloads omitted input wagons (TOP003).
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop003_WhenPartialDefaultItemNTupleOmitsWagon()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class PartialItemNRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m, note = ""keep"" })
+        .Station(""Partial"", (string paymentId, decimal amount, string note) =>
+            (paymentId + ""-only"", amount * 0.9m))
+        .Station(""NeedNote"", (string note) => new { note });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP003");
+        }
+
+        /// <summary>
         /// Verifies that a route built via a local variable is recognized as a valid chain.
         /// </summary>
         [Fact]
@@ -603,7 +652,7 @@ public static class JoinedRoute
         /// Verifies that conflicting branch wagon types report TOP008 and suppress TOP005 on Join.
         /// </summary>
         [Fact]
-        public async Task Analyzer_TernaryJoin_ConflictingTypes_ReportsTop015_NoTop006OnJoin()
+        public async Task Analyzer_TernaryJoin_ConflictingTypes_ReportsTop008_NoTop006OnJoin()
         {
             const string source = @"
 using TrainOP;
@@ -638,7 +687,7 @@ public static class RecoveryRoute
         .Station(""Seed"", () => new { value = 0 })
         .Station(""Validate"", (int value) =>
             value > 0 ? RailwaySignals.Green(new { value }) : RailwaySignals.Red(""ERR"", ""bad""))
-        .ServiceStation(""Recovery"", (ref int value, RedSignal red) => RailwaySignals.Pass)
+        .ServiceStation(""Recovery"", (ref int value, RedSignal red) => RailwaySignals.White)
         .Station(""After"", (int value) => new { value = value + 1 });
 }";
 
@@ -648,7 +697,7 @@ public static class RecoveryRoute
         }
 
         /// <summary>
-        /// Verifies that ServiceStation handlers with Signal delegate return and RailwaySignals.Pass are allowed.
+        /// Verifies that ServiceStation handlers with Signal delegate return and RailwaySignals.White are allowed.
         /// </summary>
         [Fact]
         public async Task Analyzer_AllowsServiceStation_WithRefWagonsAndPassReturn()
@@ -666,7 +715,7 @@ public static class RecoveryRoute
         {
             paymentId = ""pay-fixed"";
             amount = 50m;
-            return RailwaySignals.Pass;
+            return RailwaySignals.White;
         })
         .Station(""After"", (string paymentId, decimal amount) => new { paymentId, amount });
 }";
@@ -674,6 +723,166 @@ public static class RecoveryRoute
             var diagnostics = await RunAnalyzerAsync(source);
 
             Assert.DoesNotContain(diagnostics, d => d.Id == "TOP010");
+        }
+
+        /// <summary>
+        /// Verifies that by-value ServiceStation wagons with a data return are allowed.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_AllowsServiceStation_WithByValueWagonsAndGreenReturn()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class RecoveryRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = -1m })
+        .Station(""Validate"", (string paymentId, decimal amount) =>
+            amount > 0 ? RailwaySignals.Green(new { paymentId, amount }) : RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", (decimal amount, SignalIssue issue) =>
+            issue.Code == ""ERR""
+                ? RailwaySignals.Green(new { amount = 50m })
+                : RailwaySignals.Red(""NOPE"", ""skip""))
+        .Station(""After"", (string paymentId, decimal amount) => new { paymentId, amount });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP009");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP010");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP015");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP016");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP017");
+        }
+
+        /// <summary>
+        /// Verifies that TOP015 is reported when ServiceStation return adds a new wagon.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop015_WhenServiceStationAddsWagon()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class RecoveryRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { amount = -1m })
+        .Station(""Validate"", (decimal amount) => RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", (decimal amount, SignalIssue issue) =>
+            new { amount = 1m, status = ""recovered"" });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP015");
+        }
+
+        /// <summary>
+        /// Verifies that TOP016 is reported when ServiceStation omits a non-ref input wagon.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop016_WhenServiceStationOmitsInputWagon()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class RecoveryRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = -1m })
+        .Station(""Validate"", (string paymentId, decimal amount) => RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", (string paymentId, decimal amount, SignalIssue issue) =>
+            new { amount = 1m });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP016");
+        }
+
+        /// <summary>
+        /// Verifies that TOP017 is reported when ServiceStation returns CargoManifest.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop017_WhenServiceStationReturnsCargoManifest()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class RecoveryRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { amount = -1m })
+        .Station(""Validate"", (decimal amount) => RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", (decimal amount, SignalIssue issue) =>
+            new CargoManifest().LoadWagon(""amount"", 1m));
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP017");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP004");
+        }
+
+        /// <summary>
+        /// Verifies that ServiceStation may update an existing non-input live wagon without TOP015.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_AllowsServiceStation_UpdatingExistingNonInputWagon()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class RecoveryRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = -1m, note = ""keep"" })
+        .Station(""Validate"", (string paymentId, decimal amount, string note) =>
+            RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", (decimal amount, SignalIssue issue) =>
+            new { amount = 1m, note = ""fixed"" })
+        .Station(""After"", (string paymentId, decimal amount, string note) =>
+            new { paymentId, amount, note });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP015");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP016");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that the built-in async ServiceStation escape hatch is not flagged as TOP009.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_AllowsServiceStation_WithAsyncRedSignalAndCancellationToken()
+        {
+            const string source = @"
+using System.Threading;
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class AsyncRecoveryRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { amount = -1m })
+        .Station(""Validate"", (decimal amount) => RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", async (RedSignal red, CargoManifest manifest, CancellationToken token) =>
+        {
+            await Task.Delay(1, token);
+            manifest.LoadWagon(""amount"", 1m);
+            return RailwaySignals.White;
+        });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP009");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
 
         /// <summary>
@@ -825,7 +1034,7 @@ public static class RuntimeSignalRoute
     public static TrainRoute Build() => new TrainRoute()
         .Station(""Seed"", () => new { value = 1 })
         .Station(""Bad"", (int value) =>
-            new RedSignal(new CargoManifest(), new SignalIssue(""ERR"", ""fail"", ""Bad"")));
+            new RedSignal(new SignalIssue(""ERR"", ""fail"", ""Bad"")));
 }";
 
             var diagnostics = await RunAnalyzerAsync(source);
@@ -889,7 +1098,7 @@ public static class AnonymousRoute
         /// Verifies that a Func variable handler is rejected with TOP009.
         /// </summary>
         [Fact]
-        public async Task Analyzer_ReportsTop016_ForFuncVariableHandler()
+        public async Task Analyzer_ReportsTop009_ForFuncVariableHandler()
         {
             const string source = @"
 using System;
@@ -917,7 +1126,7 @@ public static class FuncVariableRoute
         /// Verifies that an ambiguous method-group handler is rejected with TOP009.
         /// </summary>
         [Fact]
-        public async Task Analyzer_ReportsTop016_ForAmbiguousMethodGroup()
+        public async Task Analyzer_ReportsTop009_ForAmbiguousMethodGroup()
         {
             const string source = @"
 using TrainOP;

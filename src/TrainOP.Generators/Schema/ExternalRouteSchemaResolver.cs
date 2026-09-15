@@ -13,16 +13,18 @@ namespace TrainOP.Generators
     {
         private const string RouteSchemaForAttributeName = "RouteSchemaForAttribute";
         private const string RouteSchemaWagonAttributeName = "RouteSchemaWagonAttribute";
+        private const string CallerChainKeyNamedArg = "CallerChainKey";
+        private const string StationCountNamedArg = "StationCount";
 
         /// <summary>
-        /// Attempts to resolve terminal wagons for a factory method from an exported schema.
+        /// Attempts to resolve exported schema metadata for a factory method.
         /// </summary>
         public static bool TryResolve(
             IMethodSymbol factoryMethod,
             Compilation compilation,
-            out ImmutableArray<WagonBinding> terminalWagons)
+            out ExternalRouteSchema schema)
         {
-            terminalWagons = ImmutableArray<WagonBinding>.Empty;
+            schema = null;
             if (factoryMethod == null || compilation == null)
             {
                 return false;
@@ -30,7 +32,12 @@ namespace TrainOP.Generators
 
             foreach (var schemaType in EnumerateSchemaTypes(compilation))
             {
-                if (!TryGetRouteSchemaForTarget(schemaType, out var ownerType, out var methodName))
+                if (!TryGetRouteSchemaForTarget(
+                    schemaType,
+                    out var ownerType,
+                    out var methodName,
+                    out var callerChainKey,
+                    out var stationCount))
                 {
                     continue;
                 }
@@ -41,11 +48,35 @@ namespace TrainOP.Generators
                     continue;
                 }
 
-                terminalWagons = ReadTerminalWagons(schemaType);
-                return !terminalWagons.IsDefaultOrEmpty;
+                var terminalWagons = ReadTerminalWagons(schemaType);
+                if (terminalWagons.IsDefaultOrEmpty)
+                {
+                    return false;
+                }
+
+                schema = new ExternalRouteSchema(terminalWagons, callerChainKey, stationCount);
+                return true;
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Attempts to resolve terminal wagons for a factory method from an exported schema.
+        /// </summary>
+        public static bool TryResolve(
+            IMethodSymbol factoryMethod,
+            Compilation compilation,
+            out ImmutableArray<WagonBinding> terminalWagons)
+        {
+            terminalWagons = ImmutableArray<WagonBinding>.Empty;
+            if (!TryResolve(factoryMethod, compilation, out ExternalRouteSchema schema))
+            {
+                return false;
+            }
+
+            terminalWagons = schema.TerminalWagons;
+            return !terminalWagons.IsDefaultOrEmpty;
         }
 
         private static ImmutableArray<WagonBinding> ReadTerminalWagons(INamedTypeSymbol schemaType)
@@ -88,10 +119,14 @@ namespace TrainOP.Generators
         private static bool TryGetRouteSchemaForTarget(
             INamedTypeSymbol schemaType,
             out INamedTypeSymbol ownerType,
-            out string methodName)
+            out string methodName,
+            out string callerChainKey,
+            out int stationCount)
         {
             ownerType = null;
             methodName = null;
+            callerChainKey = string.Empty;
+            stationCount = 0;
 
             foreach (var attribute in schemaType.GetAttributes())
             {
@@ -107,10 +142,48 @@ namespace TrainOP.Generators
 
                 ownerType = attribute.ConstructorArguments[0].Value as INamedTypeSymbol;
                 methodName = attribute.ConstructorArguments[1].Value as string;
+                callerChainKey = ReadNamedString(attribute, CallerChainKeyNamedArg);
+                stationCount = ReadNamedInt(attribute, StationCountNamedArg);
                 return ownerType != null && !string.IsNullOrEmpty(methodName);
             }
 
             return false;
+        }
+
+        private static string ReadNamedString(AttributeData attribute, string name)
+        {
+            foreach (var argument in attribute.NamedArguments)
+            {
+                if (string.Equals(argument.Key, name, StringComparison.Ordinal))
+                {
+                    return argument.Value.Value as string ?? string.Empty;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static int ReadNamedInt(AttributeData attribute, string name)
+        {
+            foreach (var argument in attribute.NamedArguments)
+            {
+                if (!string.Equals(argument.Key, name, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (argument.Value.Value is int intValue)
+                {
+                    return intValue;
+                }
+
+                if (argument.Value.Value is long longValue)
+                {
+                    return (int)longValue;
+                }
+            }
+
+            return 0;
         }
 
         private static IEnumerable<INamedTypeSymbol> EnumerateSchemaTypes(Compilation compilation)

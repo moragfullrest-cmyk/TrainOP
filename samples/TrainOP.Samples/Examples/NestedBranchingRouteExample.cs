@@ -23,7 +23,7 @@ internal sealed class NestedBranchingRouteExample : IExample
     {
         Console.WriteLine($"Tier: {tier}");
 
-        var report = BuildRoute(tier).DispatchTrain().Travel();
+        var report = BuildRoute(tier).Travel();
         ExampleOutput.WriteReport(report);
     }
 
@@ -43,10 +43,13 @@ internal sealed class NestedBranchingRouteExample : IExample
             ? PremiumBranchRoute.Build(paymentId, amount)
             : StandardBranchRoute.Build(paymentId, amount);
 
-        var subReport = subRoute.DispatchTrain().Travel();
+        var subReport = subRoute.Travel();
         if (!subReport.ReachedDestination)
         {
-            return RailwaySignals.Red("BRANCH_FAILED", $"branch '{channel}' did not complete");
+            return RailwaySignals.Red(
+                "BRANCH_FAILED",
+                $"branch '{channel}' did not complete",
+                subReport.FailureIssues);
         }
 
         return new

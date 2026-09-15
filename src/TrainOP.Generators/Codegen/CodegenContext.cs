@@ -13,7 +13,6 @@ namespace TrainOP.Generators
             string wagonNamesExpression,
             string returnMembersExpression,
             string refFlagsExpression,
-            bool passRefFlagsToServiceMergeWhenPresent,
             string inputNamesVariable,
             string stationLabelExpression,
             NamingScope names)
@@ -23,7 +22,6 @@ namespace TrainOP.Generators
             WagonNamesExpression = wagonNamesExpression;
             ReturnMembersExpression = returnMembersExpression;
             RefFlagsExpression = refFlagsExpression;
-            PassRefFlagsToServiceMergeWhenPresent = passRefFlagsToServiceMergeWhenPresent;
             InputNamesVariable = inputNamesVariable;
             StationLabelExpression = stationLabelExpression;
             Names = names;
@@ -43,12 +41,6 @@ namespace TrainOP.Generators
 
         /// <summary>Expression for ref flags array, or null when absent.</summary>
         public string RefFlagsExpression { get; }
-
-        /// <summary>
-        /// When true and schema has ref wagons, always pass <see cref="RefFlagsExpression"/>
-        /// to service merge even if the expression is the hoisted binding field.
-        /// </summary>
-        public bool PassRefFlagsToServiceMergeWhenPresent { get; }
 
         /// <summary>Name-array variable for <see cref="PullStrategy.NameArray"/> (default <c>inputNames</c>).</summary>
         public string InputNamesVariable { get; }
@@ -70,7 +62,6 @@ namespace TrainOP.Generators
                 wagonNamesExpression: names.WagonNamesField,
                 returnMembersExpression: names.ReturnMembersField,
                 refFlagsExpression: names.RefFlagsField,
-                passRefFlagsToServiceMergeWhenPresent: false,
                 inputNamesVariable: "inputNames",
                 stationLabelExpression: "stationName",
                 names);
@@ -87,7 +78,6 @@ namespace TrainOP.Generators
                 wagonNamesExpression: "inputNames",
                 returnMembersExpression: "returnMembers",
                 refFlagsExpression: "refFlags",
-                passRefFlagsToServiceMergeWhenPresent: true,
                 inputNamesVariable: "inputNames",
                 stationLabelExpression: "stationName",
                 names);

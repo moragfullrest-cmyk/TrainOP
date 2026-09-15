@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 
 namespace TrainOP
@@ -58,6 +59,61 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(wagonNames));
             }
 
+            return ApplyCore(
+                manifest,
+                stationReturn,
+                wagonNames,
+                removeOmittedRegularInputs,
+                returnMemberNames,
+                byReferenceWagons,
+                refLocalValues,
+                preserveManifestComposition: false);
+        }
+
+        /// <summary>
+        /// Overlays a service-station return onto the live manifest without adding or removing wagons.
+        /// Existing keys are updated from the return (or ref writeback); extra return members are applied
+        /// only when the key already exists.
+        /// </summary>
+        public static CargoManifest ApplyOverlay(
+            CargoManifest manifest,
+            object stationReturn,
+            string[] wagonNames,
+            string[] returnMemberNames,
+            bool[] byReferenceWagons,
+            object[] refLocalValues)
+        {
+            if (manifest == null)
+            {
+                throw new ArgumentNullException(nameof(manifest));
+            }
+
+            if (wagonNames == null)
+            {
+                throw new ArgumentNullException(nameof(wagonNames));
+            }
+
+            return ApplyCore(
+                manifest,
+                stationReturn,
+                wagonNames,
+                removeOmittedRegularInputs: false,
+                returnMemberNames,
+                byReferenceWagons,
+                refLocalValues,
+                preserveManifestComposition: true);
+        }
+
+        private static CargoManifest ApplyCore(
+            CargoManifest manifest,
+            object stationReturn,
+            string[] wagonNames,
+            bool removeOmittedRegularInputs,
+            string[] returnMemberNames,
+            bool[] byReferenceWagons,
+            object[] refLocalValues,
+            bool preserveManifestComposition)
+        {
             if (TryUnwrapGreenPayload(stationReturn, out var payload))
             {
                 stationReturn = payload;
@@ -65,6 +121,12 @@ namespace TrainOP
 
             if (stationReturn is CargoManifest replacement)
             {
+                if (preserveManifestComposition)
+                {
+                    OverlayExistingKeys(manifest, replacement);
+                    return manifest;
+                }
+
                 return replacement;
             }
 
@@ -73,37 +135,46 @@ namespace TrainOP
                 throw new InvalidOperationException("RedFailure must be handled by StationMerge.ToSignal.");
             }
 
-            if (stationReturn is GreenPass)
+            if (stationReturn is WhitePass)
             {
                 return manifest;
             }
 
             if (wagonNames.Length == 0)
             {
-                return MergeAllReturnMembers(manifest, stationReturn, returnMemberNames);
+                return preserveManifestComposition
+                    ? OverlayNamedMembersOntoExisting(manifest, stationReturn, returnMemberNames)
+                    : MergeAllReturnMembers(manifest, stationReturn, returnMemberNames);
             }
 
             ValidateRefWagonMetadata(wagonNames, byReferenceWagons, refLocalValues, requirePresent: false);
+
+            // Parity with MergePlanBuilder: positional ItemN (or named return members) consumed for
+            // input wagons must not be re-loaded as extra manifest keys.
+            var consumedReturnMembers = new HashSet<string>(StringComparer.Ordinal);
 
             for (var i = 0; i < wagonNames.Length; i++)
             {
                 var wagonName = wagonNames[i];
                 object wagonValue;
+                string consumedMemberName;
                 var found = TryResolveWagonValue(
                     stationReturn,
                     wagonName,
                     i,
                     returnMemberNames,
-                    out wagonValue);
+                    out wagonValue,
+                    out consumedMemberName);
                 if (!found
                     && WagonStationReturn.IsValueTuple(stationReturn)
                     && manifest.TryGetWagon(wagonName, out var missingMatchValue)
                     && missingMatchValue != null)
                 {
-                    found = WagonStationReturn.TryGetUniqueTupleElementByType(
+                    found = TryResolveUniqueTupleElementByType(
                         stationReturn,
                         missingMatchValue.GetType(),
-                        out wagonValue);
+                        out wagonValue,
+                        out consumedMemberName);
                 }
                 else if (found
                     && WagonStationReturn.IsValueTuple(stationReturn)
@@ -112,20 +183,25 @@ namespace TrainOP
                     && existingValue != null
                     && !WagonStationReturn.TypesCompatible(existingValue.GetType(), wagonValue.GetType()))
                 {
-                    found = WagonStationReturn.TryGetUniqueTupleElementByType(
+                    found = TryResolveUniqueTupleElementByType(
                         stationReturn,
                         existingValue.GetType(),
-                        out wagonValue);
+                        out wagonValue,
+                        out consumedMemberName);
                 }
                 if (found)
                 {
-                    manifest.LoadWagon(wagonName, wagonValue);
+                    TryLoadWagon(manifest, wagonName, wagonValue, preserveManifestComposition);
+                    if (!string.IsNullOrEmpty(consumedMemberName))
+                    {
+                        consumedReturnMembers.Add(consumedMemberName);
+                    }
                 }
                 else if (byReferenceWagons != null && byReferenceWagons[i])
                 {
-                    manifest.LoadWagon(wagonName, refLocalValues[i]);
+                    TryLoadWagon(manifest, wagonName, refLocalValues[i], preserveManifestComposition);
                 }
-                else if (removeOmittedRegularInputs)
+                else if (!preserveManifestComposition && removeOmittedRegularInputs)
                 {
                     manifest.UnloadWagon(wagonName);
                 }
@@ -136,6 +212,11 @@ namespace TrainOP
                 var extraMemberNames = returnMemberNames ?? WagonStationReturn.GetMemberNames(stationReturn);
                 foreach (var memberName in extraMemberNames)
                 {
+                    if (consumedReturnMembers.Contains(memberName))
+                    {
+                        continue;
+                    }
+
                     var isInputWagon = false;
                     for (var j = 0; j < wagonNames.Length; j++)
                     {
@@ -149,7 +230,7 @@ namespace TrainOP
                     if (!isInputWagon
                         && WagonStationReturn.TryGetMemberValue(stationReturn, memberName, out var extraValue))
                     {
-                        manifest.LoadWagon(memberName, extraValue);
+                        TryLoadWagon(manifest, memberName, extraValue, preserveManifestComposition);
                     }
                 }
             }
@@ -228,7 +309,7 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Converts a service-station return value to a signal using ref writeback only.
+        /// Converts a service-station return value to a signal, overlaying existing wagons only.
         /// </summary>
         public static Signal ToServiceSignal(
             CargoManifest manifest,
@@ -238,11 +319,34 @@ namespace TrainOP
             bool[] byReferenceWagons,
             object[] refLocalValues)
         {
+            return ToServiceSignal(
+                manifest,
+                stationReturn,
+                stationName,
+                wagonNames,
+                returnMemberNames: null,
+                byReferenceWagons,
+                refLocalValues);
+        }
+
+        /// <summary>
+        /// Converts a service-station return value to a signal, overlaying existing wagons only.
+        /// </summary>
+        public static Signal ToServiceSignal(
+            CargoManifest manifest,
+            object stationReturn,
+            string stationName,
+            string[] wagonNames,
+            string[] returnMemberNames,
+            bool[] byReferenceWagons,
+            object[] refLocalValues)
+        {
             return StationAdapter.ToServiceSignal(
                 manifest,
                 stationReturn,
                 stationName,
                 wagonNames,
+                returnMemberNames,
                 byReferenceWagons,
                 refLocalValues);
         }
@@ -306,9 +410,11 @@ namespace TrainOP
             string wagonName,
             int wagonIndex,
             string[] returnMemberNames,
-            out object wagonValue)
+            out object wagonValue,
+            out string consumedMemberName)
         {
             wagonValue = null;
+            consumedMemberName = null;
             if (stationReturn == null)
             {
                 return false;
@@ -316,6 +422,7 @@ namespace TrainOP
 
             if (WagonStationReturn.TryGetMemberValue(stationReturn, wagonName, out wagonValue))
             {
+                consumedMemberName = wagonName;
                 return true;
             }
 
@@ -325,18 +432,135 @@ namespace TrainOP
                 && !string.Equals(returnMemberNames[wagonIndex], wagonName, StringComparison.Ordinal)
                 && WagonStationReturn.TryGetMemberValue(stationReturn, returnMemberNames[wagonIndex], out wagonValue))
             {
+                consumedMemberName = returnMemberNames[wagonIndex];
                 return true;
             }
 
             if (WagonStationReturn.IsValueTuple(stationReturn))
             {
-                return WagonStationReturn.TryGetMemberValue(
-                    stationReturn,
-                    "Item" + (wagonIndex + 1),
-                    out wagonValue);
+                var ordinalName = "Item" + (wagonIndex + 1);
+                if (WagonStationReturn.TryGetMemberValue(stationReturn, ordinalName, out wagonValue))
+                {
+                    consumedMemberName = ordinalName;
+                    return true;
+                }
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Resolves a unique tuple element by type and reports the ItemN member that supplied it.
+        /// </summary>
+        private static bool TryResolveUniqueTupleElementByType(
+            object stationReturn,
+            Type expectedType,
+            out object wagonValue,
+            out string consumedMemberName)
+        {
+            wagonValue = null;
+            consumedMemberName = null;
+            if (!WagonStationReturn.TryGetUniqueTupleElementByType(stationReturn, expectedType, out wagonValue))
+            {
+                return false;
+            }
+
+            for (var ordinal = 0; ; ordinal++)
+            {
+                if (!WagonStationReturn.TryGetTupleElement(stationReturn, ordinal, out var element))
+                {
+                    break;
+                }
+
+                if (element == null)
+                {
+                    if (wagonValue != null)
+                    {
+                        continue;
+                    }
+                }
+                else if (!Equals(element, wagonValue))
+                {
+                    continue;
+                }
+
+                consumedMemberName = "Item" + (ordinal + 1);
+                return true;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Loads <paramref name="wagonValue"/> into an existing manifest key, or always when composition
+        /// is allowed to change.
+        /// </summary>
+        private static void TryLoadWagon(
+            CargoManifest manifest,
+            string wagonName,
+            object wagonValue,
+            bool preserveManifestComposition)
+        {
+            if (preserveManifestComposition && !manifest.HasWagon(wagonName))
+            {
+                return;
+            }
+
+            manifest.LoadWagon(wagonName, wagonValue);
+        }
+
+        /// <summary>
+        /// Copies values from <paramref name="source"/> onto keys that already exist on <paramref name="target"/>.
+        /// </summary>
+        private static void OverlayExistingKeys(CargoManifest target, CargoManifest source)
+        {
+            if (source == null || ReferenceEquals(target, source))
+            {
+                return;
+            }
+
+            var live = target.InspectWagons();
+            var names = new string[live.Count];
+            var index = 0;
+            foreach (var pair in live)
+            {
+                names[index++] = pair.Key;
+            }
+
+            for (var i = 0; i < names.Length; i++)
+            {
+                var name = names[i];
+                if (source.TryGetWagon(name, out var value))
+                {
+                    target.LoadWagon(name, value);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Loads named return members onto keys that already exist in the manifest.
+        /// </summary>
+        private static CargoManifest OverlayNamedMembersOntoExisting(
+            CargoManifest manifest,
+            object stationReturn,
+            string[] returnMemberNames)
+        {
+            if (stationReturn == null)
+            {
+                return manifest;
+            }
+
+            var memberNames = returnMemberNames ?? WagonStationReturn.GetMemberNames(stationReturn);
+            foreach (var memberName in memberNames)
+            {
+                if (manifest.HasWagon(memberName)
+                    && WagonStationReturn.TryGetMemberValue(stationReturn, memberName, out var value))
+                {
+                    manifest.LoadWagon(memberName, value);
+                }
+            }
+
+            return manifest;
         }
 
         /// <summary>

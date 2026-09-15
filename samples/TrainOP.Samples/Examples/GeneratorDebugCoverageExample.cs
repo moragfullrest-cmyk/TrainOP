@@ -62,38 +62,37 @@ internal static class RefAndVoidRoute
                 amount > 0
                     ? RailwaySignals.Green(new { paymentId, amount })
                     : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"))
-            .ServiceStation("Recovery", (ref string paymentId, ref decimal amount, RedSignal red) =>
+            .ServiceStation("Recovery", (string paymentId, decimal amount, RedSignal red) =>
             {
                 if (red.Issue.Code == "INVALID_TOTAL")
                 {
-                    paymentId = "pay-recovered";
-                    amount = 50m;
-                    return RailwaySignals.Pass;
+                    return RailwaySignals.Green(new { paymentId = "pay-recovered", amount = 50m });
                 }
 
                 return RailwaySignals.Red("NOPE", "skip recovery");
             })
             .ServiceStation("RecoveryMethodGroup", RecoveryMethodGroup)
-            .ServiceStation("TerminalLogger", red =>
+            .ServiceStation("TerminalLogger", (RedSignal red, CargoManifest manifest) =>
             {
                 var issue = red.Issue;
-                _ = red.Manifest.PullWagon<string>("paymentId");
-                return issue.Code == "STOCK_LIMIT"
-                    ? RailwaySignals.Green(red.Manifest.LoadWagon("amount", 10m))
-                    : RailwaySignals.Red(
-                        red.Manifest,
-                        new SignalIssue("UNRECOVERABLE", issue.Message, "TerminalLogger"));
+                _ = manifest.PullWagon<string>("paymentId");
+                if (issue.Code == "STOCK_LIMIT")
+                {
+                    manifest.LoadWagon("amount", 10m);
+                    return RailwaySignals.Green();
+                }
+
+                return RailwaySignals.Red(
+                    new SignalIssue("UNRECOVERABLE", issue.Message, "TerminalLogger"));
             })
             .Station("Finalize", (string paymentId, decimal amount) =>
                 new { paymentId, amount, status = "completed" });
 
-    private static object RecoveryMethodGroup(ref string paymentId, ref decimal amount, RedSignal red)
+    private static object RecoveryMethodGroup(string paymentId, decimal amount, RedSignal red)
     {
         if (red.Issue.Code == "INVALID_TOTAL")
         {
-            paymentId += "-mg";
-            amount = 25m;
-            return RailwaySignals.Pass;
+            return RailwaySignals.Green(new { paymentId = paymentId + "-mg", amount = 25m });
         }
 
         return RailwaySignals.Red("NOPE", "skip");
@@ -246,7 +245,7 @@ internal static class CancellationRoute
             .Station("CancelableSync", (CancellationToken token) =>
             {
                 token.ThrowIfCancellationRequested();
-                return RailwaySignals.Pass;
+                return RailwaySignals.White;
             })
             .Station("FetchAsyncLambda", async (int counter, CancellationToken token) =>
             {
@@ -304,7 +303,7 @@ internal sealed class GeneratorDebugInstanceHandlers
     private object Step(int id, string label) => new { id = id + 1, label = label + "-done" };
 }
 
-/// <summary>Built-in <c>ServiceStation(RedSignal =&gt; …)</c> without data-oriented codegen.</summary>
+/// <summary>Built-in <c>ServiceStation((RedSignal, CargoManifest) =&gt; …)</c> without data-oriented codegen.</summary>
 internal static class BuiltinServiceStationRoute
 {
     public static TrainRoute Build() =>
@@ -312,11 +311,10 @@ internal static class BuiltinServiceStationRoute
             .Station("Seed", () => new { orderId = "ORD-1", amount = 200m })
             .Station("Check", (string orderId, decimal amount) =>
                 RailwaySignals.Red("FAIL", "stop"))
-            .ServiceStation("Logger", red =>
+            .ServiceStation("Logger", (RedSignal red, CargoManifest manifest) =>
             {
                 var issue = red.Issue;
                 return RailwaySignals.Red(
-                    red.Manifest,
                     new SignalIssue("UNRECOVERABLE", issue.Message, "Logger"));
             });
 }

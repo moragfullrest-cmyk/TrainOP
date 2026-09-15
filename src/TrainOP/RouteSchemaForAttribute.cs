@@ -33,5 +33,17 @@ namespace TrainOP
         /// Gets the factory method name.
         /// </summary>
         public string MethodName { get; }
+
+        /// <summary>
+        /// Gets or sets the caller chain key for the factory's <c>new TrainRoute()</c> site.
+        /// Must match <see cref="TrainRoute.CallerChainKey"/> for extension chain-dispatch.
+        /// </summary>
+        public string CallerChainKey { get; set; }
+
+        /// <summary>
+        /// Gets or sets the number of Station/ServiceStation registrations performed inside the factory
+        /// before return (used as the ordinal offset for consumer extension stations).
+        /// </summary>
+        public int StationCount { get; set; }
     }
 }

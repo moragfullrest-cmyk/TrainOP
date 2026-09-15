@@ -20,6 +20,7 @@ internal static class ExampleRunner
             new DataOrientedRedSignalExample(),
             new LongRouteServiceStationExample(),
             new NestedBranchingRouteExample(),
+            new FrameworkParametersExample(),
             new CodeVolumeComparisonExample(),
             new CrossAssemblyRouteExample(),
         };

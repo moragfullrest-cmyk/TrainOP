@@ -15,7 +15,7 @@ namespace TrainOP.Tests.DataOriented
         [Fact]
         public void PaymentRoute_HappyPath_ExposesTerminalWagons()
         {
-            var report = PaymentRoute.BuildHappyPath().DispatchTrain().Travel();
+            var report = PaymentRoute.BuildHappyPath().Travel();
             var paymentId = report.Get<string>("paymentId");
             var amount = report.Get<decimal>("amount");
 
@@ -23,7 +23,7 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal(4, report.Visits.Count);
             Assert.Equal("pay-e2e-trace-e2e", paymentId);
             Assert.Equal(89m, amount);
-            Assert.Equal("USD", report.TerminalSignal.Manifest.PullWagon<string>("currency"));
+            Assert.Equal("USD", report.Manifest.PullWagon<string>("currency"));
         }
 
         /// <summary>
@@ -32,7 +32,7 @@ namespace TrainOP.Tests.DataOriented
         [Fact]
         public void PaymentRoute_ValidationFailure_StopsAtValidateStation()
         {
-            var report = PaymentRoute.BuildInvalidAmount().DispatchTrain().Travel();
+            var report = PaymentRoute.BuildInvalidAmount().Travel();
 
             Assert.False(report.ReachedDestination);
             Assert.Equal(2, report.Visits.Count);
@@ -47,11 +47,11 @@ namespace TrainOP.Tests.DataOriented
         [Fact]
         public void PaymentRoute_ValidationFailure_RecoversAndCompletes()
         {
-            var report = PaymentRoute.BuildWithRecovery().DispatchTrain().Travel();
+            var report = PaymentRoute.BuildWithRecovery().Travel();
 
             Assert.True(report.ReachedDestination);
             Assert.Equal(4, report.Visits.Count);
-            Assert.Equal(2m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
+            Assert.Equal(2m, report.Manifest.PullWagon<decimal>("amount"));
         }
 
         /// <summary>
@@ -60,7 +60,7 @@ namespace TrainOP.Tests.DataOriented
         [Fact]
         public async Task PaymentRoute_AsyncHandler_CompletesWithTravelAsync()
         {
-            var report = await PaymentRoute.BuildAsync().DispatchTrain().TravelAsync();
+            var report = await PaymentRoute.BuildAsync().TravelAsync();
             var paymentId = report.Get<string>("paymentId");
             var amount = report.Get<decimal>("amount");
 
@@ -114,12 +114,8 @@ namespace TrainOP.Tests.DataOriented
                         amount > 0
                             ? RailwaySignals.Green(new { paymentId, amount })
                             : RailwaySignals.Red("INVALID_TOTAL", "amount must be positive"))
-                    .ServiceStation("Recovery", (ref string paymentId, ref decimal amount, RedSignal red) =>
-                    {
-                        paymentId = "pay-recover";
-                        amount = 1m;
-                        return RailwaySignals.Pass;
-                    })
+                    .ServiceStation("Recovery", (string paymentId, decimal amount, RedSignal red) =>
+                        RailwaySignals.Green(new { paymentId = "pay-recover", amount = 1m }))
                     .Station("Double", (string paymentId, decimal amount) =>
                         new { paymentId, amount = amount * 2m });
             }

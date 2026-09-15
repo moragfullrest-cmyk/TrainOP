@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 namespace TrainOP
 {
     /// <summary>
-    /// Describes one station attached to a route and how it is invoked.
+    /// Describes one station or service-station hop attached to a route and how it is invoked.
     /// </summary>
     internal sealed class StationPlan
     {
@@ -64,9 +64,33 @@ namespace TrainOP
         }
 
         /// <summary>
+        /// Creates a plan for a service-station hop that runs only after a red signal.
+        /// </summary>
+        public StationPlan(ServiceStationPlan servicePlan)
+        {
+            if (servicePlan == null)
+            {
+                throw new ArgumentNullException(nameof(servicePlan));
+            }
+
+            StationName = servicePlan.StationName;
+            ServicePlan = servicePlan;
+        }
+
+        /// <summary>
         /// Gets the station name.
         /// </summary>
         public string StationName { get; }
+
+        /// <summary>
+        /// Gets whether this hop is a service station (entered only after a red signal).
+        /// </summary>
+        public bool IsServiceStation => ServicePlan != null;
+
+        /// <summary>
+        /// Gets the service-station plan when this hop is recovery, otherwise null.
+        /// </summary>
+        public ServiceStationPlan ServicePlan { get; }
 
         /// <summary>
         /// Gets the synchronous signal-returning handler, if configured.
@@ -99,8 +123,11 @@ namespace TrainOP
         public Func<CargoManifest, CancellationToken, Task<CargoManifest>> ThroughAsyncStation { get; }
 
         /// <summary>
-        /// Gets whether this station requires asynchronous execution.
+        /// Gets whether this hop requires asynchronous execution.
         /// </summary>
-        public bool IsAsync => AsyncStation != null || ThroughAsyncStation != null;
+        public bool IsAsync =>
+            AsyncStation != null
+            || ThroughAsyncStation != null
+            || (ServicePlan != null && ServicePlan.AsyncHandler != null);
     }
 }

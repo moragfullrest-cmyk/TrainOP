@@ -21,8 +21,8 @@ namespace TrainOP.Tests.DataOriented
                     return new { paymentId = paymentId + "-ref" };
                 });
 
-            var report = route.DispatchTrain().Travel();
-            var manifest = report.TerminalSignal.Manifest;
+            var report = route.Travel();
+            var manifest = report.Manifest;
 
             Assert.Equal("pay-ref-ref", manifest.PullWagon<string>("paymentId"));
             Assert.Equal(10m, manifest.PullWagon<decimal>("amount"));
@@ -46,8 +46,8 @@ namespace TrainOP.Tests.DataOriented
                     amount = amount * 0.9m;
                 });
 
-            var report = route.DispatchTrain().Travel();
-            var manifest = report.TerminalSignal.Manifest;
+            var report = route.Travel();
+            var manifest = report.Manifest;
 
             Assert.True(report.ReachedDestination);
             Assert.Equal(3, report.Visits.Count);
@@ -68,7 +68,7 @@ namespace TrainOP.Tests.DataOriented
                     amount = amount + 2m;
                 });
 
-            var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
+            var manifest = route.Travel().Manifest;
 
             Assert.False(manifest.HasWagon("paymentId"));
             Assert.Equal(10m, manifest.PullWagon<decimal>("amount"));
@@ -89,8 +89,8 @@ namespace TrainOP.Tests.DataOriented
                     return new { paymentId = paymentId + "-" + note };
                 });
 
-            var report = route.DispatchTrain().Travel();
-            var manifest = report.TerminalSignal.Manifest;
+            var report = route.Travel();
+            var manifest = report.Manifest;
 
             Assert.Equal("pay-ref-manifest-from-manifest", manifest.PullWagon<string>("paymentId"));
             Assert.Equal(4m, manifest.PullWagon<decimal>("amount"));
@@ -107,7 +107,7 @@ namespace TrainOP.Tests.DataOriented
                 .Station("WithOptional", (string paymentId, decimal? amount) =>
                     new { paymentId, amount = amount ?? 7m });
 
-            var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
+            var manifest = route.Travel().Manifest;
 
             Assert.Equal("pay-optional", manifest.PullWagon<string>("paymentId"));
             Assert.Equal(7m, manifest.PullWagon<decimal>("amount"));
@@ -124,7 +124,7 @@ namespace TrainOP.Tests.DataOriented
                 .Station("WithOptional", (string paymentId, decimal? amount) =>
                     new { paymentId, amount = amount ?? 7m });
 
-            var manifest = route.DispatchTrain().Travel().TerminalSignal.Manifest;
+            var manifest = route.Travel().Manifest;
 
             Assert.Equal("pay-optional", manifest.PullWagon<string>("paymentId"));
             Assert.Equal(3m, manifest.PullWagon<decimal>("amount"));

@@ -23,12 +23,22 @@ internal static class ExampleOutput
 
         if (report.ReachedDestination)
         {
-            WriteManifest("Final manifest", report.TerminalSignal.Manifest);
+            WriteManifest("Final manifest", report.Manifest);
         }
         else
         {
             Console.WriteLine($"Red signal: [{report.FailureCode}] {report.FailureMessage}");
-            WriteManifest("Manifest at stop", report.TerminalSignal.Manifest);
+            if (report.FailureIssues.Count > 0)
+            {
+                Console.WriteLine("Issue chain:");
+                for (var i = 0; i < report.FailureIssues.Count; i++)
+                {
+                    var issue = report.FailureIssues[i];
+                    Console.WriteLine($"  [{i}] {issue.Code} @ {issue.StationName}: {issue.Message}");
+                }
+            }
+
+            WriteManifest("Manifest at stop", report.Manifest);
         }
     }
 

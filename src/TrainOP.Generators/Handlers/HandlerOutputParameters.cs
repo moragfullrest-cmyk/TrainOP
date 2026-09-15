@@ -109,16 +109,20 @@ namespace TrainOP.Generators.Handlers
         }
 
         /// <summary>
-        /// Determines whether typed data merge can be emitted for this output and station kind.
+        /// Determines whether typed data merge can be emitted for this output.
         /// </summary>
-        public bool CanEmitTypedDataMerge(bool isServiceStation, string returnMembersField)
+        /// <param name="returnMembersField">Generated field or local holding return member names.</param>
+        /// <param name="allowGenericReturn">
+        /// When true, anonymous / <c>object</c> returns with known members are eligible
+        /// (member values are read at runtime; used for ServiceStation overlay).
+        /// </param>
+        public bool CanEmitTypedDataMerge(string returnMembersField, bool allowGenericReturn = false)
         {
-            if (isServiceStation
-                || Mode == HandlerOutputMode.Void
+            if (Mode == HandlerOutputMode.Void
                 || Mode == HandlerOutputMode.Unknown
                 || Mode == HandlerOutputMode.CargoManifest
                 || Mode == HandlerOutputMode.ExplicitSignal
-                || Shape.UseGenericReturn
+                || (!allowGenericReturn && Shape.UseGenericReturn)
                 || Shape.Members.IsDefaultOrEmpty
                 || returnMembersField == null)
             {
@@ -188,7 +192,7 @@ namespace TrainOP.Generators.Handlers
 
             return returnTypeDisplay == "global::TrainOP.Signal"
                 || returnTypeDisplay == "global::TrainOP.RedFailure"
-                || returnTypeDisplay == "global::TrainOP.GreenPass"
+                || returnTypeDisplay == "global::TrainOP.WhitePass"
                 || returnTypeDisplay == "global::TrainOP.CargoManifest";
         }
     }

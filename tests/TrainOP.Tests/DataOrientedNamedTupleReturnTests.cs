@@ -18,11 +18,11 @@ namespace TrainOP.Tests.DataOriented
                 .Station("ApplyDiscount", (string paymentId, decimal amount) =>
                     (amount: amount * 0.9m, paymentId));
 
-            var report = route.DispatchTrain().Travel();
+            var report = route.Travel();
 
             Assert.True(report.ReachedDestination);
-            Assert.Equal("pay-recover", report.TerminalSignal.Manifest.PullWagon<string>("paymentId"));
-            Assert.Equal(45m, report.TerminalSignal.Manifest.PullWagon<decimal>("amount"));
+            Assert.Equal("pay-recover", report.Manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(45m, report.Manifest.PullWagon<decimal>("amount"));
         }
     }
 }

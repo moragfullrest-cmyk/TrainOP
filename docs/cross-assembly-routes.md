@@ -18,8 +18,12 @@ public static class PaymentModule
 
 Reference `TrainOP` and `TrainOP.Generators` in the library project. The generator **emits** schema metadata on a generated partial type (do not hand-author these attributes in consumer code):
 
-- `[RouteSchemaFor(typeof(PaymentModule), "Build")]`
+- `[RouteSchemaFor(typeof(PaymentModule), "Build", CallerChainKey = "<hash>", StationCount = N)]`
 - repeated `[RouteSchemaWagon(name, typeof(T))]` attributes
+
+`CallerChainKey` is the same ctor-site key runtime stamps on `new TrainRoute()` inside the factory. `StationCount` is the number of Station/ServiceStation registrations inside the factory (ordinal offset for consumer extension stations). Together they keep caller chain-dispatch aligned when the consumer continues the route after a public factory.
+
+Schemas that lack `CallerChainKey` (older packages) cannot reliably dispatch extension stations under conflicting CLR signatures — the generator does not invent index `0` for that case.
 
 Attribute types are public for reflection and tooling but marked `[EditorBrowsable(Never)]` in the IDE.
 
@@ -62,7 +66,7 @@ Unknown terminal state on any path reports **TOP013**.
 
 | ID | When | Why it matters |
 |----|------|----------------|
-| TOP006 | Tuple element has default `ItemN` (no `NameColon` and no name inference), e.g. `(id + "-x", amount * 0.9m)` | Manifest keys become positional `Item1`, `Item2`, … |
+| TOP006 | Tuple element has default `ItemN` (no `NameColon` and no name inference), e.g. `(id + "-x", amount * 0.9m)` | Values still unroll into **input wagon keys** by position (same as runtime merge / `MergePlanBuilder`); `ItemN` is the return accessor, not the manifest key. Prefer named/inferred elements for clarity. |
 | — | Inferred `(paymentId, amount)` or explicit `(Item1: x, …)` | Treated as intentional names; no warning |
 
 Diagnostics are reported on the **tuple literal**, not on the handler method.

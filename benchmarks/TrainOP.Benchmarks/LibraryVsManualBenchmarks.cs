@@ -13,19 +13,19 @@ namespace TrainOP.Benchmarks
     [CategoriesColumn]
     public class LibraryVsManualBenchmarks
     {
-        private Train _paymentTrain;
-        private Train _longPaymentTrain;
-        private Train _checkoutTrain;
+        private TrainRoute _paymentRoute;
+        private TrainRoute _longPaymentRoute;
+        private TrainRoute _checkoutRoute;
 
         /// <summary>
-        /// Pre-builds TrainOP trains so travel-only categories exclude route registration.
+        /// Pre-builds TrainOP routes so travel-only categories exclude route registration.
         /// </summary>
         [GlobalSetup]
         public void GlobalSetup()
         {
-            _paymentTrain = LibraryChains.CreatePaymentTrain();
-            _longPaymentTrain = LibraryChains.CreateLongPaymentTrain();
-            _checkoutTrain = Library.CreateCheckoutTrain();
+            _paymentRoute = LibraryChains.CreatePaymentRoute();
+            _longPaymentRoute = LibraryChains.CreateLongPaymentRoute();
+            _checkoutRoute = Library.CreateCheckoutRoute();
         }
 
         [Benchmark(Baseline = true)]
@@ -38,7 +38,7 @@ namespace TrainOP.Benchmarks
 
         [Benchmark]
         [BenchmarkCategory("Payment")]
-        public decimal TrainOP_TravelOnly_Payment() => LibraryChains.Travel(_paymentTrain);
+        public decimal TrainOP_TravelOnly_Payment() => LibraryChains.Travel(_paymentRoute);
 
         [Benchmark(Baseline = true)]
         [BenchmarkCategory("LongPayment")]
@@ -50,7 +50,7 @@ namespace TrainOP.Benchmarks
 
         [Benchmark]
         [BenchmarkCategory("LongPayment")]
-        public decimal TrainOP_TravelOnly_LongPayment() => LibraryChains.Travel(_longPaymentTrain);
+        public decimal TrainOP_TravelOnly_LongPayment() => LibraryChains.Travel(_longPaymentRoute);
 
         [Benchmark(Baseline = true)]
         [BenchmarkCategory("Checkout")]
@@ -62,6 +62,6 @@ namespace TrainOP.Benchmarks
 
         [Benchmark]
         [BenchmarkCategory("Checkout")]
-        public decimal TrainOP_TravelOnly_Checkout() => Library.Travel(_checkoutTrain);
+        public decimal TrainOP_TravelOnly_Checkout() => Library.Travel(_checkoutRoute);
     }
 }

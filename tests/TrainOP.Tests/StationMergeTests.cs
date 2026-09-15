@@ -71,6 +71,8 @@ namespace TrainOP.Tests
 
             Assert.Equal("pay-2", merged.PullWagon<string>("paymentId"));
             Assert.Equal(90m, merged.PullWagon<decimal>("amount"));
+            Assert.False(merged.HasWagon("Item1"));
+            Assert.False(merged.HasWagon("Item2"));
         }
 
         /// <summary>
@@ -179,6 +181,29 @@ namespace TrainOP.Tests
         }
 
         /// <summary>
+        /// Verifies positional ItemN tuple members are not left as extra wagons when return member names are omitted.
+        /// </summary>
+        [Fact]
+        public void Apply_DoesNotLeaveItemNExtras_WhenReturnMemberNamesAreNull()
+        {
+            var manifest = new CargoManifest()
+                .LoadWagon("paymentId", "pay-1")
+                .LoadWagon("amount", 100m);
+
+            var merged = StationMerge.Apply(
+                manifest,
+                ("pay-2", 90m),
+                new[] { "paymentId", "amount" },
+                removeOmittedRegularInputs: true,
+                returnMemberNames: null);
+
+            Assert.Equal("pay-2", merged.PullWagon<string>("paymentId"));
+            Assert.Equal(90m, merged.PullWagon<decimal>("amount"));
+            Assert.False(merged.HasWagon("Item1"));
+            Assert.False(merged.HasWagon("Item2"));
+        }
+
+        /// <summary>
         /// Verifies that extra return members are merged when return member metadata is omitted.
         /// </summary>
         [Fact]
@@ -199,10 +224,11 @@ namespace TrainOP.Tests
         }
 
         /// <summary>
-        /// Verifies that service-station merge writes ref values back without adding new wagons from return payload.
+        /// Verifies that service-station overlay applies green payload to existing wagons
+        /// and ignores extra return members that would change composition.
         /// </summary>
         [Fact]
-        public void ToServiceSignal_WritesRefValuesOnly_IgnoresGreenPayload()
+        public void ToServiceSignal_OverlaysGreenPayload_IgnoresNewWagons()
         {
             var manifest = new CargoManifest()
                 .LoadWagon("paymentId", "pay-recover")
@@ -214,16 +240,63 @@ namespace TrainOP.Tests
 
             var signal = StationMerge.ToServiceSignal(
                 manifest,
-                RailwaySignals.Green(new { paymentId = "ignored", amount = 99m, extra = "new" }),
+                RailwaySignals.Green(new { paymentId = "from-return", amount = 99m, extra = "new" }),
                 "Recovery",
                 wagonNames,
+                returnMemberNames: new[] { "paymentId", "amount", "extra" },
                 refFlags,
                 refValues);
 
             var green = Assert.IsType<GreenSignal>(signal);
-            Assert.Equal("pay-fixed", green.Manifest.PullWagon<string>("paymentId"));
-            Assert.Equal(50m, green.Manifest.PullWagon<decimal>("amount"));
-            Assert.False(green.Manifest.HasWagon("extra"));
+            Assert.Same(GreenSignal.Instance, green);
+            Assert.Equal("from-return", manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(99m, manifest.PullWagon<decimal>("amount"));
+            Assert.False(manifest.HasWagon("extra"));
+        }
+
+        /// <summary>
+        /// Verifies that service-station overlay does not unload omitted input wagons.
+        /// </summary>
+        [Fact]
+        public void ApplyOverlay_PartialReturn_KeepsOmittedInputs()
+        {
+            var manifest = new CargoManifest()
+                .LoadWagon("paymentId", "pay-1")
+                .LoadWagon("amount", 0m);
+
+            var merged = StationMerge.ApplyOverlay(
+                manifest,
+                new { amount = 10m },
+                new[] { "paymentId", "amount" },
+                returnMemberNames: new[] { "amount" },
+                byReferenceWagons: null,
+                refLocalValues: null);
+
+            Assert.Equal("pay-1", merged.PullWagon<string>("paymentId"));
+            Assert.Equal(10m, merged.PullWagon<decimal>("amount"));
+        }
+
+        /// <summary>
+        /// Verifies that White on ToServiceSignal skips overlay including ref writeback.
+        /// </summary>
+        [Fact]
+        public void ToServiceSignal_Pass_DoesNotWritebackRefValues()
+        {
+            var manifest = new CargoManifest()
+                .LoadWagon("value", 0);
+
+            var signal = StationMerge.ToServiceSignal(
+                manifest,
+                RailwaySignals.White,
+                "Recovery",
+                new[] { "value" },
+                returnMemberNames: null,
+                byReferenceWagons: new[] { true },
+                refLocalValues: new object[] { 1 });
+
+            var green = Assert.IsType<GreenSignal>(signal);
+            Assert.Same(GreenSignal.Instance, green);
+            Assert.Equal(0, manifest.PullWagon<int>("value"));
         }
 
         /// <summary>
