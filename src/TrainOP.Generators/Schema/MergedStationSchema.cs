@@ -30,8 +30,15 @@ namespace TrainOP.Generators
 
         public bool UsesChainDispatch =>
             _chainBindings.Count > 0
-            && HasDistinctWagonNameSets()
+            && (HasDistinctWagonNameSets() || RequiresPerSiteReturnMetadata())
             && !CanonicalBinding.IsServiceStation;
+
+        /// <summary>
+        /// True when distinct return shapes cannot share consolidated <c>ReturnMembers</c>
+        /// (anonymous / <c>object</c> shapes merge; named vs ItemN tuples do not).
+        /// </summary>
+        public bool RequiresPerSiteReturnMetadata() =>
+            HandlerOutputParameters.RequiresPerSiteReturnMetadata(_returnShapes);
 
         private bool HasDistinctWagonNameSets()
         {
@@ -96,6 +103,7 @@ namespace TrainOP.Generators
                 || left.IsVoid != right.IsVoid
                 || left.IsCargoManifest != right.IsCargoManifest
                 || left.IsValueTuple != right.IsValueTuple
+                || left.HasDefaultItemNTupleElements != right.HasDefaultItemNTupleElements
                 || left.Members.Length != right.Members.Length)
             {
                 return false;

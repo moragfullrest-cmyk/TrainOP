@@ -101,7 +101,7 @@ namespace TrainOP.Generators
         public static readonly DiagnosticDescriptor DefaultItemNTupleReturn = new DiagnosticDescriptor(
             id: "TOP006",
             title: "Default ItemN value tuple element",
-            messageFormat: "Value tuple element uses default name ItemN (no explicit name and no name inference). Manifest mapping is positional and order-dependent. Prefer a named element, e.g. (paymentId: id, amount: amt), or an identifier so the name can be inferred.",
+            messageFormat: "Value tuple element uses default name ItemN (no explicit name and no name inference). Elements become new ItemN wagons after omitted inputs are unloaded (sequential ItemN allocation). Prefer a named element, e.g. (paymentId: id, amount: amt), or an identifier so the name can be inferred.",
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);

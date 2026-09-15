@@ -36,5 +36,29 @@ namespace TrainOP.Tests
             Assert.Equal("pay-2", paymentId);
             Assert.Equal(3m, amount);
         }
+
+        /// <summary>
+        /// Verifies that named value-tuple elements resolve via ordered member names after boxing.
+        /// </summary>
+        [Fact]
+        public void TryGetMemberValue_ReadsNamedTuple_ViaOrderedMemberNames()
+        {
+            object boxed = (amount: 45m, paymentId: "pay-recover");
+            var orderedNames = new[] { "amount", "paymentId" };
+
+            Assert.True(WagonStationReturn.TryGetMemberValue(
+                boxed,
+                "paymentId",
+                orderedNames,
+                out var paymentId));
+            Assert.True(WagonStationReturn.TryGetMemberValue(
+                boxed,
+                "amount",
+                orderedNames,
+                out var amount));
+
+            Assert.Equal("pay-recover", paymentId);
+            Assert.Equal(45m, amount);
+        }
     }
 }

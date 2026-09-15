@@ -6,25 +6,10 @@
     <IsRoslynComponent>true</IsRoslynComponent>
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <NoWarn>$(NoWarn);RSEXPERIMENTAL002</NoWarn>
+    <IsPackable>false</IsPackable>
 
-    <PackageId>TrainOP.Generators</PackageId>
-    <Version>0.13.0</Version>
-    <Authors>Criperum</Authors>
-    <Description>Source generators и analyzer для data-oriented .Station handlers</Description>
-    <PackageTags>railway;rop;functional;source-generator;analyzer;roslyn</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/moragfullrest-cmyk/TrainOP.git</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/moragfullrest-cmyk/TrainOP</PackageProjectUrl>
-    <RepositoryType>git</RepositoryType>
-
-    <IncludeBuildOutput>false</IncludeBuildOutput>
-    <DevelopmentDependency>true</DevelopmentDependency>
-    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
-    <GeneratePackageOnBuild Condition="'$(Configuration)' == 'Release'">true</GeneratePackageOnBuild>
-    <GeneratePackageOnBuild Condition="'$(Configuration)' != 'Release'">false</GeneratePackageOnBuild>
-
-	  <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
-	  <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)\Generated</CompilerGeneratedFilesOutputPath>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)\Generated</CompilerGeneratedFilesOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -39,16 +24,5 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="TrainOP.Generators.Tests" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="$(OutputPath)$(AssemblyName).dll"
-          Pack="true"
-          PackagePath="analyzers/dotnet/cs"
-          Visible="false" />
-    <None Include="build\TrainOP.Generators.targets"
-          Pack="true"
-          PackagePath="build\TrainOP.Generators.targets"
-          Visible="false" />
   </ItemGroup>
 </Project>

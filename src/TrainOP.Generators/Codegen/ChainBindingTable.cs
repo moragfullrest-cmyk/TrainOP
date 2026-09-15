@@ -59,7 +59,8 @@ namespace TrainOP.Generators
                 writer,
                 "DefaultChainBinding_" + _names.DelegateTypeId,
                 _canonicalSchema,
-                _defaultReturnMembers);
+                _defaultReturnMembers,
+                _canonicalSchema.ReturnShape.HasDefaultItemNTupleElements);
             writer.AppendLine();
 
             for (var i = 0; i < orderedBindings.Count; i++)
@@ -68,7 +69,8 @@ namespace TrainOP.Generators
                     writer,
                     BuildBindingFieldName(_names.DelegateTypeId, orderedBindings[i]),
                     orderedBindings[i].Schema,
-                    orderedBindings[i].ReturnMembers);
+                    orderedBindings[i].ReturnMembers,
+                    orderedBindings[i].Schema.ReturnShape.HasDefaultItemNTupleElements);
             }
 
             writer.AppendLine();
@@ -100,19 +102,21 @@ namespace TrainOP.Generators
             {
                 writer.AppendIndented("public ")
                     .Append(ChainBindingTypes.BindingTypeName)
-                    .Append("(string[] inputNames, string[] returnMembers, bool[] refFlags)");
+                    .Append("(string[] inputNames, string[] returnMembers, bool[] refFlags, bool allocateDefaultItemN)");
                 writer.EndLine();
                 using (writer.Block())
                 {
                     writer.AppendLine("InputNames = inputNames;");
                     writer.AppendLine("ReturnMembers = returnMembers;");
                     writer.AppendLine("RefFlags = refFlags;");
+                    writer.AppendLine("AllocateDefaultItemN = allocateDefaultItemN;");
                 }
 
                 writer.AppendLine();
                 writer.AppendLine("public string[] InputNames { get; }");
                 writer.AppendLine("public string[] ReturnMembers { get; }");
                 writer.AppendLine("public bool[] RefFlags { get; }");
+                writer.AppendLine("public bool AllocateDefaultItemN { get; }");
             }
 
             writer.AppendLine();
@@ -180,7 +184,8 @@ namespace TrainOP.Generators
             CodegenWriter writer,
             string fieldName,
             StationHandlerBinding schema,
-            string[] returnMembers)
+            string[] returnMembers,
+            bool allocateDefaultItemN)
         {
             writer.AppendIndented("internal static readonly ")
                 .Append(ChainBindingTypes.BindingTypeName)
@@ -194,6 +199,8 @@ namespace TrainOP.Generators
             EmitStringArray(writer, returnMembers);
             writer.Append(", ");
             schema.Input.EmitRefFlagsArrayLiteral(writer);
+            writer.Append(", ");
+            writer.Append(allocateDefaultItemN ? "true" : "false");
             writer.Append(");");
             writer.EndLine();
         }

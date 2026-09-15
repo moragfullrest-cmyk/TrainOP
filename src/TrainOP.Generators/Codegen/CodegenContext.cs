@@ -13,6 +13,8 @@ namespace TrainOP.Generators
             string wagonNamesExpression,
             string returnMembersExpression,
             string refFlagsExpression,
+            string allocateDefaultItemNExpression,
+            bool allowTypedMerge,
             string inputNamesVariable,
             string stationLabelExpression,
             NamingScope names)
@@ -22,6 +24,8 @@ namespace TrainOP.Generators
             WagonNamesExpression = wagonNamesExpression;
             ReturnMembersExpression = returnMembersExpression;
             RefFlagsExpression = refFlagsExpression;
+            AllocateDefaultItemNExpression = allocateDefaultItemNExpression;
+            AllowTypedMerge = allowTypedMerge;
             InputNamesVariable = inputNamesVariable;
             StationLabelExpression = stationLabelExpression;
             Names = names;
@@ -42,6 +46,15 @@ namespace TrainOP.Generators
         /// <summary>Expression for ref flags array, or null when absent.</summary>
         public string RefFlagsExpression { get; }
 
+        /// <summary>Expression for default-ItemN allocation flag (<c>true</c>/<c>false</c> or local).</summary>
+        public string AllocateDefaultItemNExpression { get; }
+
+        /// <summary>
+        /// When false, adapters must use <c>StationMerge.ToSignal</c> so per-site return metadata applies
+        /// (heterogeneous named vs default-ItemN tuple returns in one CLR signature group).
+        /// </summary>
+        public bool AllowTypedMerge { get; }
+
         /// <summary>Name-array variable for <see cref="PullStrategy.NameArray"/> (default <c>inputNames</c>).</summary>
         public string InputNamesVariable { get; }
 
@@ -54,7 +67,7 @@ namespace TrainOP.Generators
         /// <summary>
         /// Context for canonical adapters with static metadata fields.
         /// </summary>
-        public static CodegenContext ForCanonical(NamingScope names)
+        public static CodegenContext ForCanonical(NamingScope names, bool allocateDefaultItemN)
         {
             return new CodegenContext(
                 PullStrategy.LiteralNames,
@@ -62,6 +75,8 @@ namespace TrainOP.Generators
                 wagonNamesExpression: names.WagonNamesField,
                 returnMembersExpression: names.ReturnMembersField,
                 refFlagsExpression: names.RefFlagsField,
+                allocateDefaultItemNExpression: allocateDefaultItemN ? "true" : "false",
+                allowTypedMerge: true,
                 inputNamesVariable: "inputNames",
                 stationLabelExpression: "stationName",
                 names);
@@ -70,7 +85,7 @@ namespace TrainOP.Generators
         /// <summary>
         /// Context for chain-dispatch adapters with runtime binding locals.
         /// </summary>
-        public static CodegenContext ForChain(NamingScope names)
+        public static CodegenContext ForChain(NamingScope names, bool allowTypedMerge = true)
         {
             return new CodegenContext(
                 PullStrategy.NameArray,
@@ -78,6 +93,8 @@ namespace TrainOP.Generators
                 wagonNamesExpression: "inputNames",
                 returnMembersExpression: "returnMembers",
                 refFlagsExpression: "refFlags",
+                allocateDefaultItemNExpression: "allocateDefaultItemN",
+                allowTypedMerge: allowTypedMerge,
                 inputNamesVariable: "inputNames",
                 stationLabelExpression: "stationName",
                 names);

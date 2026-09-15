@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+### Breaking
+
+- **Single NuGet package:** `TrainOP` now ships runtime + source generator / analyzer in one `.nupkg`. Remove any `PackageReference` to `TrainOP.Generators`; that package is no longer published (`IsPackable=false`). ProjectReference consumers still reference both projects explicitly.
+- **Default ItemN tuple returns:** unnamed value-tuple elements no longer map onto handler input wagon keys by position. After omitted non-`ref` inputs unload, elements allocate as new `ItemN` wagons (`max` existing `Item*` + 1). Access via `Item1`/`Item2`/…; sequential hops that spend prior `Item*` reuse the same numbers. Explicit `(Item1: …)` and inferred names are unchanged. ServiceStation still cannot add wagons (**TOP015**).
+
+### Changed
+
+- **CI / pack:** SDK 8/9 smoke builds only `TrainOP.csproj` (pulls Generators); .NET 10 packs a single `TrainOP` package.
+
+### Documentation
+
+- **nuget / getting-started / README / textbook / cross-assembly / release-readiness:** installation and pack instructions updated for the unified package.
+
+### Fixed
+
+- **Named vs default-ItemN tuple call sites:** handlers that share one CLR `Func<…, (T1, T2, …)>` but differ in tuple element naming (named/inferred vs default ItemN) now use caller chain-dispatch with per-site `ReturnMembers` / `AllocateDefaultItemN`, and skip typed merge baked from the canonical binding so named returns keep wagon keys instead of unloading them.
+- **Runtime named-tuple merge:** `StationMerge` / `WagonStationReturn` resolve boxed value-tuple elements by ordinal against generator `returnMemberNames` (CLR erases element names), so chain-dispatch named returns like `(paymentId:, amount:)` merge by name instead of unloading inputs.
+- **Parameterless seed overloads:** multiple anonymous / `object` seed handlers that share `Func<object>` keep one canonical Station overload with consolidated `ReturnMembers`; distinct object return shapes no longer force chain-dispatch core overloads.
+
 ## [0.13.0] - 2026-09-15
 
 ### Breaking

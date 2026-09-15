@@ -16,7 +16,7 @@ public static class PaymentModule
 }
 ```
 
-Reference `TrainOP` and `TrainOP.Generators` in the library project. The generator **emits** schema metadata on a generated partial type (do not hand-author these attributes in consumer code):
+Reference the `TrainOP` package in the library project (runtime + generator). The generator **emits** schema metadata on a generated partial type (do not hand-author these attributes in consumer code):
 
 - `[RouteSchemaFor(typeof(PaymentModule), "Build", CallerChainKey = "<hash>", StationCount = N)]`
 - repeated `[RouteSchemaWagon(name, typeof(T))]` attributes
@@ -66,7 +66,7 @@ Unknown terminal state on any path reports **TOP013**.
 
 | ID | When | Why it matters |
 |----|------|----------------|
-| TOP006 | Tuple element has default `ItemN` (no `NameColon` and no name inference), e.g. `(id + "-x", amount * 0.9m)` | Values still unroll into **input wagon keys** by position (same as runtime merge / `MergePlanBuilder`); `ItemN` is the return accessor, not the manifest key. Prefer named/inferred elements for clarity. |
+| TOP006 | Tuple element has default `ItemN` (no `NameColon` and no name inference), e.g. `(id + "-x", amount * 0.9m)` | Elements allocate as **new ItemN wagons** after omitted inputs unload (`max` live `Item*` + 1). Prefer named/inferred elements for clarity. |
 | — | Inferred `(paymentId, amount)` or explicit `(Item1: x, …)` | Treated as intentional names; no warning |
 
 Diagnostics are reported on the **tuple literal**, not on the handler method.

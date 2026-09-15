@@ -48,15 +48,22 @@ namespace TrainOP.Generators
     }
 
     /// <summary>
-    /// A return member that is not also an input wagon and should be loaded by member name.
+    /// A return member that is not also an input wagon and should be loaded by member name
+    /// or allocated as the next <c>ItemN</c> wagon.
     /// </summary>
     internal sealed class MergeExtraSlot
     {
-        public MergeExtraSlot(string returnMemberName)
+        public MergeExtraSlot(string returnMemberName, bool allocateItemWagon = false)
         {
             ReturnMemberName = returnMemberName;
+            AllocateItemWagon = allocateItemWagon;
         }
 
         public string ReturnMemberName { get; }
+
+        /// <summary>
+        /// When true, load via <see cref="TrainOP.ItemWagonNames.LoadNextItemWagon"/> after input unload.
+        /// </summary>
+        public bool AllocateItemWagon { get; }
     }
 }

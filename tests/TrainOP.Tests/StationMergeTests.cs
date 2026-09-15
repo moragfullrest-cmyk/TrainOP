@@ -51,10 +51,10 @@ namespace TrainOP.Tests
         }
 
         /// <summary>
-        /// Verifies that unnamed tuple returns merge by positional return member names (Item1, Item2).
+        /// Verifies that unnamed tuple returns allocate ItemN wagons after unloading omitted inputs.
         /// </summary>
         [Fact]
-        public void Apply_MergesUnnamedTuple_ByPositionalReturnMemberNames()
+        public void Apply_MergesUnnamedTuple_AllocatesItemNWagons()
         {
             var manifest = new CargoManifest()
                 .LoadWagon("paymentId", "pay-1")
@@ -67,12 +67,35 @@ namespace TrainOP.Tests
                 stationReturn,
                 new[] { "paymentId", "amount" },
                 removeOmittedRegularInputs: true,
-                returnMemberNames: new[] { "Item1", "Item2" });
+                returnMemberNames: new[] { "Item1", "Item2" },
+                allocateDefaultItemNElements: true);
 
-            Assert.Equal("pay-2", merged.PullWagon<string>("paymentId"));
-            Assert.Equal(90m, merged.PullWagon<decimal>("amount"));
-            Assert.False(merged.HasWagon("Item1"));
-            Assert.False(merged.HasWagon("Item2"));
+            Assert.Equal("pay-2", merged.PullWagon<string>("Item1"));
+            Assert.Equal(90m, merged.PullWagon<decimal>("Item2"));
+            Assert.False(merged.HasWagon("paymentId"));
+            Assert.False(merged.HasWagon("amount"));
+        }
+
+        /// <summary>
+        /// Verifies sequential unnamed tuples reuse Item1/Item2 after those keys were spent as inputs.
+        /// </summary>
+        [Fact]
+        public void Apply_ReusesItemN_AfterSpendingItemNInputs()
+        {
+            var manifest = new CargoManifest()
+                .LoadWagon("Item1", "pay-1")
+                .LoadWagon("Item2", 100m);
+
+            var merged = StationMerge.Apply(
+                manifest,
+                ("pay-1-x", 50m),
+                new[] { "Item1", "Item2" },
+                removeOmittedRegularInputs: true,
+                returnMemberNames: new[] { "Item1", "Item2" },
+                allocateDefaultItemNElements: true);
+
+            Assert.Equal("pay-1-x", merged.PullWagon<string>("Item1"));
+            Assert.Equal(50m, merged.PullWagon<decimal>("Item2"));
         }
 
         /// <summary>
@@ -181,10 +204,11 @@ namespace TrainOP.Tests
         }
 
         /// <summary>
-        /// Verifies positional ItemN tuple members are not left as extra wagons when return member names are omitted.
+        /// Verifies unnamed tuple elements become ItemN extras when return member names are omitted
+        /// (no positional map onto input wagon keys).
         /// </summary>
         [Fact]
-        public void Apply_DoesNotLeaveItemNExtras_WhenReturnMemberNamesAreNull()
+        public void Apply_LoadsItemNExtras_WhenReturnMemberNamesAreNull()
         {
             var manifest = new CargoManifest()
                 .LoadWagon("paymentId", "pay-1")
@@ -197,10 +221,10 @@ namespace TrainOP.Tests
                 removeOmittedRegularInputs: true,
                 returnMemberNames: null);
 
-            Assert.Equal("pay-2", merged.PullWagon<string>("paymentId"));
-            Assert.Equal(90m, merged.PullWagon<decimal>("amount"));
-            Assert.False(merged.HasWagon("Item1"));
-            Assert.False(merged.HasWagon("Item2"));
+            Assert.False(merged.HasWagon("paymentId"));
+            Assert.False(merged.HasWagon("amount"));
+            Assert.Equal("pay-2", merged.PullWagon<string>("Item1"));
+            Assert.Equal(90m, merged.PullWagon<decimal>("Item2"));
         }
 
         /// <summary>

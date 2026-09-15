@@ -123,6 +123,7 @@ namespace TrainOP.Generators
                 writer.AppendLine("var inputNames = binding.InputNames;");
                 writer.AppendLine("var returnMembers = binding.ReturnMembers;");
                 writer.AppendLine("var refFlags = binding.RefFlags;");
+                writer.AppendLine("var allocateDefaultItemN = binding.AllocateDefaultItemN;");
 
                 schema.EmitAdapterBody(writer, context);
             }
@@ -315,7 +316,9 @@ namespace TrainOP.Generators
                 context.WagonNamesExpression,
                 context.ReturnMembersExpression,
                 refFlagsField,
-                refLocalValues);
+                refLocalValues,
+                context.AllocateDefaultItemNExpression,
+                context.AllowTypedMerge);
         }
 
         private static void EmitStationReturnMerge(
@@ -324,9 +327,12 @@ namespace TrainOP.Generators
             string wagonNamesField,
             string returnMembersField,
             string refFlagsField,
-            string refLocalValuesExpression)
+            string refLocalValuesExpression,
+            string allocateDefaultItemNExpression,
+            bool allowTypedMerge)
         {
-            if (MergePlanBuilder.CanBuildStaticPlan(schema, returnMembersField))
+            if (allowTypedMerge
+                && MergePlanBuilder.CanBuildStaticPlan(schema, returnMembersField))
             {
                 var plan = MergePlanBuilder.Build(schema);
                 plan.EmitTypedMerge(
@@ -349,7 +355,8 @@ namespace TrainOP.Generators
                 schema,
                 returnMembersField,
                 refFlagsField,
-                refLocalValuesExpression);
+                refLocalValuesExpression,
+                allocateDefaultItemNExpression);
         }
 
         private static void EmitToSignalCall(
@@ -358,9 +365,11 @@ namespace TrainOP.Generators
             StationHandlerBinding schema,
             string returnMembersField,
             string refFlagsField,
-            string refLocalValuesExpression)
+            string refLocalValuesExpression,
+            string allocateDefaultItemNExpression)
         {
             const string stationLabelExpression = "stationName";
+            var allocateExpression = allocateDefaultItemNExpression ?? "false";
             if (schema.IsServiceStation)
             {
                 writer.AppendIndented("return StationMerge.ToServiceSignal(manifest, stationReturn, ")
@@ -373,6 +382,8 @@ namespace TrainOP.Generators
                     .Append(refFlagsField ?? "null")
                     .Append(", ")
                     .Append(refLocalValuesExpression ?? "null")
+                    .Append(", ")
+                    .Append(allocateExpression)
                     .Append(");");
                 writer.EndLine();
                 return;
@@ -393,12 +404,16 @@ namespace TrainOP.Generators
                     .Append(refFlagsField)
                     .Append(", ")
                     .Append(refLocalValuesExpression)
+                    .Append(", ")
+                    .Append(allocateExpression)
                     .Append(");");
                 writer.EndLine();
             }
             else
             {
-                writer.Append(");");
+                writer.Append(", ")
+                    .Append(allocateExpression)
+                    .Append(");");
                 writer.EndLine();
             }
         }

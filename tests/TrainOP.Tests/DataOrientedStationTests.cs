@@ -61,10 +61,10 @@ namespace TrainOP.Tests.DataOriented
         }
 
         /// <summary>
-        /// Verifies that a tuple return maps values to manifest wagons by parameter order.
+        /// Verifies that a named tuple return maps values to manifest wagons by member name.
         /// </summary>
         [Fact]
-        public void Station_ReturnsTuple_MapsByParameterOrder()
+        public void Station_ReturnsNamedTuple_MergesByName()
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { paymentId = "pay-tuple", amount = 4m })
@@ -78,10 +78,10 @@ namespace TrainOP.Tests.DataOriented
         }
 
         /// <summary>
-        /// Verifies that an unnamed tuple return maps values to manifest wagons by parameter order.
+        /// Verifies that an unnamed tuple return allocates ItemN wagons and unloads omitted inputs.
         /// </summary>
         [Fact]
-        public void Station_ReturnsUnnamedTuple_MapsByParameterOrder()
+        public void Station_ReturnsUnnamedTuple_AllocatesItemNWagons()
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { paymentId = "pay-tuple", amount = 4m })
@@ -90,8 +90,10 @@ namespace TrainOP.Tests.DataOriented
 
             var manifest = route.Travel().Manifest;
 
-            Assert.Equal("pay-tuple-tuple", manifest.PullWagon<string>("paymentId"));
-            Assert.Equal(6m, manifest.PullWagon<decimal>("amount"));
+            Assert.Equal("pay-tuple-tuple", manifest.PullWagon<string>("Item1"));
+            Assert.Equal(6m, manifest.PullWagon<decimal>("Item2"));
+            Assert.False(manifest.HasWagon("paymentId"));
+            Assert.False(manifest.HasWagon("amount"));
         }
 
         /// <summary>

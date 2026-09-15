@@ -8,8 +8,8 @@
     <PackageId>TrainOP</PackageId>
     <Version>0.13.0</Version>
     <Authors>Criperum</Authors>
-    <Description>Railway Oriented Programming для .NET</Description>
-    <PackageTags>railway;rop;functional;source-generator</PackageTags>
+    <Description>Railway Oriented Programming для .NET (runtime + source generators / analyzer)</Description>
+    <PackageTags>railway;rop;functional;source-generator;analyzer;roslyn</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/moragfullrest-cmyk/TrainOP.git</RepositoryUrl>
@@ -22,6 +22,20 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\TrainOP.Generators\TrainOP.Generators.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\TrainOP.Generators\bin\$(Configuration)\netstandard2.0\TrainOP.Generators.dll"
+          Pack="true"
+          PackagePath="analyzers/dotnet/cs"
+          Visible="false" />
+    <None Include="..\TrainOP.Generators\build\TrainOP.Generators.targets"
+          Pack="true"
+          PackagePath="build\TrainOP.targets"
+          Visible="false" />
   </ItemGroup>
 </Project>

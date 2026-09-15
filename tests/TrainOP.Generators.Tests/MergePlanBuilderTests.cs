@@ -12,21 +12,40 @@ namespace TrainOP.Generators.Tests
     public sealed class MergePlanBuilderTests
     {
         /// <summary>
-        /// Verifies that default ItemN tuple returns map input wagons by positional return member names.
+        /// Verifies that default ItemN tuple returns allocate extras instead of mapping onto inputs.
         /// </summary>
         [Fact]
-        public void Build_MapsDefaultItemNTuple_ByPositionalReturnMemberNames()
+        public void Build_AllocatesDefaultItemNTuple_AsExtraSlots()
         {
             var plan = MergePlanBuilder.Build(Binding(
                 new[] { "paymentId", "amount" },
                 TupleShape(hasDefaultItemN: true, "Item1", "Item2")));
 
             Assert.Equal(2, plan.InputSlots.Length);
-            Assert.Equal("Item1", plan.InputSlots[0].ReturnMemberName);
-            Assert.Equal("paymentId", plan.InputSlots[0].WagonName);
-            Assert.Equal("Item2", plan.InputSlots[1].ReturnMemberName);
-            Assert.Equal("amount", plan.InputSlots[1].WagonName);
-            Assert.Empty(plan.ExtraSlots);
+            Assert.Null(plan.InputSlots[0].ReturnMemberName);
+            Assert.Null(plan.InputSlots[1].ReturnMemberName);
+            Assert.Equal(2, plan.ExtraSlots.Length);
+            Assert.Equal("Item1", plan.ExtraSlots[0].ReturnMemberName);
+            Assert.True(plan.ExtraSlots[0].AllocateItemWagon);
+            Assert.Equal("Item2", plan.ExtraSlots[1].ReturnMemberName);
+            Assert.True(plan.ExtraSlots[1].AllocateItemWagon);
+        }
+
+        /// <summary>
+        /// Verifies default ItemN returns still allocate extras when inputs are also named Item1/Item2.
+        /// </summary>
+        [Fact]
+        public void Build_AllocatesDefaultItemN_WhenInputsAreAlsoItemN()
+        {
+            var plan = MergePlanBuilder.Build(Binding(
+                new[] { "Item1", "Item2" },
+                TupleShape(hasDefaultItemN: true, "Item1", "Item2")));
+
+            Assert.Null(plan.InputSlots[0].ReturnMemberName);
+            Assert.Null(plan.InputSlots[1].ReturnMemberName);
+            Assert.Equal(2, plan.ExtraSlots.Length);
+            Assert.True(plan.ExtraSlots[0].AllocateItemWagon);
+            Assert.True(plan.ExtraSlots[1].AllocateItemWagon);
         }
 
         /// <summary>

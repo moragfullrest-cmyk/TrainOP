@@ -157,9 +157,9 @@ PoC: `tests/TrainOP.RouteLib.Tests/`, `tests/TrainOP.RouteConsumer.Tests/`.
 
 ### 3.4. Маппинг возврата
 
-**Рекомендуется:** анонимные типы, records, **именованные кортежи** `(name: value, …)`, `RailwaySignals.Green` / `Red` / `White` — merge по **именам** полей.
+**Рекомендуется:** анонимные типы, records, **именованные кортежи** `(name: value, …)`, `RailwaySignals.Green` / `Red` / `White` — merge по **именам** полей. Неименованные кортежи по возможности избегайте: счёт `ItemN` трудно держать в голове, особенно когда маршрут собирается по частям.
 
-**Избегать:** выражения без имён, дающие default `ItemN` — `(expr1, expr2)`. Они поддерживаются, но merge идёт по ordinal = порядок wagon-параметров handler'а. Analyzer предупреждает на tuple literal: **TOP006** (default ItemN). Имена из inference `(paymentId, amount)` и явные `(Item1: x)` предупреждением не считаются.
+**Default ItemN** — выражения без имён `(expr1, expr2)`: после unload omitted входов элементы аллоцируются как новые вагоны `ItemN` (`max` существующих `Item*` + 1). Analyzer: **TOP006**. Имена из inference `(paymentId, amount)` и явные `(Item1: x)` предупреждением не считаются.
 
 Остальные допустимые возвраты из §3.1 — OK.
 
@@ -311,13 +311,15 @@ public class RouteHost
 
 Одна CLR-сигнатура handler'а `(T1, T2, …)` → одна публичная `Station(...)`. Имена вагонов на разных call site могут отличаться (`paymentId`/`amount` vs `orderId`/`total`). Без site-specific identity overload берёт канонические имена группы → **TOP007** или неверные ключи манифеста.
 
+Та же CLR-сигнатура возникает у value-tuple возвратов с разными именами элементов: named/inferred `(paymentId, amount)` vs default ItemN `(expr1, expr2)`. Имена элементов не входят в тип Func, поэтому call site различаются только через chain-dispatch (`ReturnMembers` / `AllocateDefaultItemN`); typed merge от канонического binding в этом случае не эмитится.
+
 #### 4.3.2. Решение
 
 Identity переносится на **origin маршрута** и порядковый номер станции:
 
 1. `new TrainRoute()` штампует `CallerChainKey` через `[CallerFilePath]` / `[CallerLineNumber]` / `[CallerMemberName]`.
 2. Каждая generated `.Station` передаёт `route.CallerChainKey` и `route.NextChainRegistrationOrdinal()` в `ResolveChainBinding_*`.
-3. Lookup возвращает compile-time `inputNames` / `returnMembers` / `refFlags` для конкретной станции цепочки.
+3. Lookup возвращает compile-time `inputNames` / `returnMembers` / `refFlags` / `AllocateDefaultItemN` для конкретной станции цепочки.
 
 Roslyn interceptors на `.Station` и runtime reflection по `ParameterInfo` **не используются**.
 
@@ -350,10 +352,10 @@ Generator вычисляет тот же ключ из `ObjectCreationExpression
 
 ```mermaid
 flowchart TD
-  New["new TrainRoute()\nCaller* → ChainKey"] --> Route["TrainRoute\nChainKey + _route"]
+  New["new TrainRoute()<br/>Caller* → ChainKey"] --> Route["TrainRoute<br/>ChainKey + _route"]
   Sta[".Station(name, handler)"] --> Idx["stationIndex = NextChainRegistrationOrdinal()"]
   Idx --> Lookup["ResolveChainBinding_*(ChainKey, index)"]
-  Lookup --> Reg["RegisterStation\nadapter с inputNames"]
+  Lookup --> Reg["RegisterStation<br/>adapter с inputNames"]
   Reg --> Route
   TravelNode["Travel()"] --> Report["RouteReport"]
 ```

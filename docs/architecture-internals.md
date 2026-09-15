@@ -12,9 +12,9 @@
 
 ```mermaid
 flowchart LR
-  A["Исходник\n.Station(...)"] --> B["Generator\nсхема handler"]
-  B --> C["Extensions.g.cs\ncaller dispatch"]
-  C --> D["RegisterStation\nадаптер"]
+  A["Исходник<br/>.Station(...)"] --> B["Generator<br/>схема handler"]
+  B --> C["Extensions.g.cs<br/>caller dispatch"]
+  C --> D["RegisterStation<br/>адаптер"]
   D --> E["TrainRoute.Travel"]
   E --> F["RouteReport"]
 ```
@@ -64,11 +64,11 @@ var amount = report.Get<decimal>("amount");
 
 ```mermaid
 flowchart LR
-  S["SyntaxProvider\nRouteSiteDiscoverer"] --> R["RouteSite\nHandlerBinding + Receiver"]
+  S["SyntaxProvider<br/>RouteSiteDiscoverer"] --> R["RouteSite<br/>HandlerBinding + Receiver"]
   R --> A["RouteGraphAssembler"]
-  A --> G["RouteGraph\nChains + ChainIndex"]
-  G --> TSG["TypeSignatureGroup\nгруппировка сигнатур"]
-  TSG --> RSO["RegisterSourceOutput\nEmitExtensions"]
+  A --> G["RouteGraph<br/>Chains + ChainIndex"]
+  G --> TSG["TypeSignatureGroup<br/>группировка сигнатур"]
+  TSG --> RSO["RegisterSourceOutput<br/>EmitExtensions"]
   RSO --> E["Extensions.g.cs"]
 ```
 
@@ -129,7 +129,7 @@ SyntaxProvider работает в **две фазы**: дешёвый syntactic
 
 ```mermaid
 flowchart TB
-  Node["SyntaxNode"] --> Pred{"station | anchor\npredicate"}
+  Node["SyntaxNode"] --> Pred{"station | anchor<br/>predicate"}
   Pred -->|false| Skip["узел игнорируется"]
   Pred -->|true| RSD["RouteSiteDiscoverer"]
   RSD -->|ok| Out["RouteSite"]
@@ -209,7 +209,7 @@ Handler schema строится **один раз** в discovery; `ChainDetector
 
 ```mermaid
 flowchart TB
-  In["RegisterSourceOutput\n(compilation + RouteSite[])"] --> Schema["RouteSchemaExporter.Emit"]
+  In["RegisterSourceOutput<br/>(compilation + RouteSite[])"] --> Schema["RouteSchemaExporter.Emit"]
   Schema --> Graph["RouteGraphAssembler.Build"]
   Graph --> Groups["Dictionary groupingKey → TypeSignatureGroup"]
   Groups --> AddCall["AddDiscoveredCall per station + chain-only sites"]
@@ -258,11 +258,12 @@ var mergedSchemas = groups.Values
 2. Объединяет return shapes → `ReturnMembers` для compile-time merge.
 3. Решает, нужен ли **chain dispatch** (`RequiresChainDispatch`):
    - есть chain bindings **и**
-   - в группе **больше одного набора имён вагонов** при одной type-сигнатуре.
+   - в группе **больше одного набора имён вагонов** при одной type-сигнатуре,
+     **или** return shapes требуют per-site metadata (`RequiresPerSiteReturnMetadata` — например named tuple vs default ItemN). Anonymous / `object` shapes с разными членами **не** считаются: их `ReturnMembers` консолидируются в один список.
 4. Если chain dispatch → `merged.SetChainBindings(_chainBindings)` + `ReportNonChainConflicts` (TOP007 для orphan call site'ов вне цепочки с конфликтующими именами).
 5. Если не chain dispatch → `ReportCanonicalConflicts` (TOP007, когда два non-chain call site с одной сигнатурой, но разными именами параметров).
 
-`UsesChainDispatch` на `MergedStationSchema` дополнительно требует `!IsServiceStation` — service station не участвует в caller dispatch таблицах.
+`UsesChainDispatch` на `MergedStationSchema` дополнительно требует `!IsServiceStation` — service station не участвует в caller dispatch таблицах. При non-mergeable return shapes typed merge от канонического binding отключается: адаптер зовёт `StationMerge.ToSignal` с per-site `ReturnMembers` / `AllocateDefaultItemN`.
 
 #### Шаг 6. EmitExtensions — эмиссия одного .g.cs
 
@@ -329,7 +330,7 @@ SyntaxProvider даёт инкрементальность на уровне **t
 
 ```mermaid
 flowchart LR
-  SP["SyntaxProvider\nRouteSite[]"] --> CB["RegisterSourceOutput"]
+  SP["SyntaxProvider<br/>RouteSite[]"] --> CB["RegisterSourceOutput"]
   CP["CompilationProvider"] --> CB
   CB --> RGA["RouteGraphAssembler"]
   CB --> TSG["TypeSignatureGroup"]
@@ -355,6 +356,8 @@ Analyzer (`ChainValidationAnalyzer`) использует те же `RouteSiteDi
 - method group / local function, объявленные в этом проекте
 
 Не поддерживаются: переменные/`Func<>` без dataflow, неоднозначные перегрузки, методы только из referenced DLL без исходников — analyzer сообщает **TOP009**.
+
+**Почему `Func<>` нельзя.** Source generator читает схему станции (имена параметров-вагонов, `ref`, форму возврата) только из лямбды, anonymous method или однозначного method group / local function в текущей compilation. Ссылка на `Func<>` — непрозрачный делегат без этих метаданных; dataflow к инициализатору не выполняется. У `Func<T1,T2,TResult>` нет ваших имён вагонов, а значение можно переназначить — compile-time схема маршрута перестала бы быть детерминированной.
 
 ### Валидные формы сборки цепочки
 
@@ -386,22 +389,22 @@ var route = PaymentModule.Build()
 
 ## 3. Работа анализатора
 
-Генератор **эмитит** код. Анализатор **не эмитит** ничего: он только ходит по синтаксису/семантике и репортит диагностики в IDE / `dotnet build`. Оба живут в пакете `TrainOP.Generators`, но это разные механизмы Roslyn.
+Генератор **эмитит** код. Анализатор **не эмитит** ничего: он только ходит по синтаксису/семантике и репортит диагностики в IDE / `dotnet build`. Оба живут в проекте `TrainOP.Generators` и поставляются внутри NuGet-пакета `TrainOP`, но это разные механизмы Roslyn.
 
 Точка входа: `ChainValidationAnalyzer` (`[DiagnosticAnalyzer(LanguageNames.CSharp)]`).
 
 ```mermaid
 flowchart TB
-  Start["CompilationStart\nRouteGraph built once"] --> PerTree["SemanticModelAction per tree"]
+  Start["CompilationStart<br/>RouteGraph built once"] --> PerTree["SemanticModelAction per tree"]
   PerTree --> Skip["Пропуск *.g.cs"]
   Skip --> Chains["RouteGraph.GetChainsInTree"]
-  Chains --> FactoryRes["RouteFactoryResolver\nесли anchor = factory"]
+  Chains --> FactoryRes["RouteFactoryResolver<br/>если anchor = factory"]
   Chains --> Sim["ChainGraphSimulator"]
-  PerTree --> Factories["RouteFactoryPathValidator\npublic/exported factories"]
-  PerTree --> Joins["BranchRouteJoinSetFinder\n+ BranchRouteJoinValidator"]
-  Joins --> Downstream["RouteGraph.TryGetChainForInvocation\n+ Simulate merged terminal"]
-  PerTree --> Orphans["RouteGraph.IsChainedInvocation\nTOP005"]
-  PerTree --> Unsupported["Unsupported handler form\nTOP009"]
+  PerTree --> Factories["RouteFactoryPathValidator<br/>public/exported factories"]
+  PerTree --> Joins["BranchRouteJoinSetFinder<br/>+ BranchRouteJoinValidator"]
+  Joins --> Downstream["RouteGraph.TryGetChainForInvocation<br/>+ Simulate merged terminal"]
+  PerTree --> Orphans["RouteGraph.IsChainedInvocation<br/>TOP005"]
+  PerTree --> Unsupported["Unsupported handler form<br/>TOP009"]
 ```
 
 ### Что делает за один проход syntax tree
@@ -433,7 +436,7 @@ flowchart TB
 3. Если вагон был Removed, а снова нужен — **TOP003**.
 4. Учитывает return: добавляет/обновляет вагоны, снимает обычные входы, которых нет в возврате (как при записи возврата во время выполнения).
 5. `return CargoManifest` → **TOP004** (warning).
-6. Tuple без имён → **TOP006**.
+6. Tuple без имён → **TOP006** (новые `ItemN` после unload, не позиционный map во входы).
 7. `GreenSignal`/`RedSignal` вместо DSL → **TOP010**.
 
 После симуляции известен **terminal** набор вагонов — его же используют factory schema export и join веток.
@@ -495,16 +498,16 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  Call["Ваш .Station(...)\ncall site"] --> Key["route.CallerChainKey\n+ chainStationIndex"]
+  Call["Ваш .Station(...)<br/>call site"] --> Key["route.CallerChainKey<br/>+ chainStationIndex"]
   Key --> Resolve["ResolveChainBinding_*"]
-  Resolve --> Core["StationCore_*\n+ ChainBinding"]
-  Core --> Reg["RegisterStation\nruntime adapter"]
+  Resolve --> Core["StationCore_*<br/>+ ChainBinding"]
+  Core --> Reg["RegisterStation<br/>runtime adapter"]
 ```
 
 | Ситуация | Поведение |
 |----------|-----------|
-| Без caller dispatch | Одна overload на `(string, decimal)`. Имена вагонов канонические для группы — два call site с разными именами параметров смешиваются. |
-| С caller dispatch | На `new TrainRoute()` штампуется `CallerChainKey`. Каждая `.Station` передаёт key + ordinal в `ResolveChainBinding_*` и получает compile-time `inputNames` / `returnMembers` для своей цепочки. |
+| Без caller dispatch | Одна overload на `(string, decimal)`. Имена вагонов канонические для группы — два call site с разными именами параметров смешиваются. То же для named vs default-ItemN tuple return при одной CLR Func. |
+| С caller dispatch | На `new TrainRoute()` штампуется `CallerChainKey`. Каждая `.Station` передаёт key + ordinal в `ResolveChainBinding_*` и получает compile-time `inputNames` / `returnMembers` / `AllocateDefaultItemN` для своей цепочки. |
 
 ### Упрощённый вид сгенерированного chain-dispatch
 
@@ -542,10 +545,10 @@ internal static TrainRoute StationCore_Abc(..., ChainStationBinding_Abc binding)
 
 ```mermaid
 flowchart LR
-  Seed["Seed\nзагрузка вагонов"] --> Adapter["Adapter\nPullWagon + handler"]
-  Adapter --> Merge["StationMerge\nданные → Signal"]
-  Merge --> Travel["TrainRoute.Travel\nпо плану станций"]
-  Travel --> Report["RouteReport\nсигнал + Manifest"]
+  Seed["Seed<br/>загрузка вагонов"] --> Adapter["Adapter<br/>PullWagon + handler"]
+  Adapter --> Merge["StationMerge<br/>данные → Signal"]
+  Merge --> Travel["TrainRoute.Travel<br/>по плану станций"]
+  Travel --> Report["RouteReport<br/>сигнал + Manifest"]
 ```
 
 | Шаг | Что происходит |
@@ -616,7 +619,7 @@ Handler обычно не трогает манифест руками. Он в�
 
 ### Value tuple
 
-Рекомендуются именованные кортежи или inference:
+Рекомендуются именованные кортежи или inference. Default ItemN (**TOP006**) не маппится во входы: после unload omitted входов элементы аллоцируются как новые `ItemN` (`max` + 1). Неименованные формы по возможности избегайте — счёт уже живых `ItemN` трудно отследить, особенно при сборке маршрута по частям.
 
 ```csharp
 // OK — явное имя
@@ -627,7 +630,7 @@ Handler обычно не трогает манифест руками. Он в�
 .Station("Discount", (string paymentId, decimal amount) =>
     (paymentId, amount));
 
-// Warning TOP006 — default ItemN
+// Warning TOP006 — новые вагоны Item1/Item2 (входы paymentId/amount сняты)
 .Station("Discount", (string paymentId, decimal amount) =>
     (paymentId + "-disc", amount * 0.9m));
 ```
@@ -704,8 +707,8 @@ Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 
 | Путь | Назначение |
 |------|------------|
-| `src/TrainOP` | Runtime: `TrainRouteRuntime.cs`, `StationMerge`, `StationAdapter` |
-| `src/TrainOP.Generators` | Generator + analyzer |
+| `src/TrainOP` | Runtime + единственный NuGet-пакет |
+| `src/TrainOP.Generators` | Generator + analyzer (упаковывается в `TrainOP`) |
 | `samples/TrainOP.Samples` | Консольные сценарии |
 | `tests/` | Runtime + generator + cross-assembly |
 | `docs/` | Руководства пользователя и этот документ |

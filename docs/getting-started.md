@@ -4,11 +4,10 @@
 
 ### NuGet (рекомендуется для внешних проектов)
 
-Установите оба пакета — библиотеку и генератор:
+Установите пакет **TrainOP** (runtime + generator в одном `.nupkg`):
 
 ```bash
 dotnet add package TrainOP
-dotnet add package TrainOP.Generators
 ```
 
 или в `.csproj`:
@@ -16,7 +15,6 @@ dotnet add package TrainOP.Generators
 ```xml
 <ItemGroup>
   <PackageReference Include="TrainOP" Version="0.13.0" />
-  <PackageReference Include="TrainOP.Generators" Version="0.13.0" />
 </ItemGroup>
 ```
 
@@ -42,7 +40,7 @@ dotnet add package TrainOP.Generators
 
 - Совместимость с пакетом TrainOP: `netstandard2.0`
 - SDK-style проект с поддержкой analyzers/source generators (для chain-dispatch по умолчанию `caller` дополнительных SDK-порогов не требуется)
-- При ProjectReference — `<Import>` файла `TrainOP.Generators.targets` (см. [nuget.md](nuget.md))
+- При ProjectReference — явная ссылка на `TrainOP.Generators` + `<Import>` `.targets` (в NuGet-пакете analyzer уже внутри `TrainOP`)
 
 ## Минимальный пример
 

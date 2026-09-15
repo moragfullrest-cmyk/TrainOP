@@ -4,37 +4,37 @@ TrainOP — библиотека Railway Oriented Programming (ROP) для .NET 
 
 **Рекомендуемый стиль:** обработчики `.Station` над данными — обычные функции; `CargoManifest` скрыт в сгенерированном адаптере.
 
-**С чего начать чтение:** связанный учебник — [textbook.md](textbook.md). Его можно читать последовательно: метафора, первый маршрут, поток данных и сигналы, техобслуживание, async, композиция, compile-time/runtime, cross-assembly. Остальные файлы — справочник и углубление.
+**С чего начать:** исчерпывающий учебник — [textbook.md](textbook.md). Его можно читать последовательно от метафоры до ограничений и карты репозитория. Остальные файлы — краткие выдержки, планы разработки и чеклист релиза.
 
 ## Содержание
 
 | Раздел | Описание |
 |--------|----------|
-| [Учебник](textbook.md) | Связный текст: принципы, использование, внутреннее устройство |
-| [Установка через NuGet](nuget.md) | Пакеты, CLI, локальный feed, отличия от ProjectReference |
-| [Начало работы](getting-started.md) | Подключение проекта, пример над данными |
-| [Основной API](core-api.md) | `CargoManifest`, `TrainRoute`, сигналы, `RailwaySignals.Green`/`Red`, async, `ref` |
-| [Архитектура: generator, analyzer, caller, runtime](architecture-internals.md) | Как устроено внутри: пайплайн генератора, анализатор цепочек, Travel, запись возврата в манифест, TOP* |
-| [Cross-assembly routes](cross-assembly-routes.md) | Route library + consumer extension, exported schema |
-| [Сравнение объёма кода](code-volume-comparison.md) | Manual vs TrainOP (токены, ошибки, recovery) |
+| [Учебник](textbook.md) | Полное руководство: использование, API, generator/analyzer/runtime, cross-assembly, TOP*, perf, ограничения |
+| [Установка через NuGet](nuget.md) | Единый пакет `TrainOP` (runtime + analyzer) / feed |
+
+| [Начало работы](getting-started.md) | Минимальный quick start |
+| [Основной API](core-api.md) | Компактные таблицы API |
+| [Архитектура](architecture-internals.md) | Углублённый Roslyn-разбор для контрибьюторов |
+| [Cross-assembly routes](cross-assembly-routes.md) | Краткая карточка library + consumer |
+| [Сравнение объёма кода](code-volume-comparison.md) | Manual vs TrainOP |
 | [Benchmarks](../benchmarks/README.md) | Library vs manual |
-| [План: data-oriented handlers](plan-data-oriented-handlers.md) | Roadmap: фазы 0–8 выполнены; отложены якоря параметр/поле/свойство/делегат; снят typed Travel |
-| [План: производительность Travel](plan-performance.md) | Roadmap: P0–P3 + P4a done; P5 typed bags reverted; P4 TravelLight pending |
+| [План: data-oriented handlers](plan-data-oriented-handlers.md) | Roadmap: фазы 0–8 выполнены; отложены якоря параметр/поле/свойство/делегат |
+| [План: производительность Travel](plan-performance.md) | Roadmap: P0–P3 + P4a done; P5 reverted; P4 pending |
+| [Готовность к релизу](release-readiness.md) | Чеклист Preview / 1.0 |
 
 ## Структура решения
 
 ```
 TrainOP.sln
-├── src/TrainOP              — основная библиотека (netstandard2.0)
-├── src/TrainOP.Generators   — source generators + chain analyzer
+├── src/TrainOP              — runtime + единственный NuGet-пакет (netstandard2.0)
+├── src/TrainOP.Generators   — source generators + chain analyzer (упаковываются в TrainOP)
 ├── samples/TrainOP.Samples  — консольные примеры
 ├── benchmarks/              — BenchmarkDotNet: library vs manual
 └── tests/                   — модульные тесты (xUnit)
 ```
 
 Сквозной reference-маршрут: `tests/TrainOP.Tests/DataOrientedPaymentRouteEndToEndTests.cs`.
-
-Бенчмарки chain-dispatch: [`benchmarks/README.md`](../benchmarks/README.md).
 
 ## Ключевые типы
 

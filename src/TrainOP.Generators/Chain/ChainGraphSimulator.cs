@@ -345,18 +345,32 @@ namespace TrainOP.Generators
 
             foreach (var extra in plan.ExtraSlots)
             {
+                if (extra.AllocateItemWagon)
+                {
+                    var location = membersByName.TryGetValue(extra.ReturnMemberName, out var allocMember)
+                        ? allocMember.Location
+                        : station.HandlerLocation;
+
+                    state.Diagnostics.Add(Diagnostic.Create(
+                        TrainRouteDiagnostics.ServiceStationAddsWagon,
+                        location ?? station.HandlerLocation,
+                        station.StationName,
+                        extra.ReturnMemberName));
+                    continue;
+                }
+
                 if (state.Live.ContainsKey(extra.ReturnMemberName))
                 {
                     continue;
                 }
 
-                var location = membersByName.TryGetValue(extra.ReturnMemberName, out var member)
+                var locationNamed = membersByName.TryGetValue(extra.ReturnMemberName, out var member)
                     ? member.Location
                     : station.HandlerLocation;
 
                 state.Diagnostics.Add(Diagnostic.Create(
                     TrainRouteDiagnostics.ServiceStationAddsWagon,
-                    location ?? station.HandlerLocation,
+                    locationNamed ?? station.HandlerLocation,
                     station.StationName,
                     extra.ReturnMemberName));
             }
@@ -414,8 +428,8 @@ namespace TrainOP.Generators
 
         /// <summary>
         /// Applies a station handler return shape to the live and removed wagon state.
-        /// Value-tuple ItemN members unroll into input wagon keys via <see cref="MergePlanBuilder"/>
-        /// (parity with runtime merge); named tuple / anonymous members keep their names when they match.
+        /// Default ItemN members allocate new ItemN keys after omitted inputs are unloaded
+        /// (parity with <see cref="TrainOP.StationMerge"/> / <see cref="MergePlanBuilder"/>).
         /// </summary>
         private static void ApplyReturn(
             StationChainLink station,
@@ -445,11 +459,6 @@ namespace TrainOP.Generators
                 }
             }
 
-            foreach (var extra in plan.ExtraSlots)
-            {
-                returnedNames.Add(extra.ReturnMemberName);
-            }
-
             foreach (var input in handler.InputWagons)
             {
                 if (!returnedNames.Contains(input.Name))
@@ -461,6 +470,7 @@ namespace TrainOP.Generators
 
                     live.Remove(input.Name);
                     removed[input.Name] = new RemovedWagon(station.StationName);
+                    liveOrder.Remove(input.Name);
                 }
             }
 
@@ -489,14 +499,38 @@ namespace TrainOP.Generators
                     continue;
                 }
 
-                if (!live.ContainsKey(member.Name))
+                var wagonName = extra.AllocateItemWagon
+                    ? AllocateNextItemWagonName(live)
+                    : member.Name;
+
+                var binding = WithLiveWagonName(member, wagonName);
+                if (!live.ContainsKey(wagonName))
                 {
-                    liveOrder.Add(member.Name);
+                    liveOrder.Add(wagonName);
                 }
 
-                live[member.Name] = new LiveWagon(member, station.StationName);
-                removed.Remove(member.Name);
+                live[wagonName] = new LiveWagon(binding, station.StationName);
+                removed.Remove(wagonName);
             }
+        }
+
+        /// <summary>
+        /// Allocates the next free <c>ItemN</c> name from the live set (max index + 1).
+        /// </summary>
+        private static string AllocateNextItemWagonName(Dictionary<string, LiveWagon> live)
+        {
+            var max = 0;
+            foreach (var key in live.Keys)
+            {
+                if (key.StartsWith("Item", StringComparison.Ordinal)
+                    && int.TryParse(key.Substring(4), out var index)
+                    && index > max)
+                {
+                    max = index;
+                }
+            }
+
+            return "Item" + (max + 1);
         }
 
         /// <summary>

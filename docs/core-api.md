@@ -46,6 +46,8 @@ var route = new TrainRoute()
 
 Не поддерживаются: переменные/`Func<>` без dataflow, неоднозначные перегрузки, методы только из referenced DLL без исходников — analyzer сообщает **TOP009**.
 
+**Почему `Func<>` нельзя.** Source generator читает схему станции (имена параметров-вагонов, `ref`, форму возврата) только из лямбды, anonymous method или однозначного method group / local function в текущей compilation. Ссылка на `Func<>` — непрозрачный делегат без этих метаданных; dataflow к инициализатору не выполняется. У `Func<T1,T2,TResult>` нет ваших имён вагонов, а значение можно переназначить — compile-time схема маршрута перестала бы быть детерминированной.
+
 **Валидные формы сборки цепочки** (analyzer / chain-dispatch):
 
 ```csharp
@@ -204,12 +206,14 @@ TrainOP считает вагоном по ссылке только `ref`. Па
 
 **Рекомендуется:** именованные кортежи — `(paymentId: id, amount: amt)` — или идентификаторы с inference — `(paymentId, amount)`.
 
+**Почему избегать unnamed.** Неименованные кортежи аллоцируют `ItemN` по `max` живых `Item*` + 1; при разнесённой сборке маршрута (части в разных местах / сборках) легко потерять счёт, сколько и каких `ItemN` уже есть. Предпочитайте именованные формы, анонимные типы или records.
+
 **Избегать default ItemN** (нет имени в исходнике и inference не сработал):
 
-| Форма | Диагностика | Риск |
-|-------|-------------|------|
-| `(paymentId + "-x", amount * 0.9m)` | **TOP006** (Warning, на tuple literal) | Элементы = `Item1`/`Item2`; mapping позиционный и хрупок при перестановке |
-| `(Item1: x, Item2: y)` | нет | Имена заданы явно (даже если это ItemN) |
+| Форма | Диагностика | Поведение |
+|-------|-------------|-----------|
+| `(paymentId + "-x", amount * 0.9m)` | **TOP006** (Warning, на tuple literal) | Omitted входы снимаются; элементы аллоцируются как новые `ItemN` (`max` существующих `Item*` + 1) |
+| `(Item1: x, Item2: y)` | нет | Имена заданы явно (ключ манифеста = `ItemN`) |
 | `(paymentId, amount)` | нет | Имена выведены из идентификаторов |
 | `(paymentId, amount: amt)` | нет | Inference + явное имя |
 
@@ -222,10 +226,12 @@ TrainOP считает вагоном по ссылке только `ref`. Па
 .Station("Discount", (string paymentId, decimal amount) =>
     (paymentId, amount));
 
-// ⚠️ TOP006 — default ItemN
+// ⚠️ TOP006 — default ItemN → новые вагоны Item1/Item2
 .Station("Discount", (string paymentId, decimal amount) =>
     (paymentId + "-disc", amount * 0.9m));
 ```
+
+**Как обращаться после default ItemN.** Читайте аллоцированные ключи: `report.Get<string>("Item1")` / следующая станция `(string Item1, decimal Item2)`. Входы, которых нет в возврате по имени, уже сняты. Если `Item*` остались живы, следующий unnamed кортеж продолжит нумерацию (`Item3`…). Паттерн «создал → сразу потратил» на соседних станциях снова даёт `Item1`/`Item2` после unload. На `ServiceStation` добавление `ItemN` — **TOP015**.
 
 `RailwaySignals.White` оставляет манифест как был: следующая станция получит тот же состав, что и до вызова handler'а. Изменения `ref`-параметров в теле handler'а при `White` **не сохраняются**. Чтобы записать новые значения `ref`-вагонов в манифест, используйте void (без `return`) или явный частичный возврат (`new { }`, подмножество полей).
 
@@ -451,7 +457,7 @@ await route.TravelAsync(cts.Token);
 | `TOP003` | Error | Вагон удалён частичным возвратом, но нужен дальше |
 | `TOP004` | Warning | Handler вернул `CargoManifest` — полная замена манифеста |
 | `TOP005` | Error | Data-handler вне легитимного якоря `TrainRoute` |
-| `TOP006` | Warning | Value tuple с default ItemN (нет явного имени и нет inference) |
+| `TOP006` | Warning | Value tuple с default ItemN → новые вагоны ItemN после unload omitted входов |
 | `TOP007` | Error | Конфликт имён вагонов для одной сигнатуры handler'а (вне цепочки; внутри цепочки — разведение по месту вызова) |
 | `TOP008` | Error | Нельзя соединить ветки маршрута перед downstream Station |
 | `TOP009` | Error | Handler не лямбда / anonymous / однозначный method group |

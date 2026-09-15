@@ -124,6 +124,42 @@ namespace TrainOP
         }
 
         /// <summary>
+        /// Tries to read a member by name, then — for value tuples only — by ordinal in
+        /// <paramref name="orderedMemberNames"/> (compile-time element names are erased on boxed tuples).
+        /// </summary>
+        public static bool TryGetMemberValue(
+            object source,
+            string memberName,
+            string[] orderedMemberNames,
+            out object value)
+        {
+            if (TryGetMemberValue(source, memberName, out value))
+            {
+                return true;
+            }
+
+            if (source == null
+                || orderedMemberNames == null
+                || string.IsNullOrWhiteSpace(memberName)
+                || !IsValueTuple(source))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < orderedMemberNames.Length; i++)
+            {
+                if (!string.Equals(orderedMemberNames[i], memberName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                return TryGetTupleElement(source, i, out value);
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Tries to read a value tuple element by field or tuple element name.
         /// </summary>
         private static bool TryGetValueTupleElementByName(

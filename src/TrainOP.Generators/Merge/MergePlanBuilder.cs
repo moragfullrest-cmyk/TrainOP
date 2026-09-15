@@ -27,6 +27,7 @@ namespace TrainOP.Generators
 
         /// <summary>
         /// Builds a compile-time merge plan for a handler with a known return shape.
+        /// Default ItemN tuple elements become allocated extras (not positional input maps).
         /// </summary>
         public static MergePlan Build(StationHandlerBinding schema)
         {
@@ -37,8 +38,7 @@ namespace TrainOP.Generators
 
             var wagons = schema.Wagons;
             var members = schema.ReturnShape.Members;
-            var returnMemberNames = schema.Output.ReturnMemberNames;
-            var isValueTuple = schema.ReturnShape.IsValueTuple;
+            var allocateDefaultItemN = schema.ReturnShape.HasDefaultItemNTupleElements;
 
             var memberByName = new Dictionary<string, WagonBinding>(StringComparer.Ordinal);
             for (var i = 0; i < members.Length; i++)
@@ -57,16 +57,14 @@ namespace TrainOP.Generators
             for (var i = 0; i < wagons.Length; i++)
             {
                 var wagon = wagons[i];
-                var returnMemberName = ResolveReturnMemberName(
-                    wagon.Name,
-                    i,
-                    isValueTuple,
-                    returnMemberNames,
-                    memberByName,
-                    members.Length);
-
-                if (returnMemberName != null)
+                string returnMemberName = null;
+                if (memberByName.ContainsKey(wagon.Name)
+                    && !ShouldAllocateDefaultItemMember(
+                        allocateDefaultItemN,
+                        wagon.Name,
+                        IndexOfMember(members, wagon.Name)))
                 {
+                    returnMemberName = wagon.Name;
                     consumedReturnMembers.Add(returnMemberName);
                 }
 
@@ -81,51 +79,52 @@ namespace TrainOP.Generators
             for (var i = 0; i < members.Length; i++)
             {
                 var memberName = members[i].Name;
-                if (!inputWagonNames.Contains(memberName)
-                    && !consumedReturnMembers.Contains(memberName))
+                if (consumedReturnMembers.Contains(memberName))
                 {
-                    extraSlots.Add(new MergeExtraSlot(memberName));
+                    continue;
                 }
+
+                if (inputWagonNames.Contains(memberName)
+                    && !ShouldAllocateDefaultItemMember(allocateDefaultItemN, memberName, i))
+                {
+                    continue;
+                }
+
+                extraSlots.Add(new MergeExtraSlot(
+                    memberName,
+                    ShouldAllocateDefaultItemMember(allocateDefaultItemN, memberName, i)));
             }
 
             return new MergePlan(inputSlots.ToImmutable(), extraSlots.ToImmutable());
         }
 
-        /// <summary>
-        /// Resolves which return member supplies an input wagon (mirrors runtime wagon resolution order).
-        /// </summary>
-        private static string ResolveReturnMemberName(
-            string wagonName,
-            int wagonIndex,
-            bool isValueTuple,
-            string[] returnMemberNames,
-            Dictionary<string, WagonBinding> memberByName,
-            int memberCount)
+        private static int IndexOfMember(ImmutableArray<WagonBinding> members, string name)
         {
-            if (memberByName.ContainsKey(wagonName))
+            for (var i = 0; i < members.Length; i++)
             {
-                return wagonName;
-            }
-
-            if (isValueTuple
-                && returnMemberNames != null
-                && wagonIndex < returnMemberNames.Length
-                && !string.Equals(returnMemberNames[wagonIndex], wagonName, StringComparison.Ordinal)
-                && memberByName.ContainsKey(returnMemberNames[wagonIndex]))
-            {
-                return returnMemberNames[wagonIndex];
-            }
-
-            if (isValueTuple && wagonIndex < memberCount)
-            {
-                var ordinalName = "Item" + (wagonIndex + 1);
-                if (memberByName.ContainsKey(ordinalName))
+                if (string.Equals(members[i].Name, name, StringComparison.Ordinal))
                 {
-                    return ordinalName;
+                    return i;
                 }
             }
 
-            return null;
+            return -1;
+        }
+
+        /// <summary>
+        /// Default ItemN elements become new allocated wagons when the return shape opted into allocation.
+        /// </summary>
+        internal static bool ShouldAllocateDefaultItemMember(
+            bool allocateDefaultItemNElements,
+            string memberName,
+            int memberIndex)
+        {
+            if (!allocateDefaultItemNElements || memberIndex < 0 || string.IsNullOrEmpty(memberName))
+            {
+                return false;
+            }
+
+            return StringHelpers.IsDefaultTupleElementName(memberName, memberIndex);
         }
     }
 }

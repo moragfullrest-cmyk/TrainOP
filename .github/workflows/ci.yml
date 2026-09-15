@@ -32,11 +32,9 @@ jobs:
         with:
           dotnet-version: ${{ matrix.dotnet }}
 
-      - name: Build library packages (SDK 8 / 9)
+      - name: Build library package (SDK 8 / 9)
         if: matrix.dotnet != '10.0.x'
-        run: |
-          dotnet build src/TrainOP/TrainOP.csproj -c Release
-          dotnet build src/TrainOP.Generators/TrainOP.Generators.csproj -c Release
+        run: dotnet build src/TrainOP/TrainOP.csproj -c Release
 
       - name: Restore
         if: matrix.dotnet == '10.0.x'
@@ -50,8 +48,6 @@ jobs:
         if: matrix.dotnet == '10.0.x'
         run: dotnet test TrainOP.sln -c Release --no-build --verbosity normal
 
-      - name: Pack packages
+      - name: Pack package
         if: matrix.dotnet == '10.0.x'
-        run: |
-          dotnet pack src/TrainOP/TrainOP.csproj -c Release --no-build
-          dotnet pack src/TrainOP.Generators/TrainOP.Generators.csproj -c Release --no-build
+        run: dotnet pack src/TrainOP/TrainOP.csproj -c Release --no-build

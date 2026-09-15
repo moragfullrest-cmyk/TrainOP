@@ -65,10 +65,10 @@ public static class PaymentModule
         }
 
         /// <summary>
-        /// Verifies factory terminal schema emits input wagon keys after a default ItemN tuple return.
+        /// Verifies factory terminal schema emits allocated ItemN keys after a default ItemN tuple return.
         /// </summary>
         [Fact]
-        public void Generator_EmitsInputWagonKeys_ForDefaultItemNTupleTerminal()
+        public void Generator_EmitsItemNWagonKeys_ForDefaultItemNTupleTerminal()
         {
             const string source = @"
 using TrainOP;
@@ -83,10 +83,10 @@ public static class PaymentModule
 
             var generated = TrainRouteStationGeneratorTestsHelper.RunAllGeneratedSources(source);
 
-            Assert.Contains("[RouteSchemaWagon(\"amount\"", generated);
-            Assert.Contains("[RouteSchemaWagon(\"paymentId\"", generated);
-            Assert.DoesNotContain("[RouteSchemaWagon(\"Item1\"", generated);
-            Assert.DoesNotContain("[RouteSchemaWagon(\"Item2\"", generated);
+            Assert.Contains("[RouteSchemaWagon(\"Item1\"", generated);
+            Assert.Contains("[RouteSchemaWagon(\"Item2\"", generated);
+            Assert.DoesNotContain("[RouteSchemaWagon(\"amount\"", generated);
+            Assert.DoesNotContain("[RouteSchemaWagon(\"paymentId\"", generated);
         }
 
         /// <summary>
@@ -124,10 +124,10 @@ public static class AppRoute
         }
 
         /// <summary>
-        /// Verifies cross-assembly extension after a default ItemN factory terminal keeps mapped wagon keys.
+        /// Verifies cross-assembly extension after a default ItemN factory terminal uses ItemN keys.
         /// </summary>
         [Fact]
-        public async Task Analyzer_CrossAssemblyExtension_UsesItemNMappedTerminalWagons()
+        public async Task Analyzer_CrossAssemblyExtension_UsesItemNAllocatedTerminalWagons()
         {
             const string routeLibSource = @"
 using TrainOP;
@@ -147,8 +147,8 @@ public static class AppRoute
 {
     public static TrainRoute Build() =>
         PaymentModule.Build()
-            .Station(""Finalize"", (decimal amount, string paymentId) =>
-                new { paymentId, status = ""completed"" });
+            .Station(""Finalize"", (decimal Item2, string Item1) =>
+                new { paymentId = Item1, status = ""completed"" });
 }";
 
             var diagnostics = await RunCrossAssemblyAnalyzerAsync(routeLibSource, consumerSource);

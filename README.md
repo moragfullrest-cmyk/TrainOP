@@ -53,10 +53,9 @@ if (!report.ReachedDestination)
 
 ```bash
 dotnet add package TrainOP
-dotnet add package TrainOP.Generators
 ```
 
-Подробнее: [docs/nuget.md](docs/nuget.md) (локальный feed, проверка генератора, troubleshooting).
+Один пакет: runtime + source generator / analyzer. Подробнее: [docs/nuget.md](docs/nuget.md).
 
 ### Из исходников (разработка)
 
@@ -67,22 +66,22 @@ dotnet add package TrainOP.Generators
                   ReferenceOutputAssembly="false" />
 ```
 
-Генератор нужен для `.Station` data-oriented handlers.
+Генератор нужен для `.Station` data-oriented handlers (в NuGet он уже внутри `TrainOP`).
 
-Лицензия: [MIT](LICENSE). Текущая версия пакетов: **0.13.0** — см. [CHANGELOG.md](CHANGELOG.md).
+Лицензия: [MIT](LICENSE). Текущая версия пакета: **0.13.0** — см. [CHANGELOG.md](CHANGELOG.md).
 
-### Локальная сборка пакетов
+### Локальная сборка пакета
 
 ```bash
-dotnet pack -c Release
+dotnet pack src/TrainOP/TrainOP.csproj -c Release
 ```
 
-`.nupkg` появятся в `src/TrainOP/bin/Release/` и `src/TrainOP.Generators/bin/Release/`.
+`.nupkg` появится в `src/TrainOP/bin/Release/`.
 
 ## Структура решения
 
-- `src/TrainOP` — библиотека (`netstandard2.0`)
-- `src/TrainOP.Generators` — инкрементальные generators и анализатор цепочки
+- `src/TrainOP` — библиотека (`netstandard2.0`), единственный NuGet-пакет
+- `src/TrainOP.Generators` — generators + analyzer (упаковываются внутрь `TrainOP`)
 - `samples/TrainOP.Samples` — консольные примеры (в т.ч. вложенные маршруты и ветвление)
 - `tests/` — xUnit-тесты (сквозной data-oriented sample: `DataOrientedPaymentRouteEndToEndTests`)
 - `benchmarks/` — BenchmarkDotNet: library vs manual pipelines

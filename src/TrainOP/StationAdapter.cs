@@ -22,6 +22,32 @@ namespace TrainOP
             bool[] byReferenceWagons,
             object[] refLocalValues)
         {
+            return ToSignal(
+                manifest,
+                stationReturn,
+                stationName,
+                wagonNames,
+                removeOmittedRegularInputs,
+                returnMemberNames,
+                byReferenceWagons,
+                refLocalValues,
+                allocateDefaultItemNElements: false);
+        }
+
+        /// <summary>
+        /// Converts a station return value to a signal with optional default-ItemN allocation.
+        /// </summary>
+        public static Signal ToSignal(
+            CargoManifest manifest,
+            object stationReturn,
+            string stationName,
+            string[] wagonNames,
+            bool removeOmittedRegularInputs,
+            string[] returnMemberNames,
+            bool[] byReferenceWagons,
+            object[] refLocalValues,
+            bool allocateDefaultItemNElements)
+        {
             if (manifest == null)
             {
                 throw new ArgumentNullException(nameof(manifest));
@@ -50,7 +76,8 @@ namespace TrainOP
                 removeOmittedRegularInputs,
                 returnMemberNames,
                 byReferenceWagons,
-                refLocalValues);
+                refLocalValues,
+                allocateDefaultItemNElements);
             if (!ReferenceEquals(merged, manifest))
             {
                 manifest.ReplaceWith(merged);
@@ -71,6 +98,30 @@ namespace TrainOP
             bool[] byReferenceWagons,
             object[] refLocalValues)
         {
+            return ToServiceSignal(
+                manifest,
+                stationReturn,
+                stationName,
+                wagonNames,
+                returnMemberNames,
+                byReferenceWagons,
+                refLocalValues,
+                allocateDefaultItemNElements: false);
+        }
+
+        /// <summary>
+        /// Converts a service-station return value to a signal, overlaying existing wagons only.
+        /// </summary>
+        public static Signal ToServiceSignal(
+            CargoManifest manifest,
+            object stationReturn,
+            string stationName,
+            string[] wagonNames,
+            string[] returnMemberNames,
+            bool[] byReferenceWagons,
+            object[] refLocalValues,
+            bool allocateDefaultItemNElements)
+        {
             if (manifest == null)
             {
                 throw new ArgumentNullException(nameof(manifest));
@@ -87,7 +138,8 @@ namespace TrainOP
                 wagonNames,
                 returnMemberNames,
                 byReferenceWagons,
-                refLocalValues);
+                refLocalValues,
+                allocateDefaultItemNElements);
             if (!ReferenceEquals(merged, manifest))
             {
                 manifest.ReplaceWith(merged);

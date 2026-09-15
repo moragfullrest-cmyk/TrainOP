@@ -649,10 +649,10 @@ public static class PaymentRoute
         }
 
         /// <summary>
-        /// Verifies that default ItemN tuple returns emit positional unrolled typed merge into input wagon keys.
+        /// Verifies that default ItemN tuple returns emit unload of omitted inputs then ItemN allocation.
         /// </summary>
         [Fact]
-        public void Generator_EmitsPositionalMerge_ForDefaultItemNTupleReturn()
+        public void Generator_EmitsItemNAllocation_ForDefaultItemNTupleReturn()
         {
             const string source = @"
 using TrainOP;
@@ -670,12 +670,44 @@ public static class PaymentRoute
 
             Assert.Contains("stationReturn.Item1", discountBlock);
             Assert.Contains("stationReturn.Item2", discountBlock);
-            Assert.Contains(".LoadWagon(WagonNames_", discountBlock);
-            Assert.Contains("[0]", discountBlock);
-            Assert.Contains("[1]", discountBlock);
+            Assert.Contains("ItemWagonNames.LoadNextItemWagon", discountBlock);
+            Assert.Contains("UnloadWagon(WagonNames_", discountBlock);
             Assert.DoesNotContain("switch (wagonName)", discountBlock);
             Assert.DoesNotContain("for (var i = 0; i < WagonNames_", discountBlock);
-            Assert.DoesNotContain("UnloadWagon(WagonNames_", discountBlock);
+        }
+
+        /// <summary>
+        /// Verifies named and default-ItemN tuple returns that share one CLR Func use chain-dispatch
+        /// with per-site AllocateDefaultItemN instead of one baked typed merge plan.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsChainDispatch_WhenNamedAndDefaultItemNTupleReturnsShareSignature()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class MixedTupleRoute
+{
+    public static TrainRoute Named() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""ByName"", (string paymentId, decimal amount) =>
+            (paymentId: paymentId + ""-n"", amount: amount + 1m));
+
+    public static TrainRoute Unnamed() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-2"", amount = 50m })
+        .Station(""ByItem"", (string paymentId, decimal amount) =>
+            (paymentId + ""-u"", amount * 0.5m));
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("ResolveChainBinding_", generated);
+            Assert.Contains("var allocateDefaultItemN = binding.AllocateDefaultItemN;", generated);
+            Assert.Contains("StationMerge.ToSignal(manifest, stationReturn, stationName, ", generated);
+            Assert.Contains("allocateDefaultItemN);", generated);
+            Assert.Contains("\"paymentId\"", generated);
+            Assert.Contains("\"Item1\"", generated);
+            Assert.DoesNotContain("ItemWagonNames.LoadNextItemWagon", generated);
         }
 
         /// <summary>

@@ -109,6 +109,21 @@ namespace TrainOP.Generators.Handlers
         }
 
         /// <summary>
+        /// True when distinct return shapes share one CLR Func but cannot share consolidated
+        /// <c>ReturnMembers</c> metadata (e.g. named vs default-ItemN tuples). Anonymous /
+        /// <c>object</c> shapes merge into one member-name list and do not need per-site dispatch.
+        /// </summary>
+        public static bool RequiresPerSiteReturnMetadata(IReadOnlyList<ReturnShape> returnShapes)
+        {
+            if (returnShapes == null || returnShapes.Count <= 1)
+            {
+                return false;
+            }
+
+            return !CanMergeReturnMemberNamesAcrossShapes(returnShapes);
+        }
+
+        /// <summary>
         /// Determines whether typed data merge can be emitted for this output.
         /// </summary>
         /// <param name="returnMembersField">Generated field or local holding return member names.</param>

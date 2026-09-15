@@ -108,6 +108,13 @@ namespace TrainOP.Generators
                 return false;
             }
 
+            // Anonymous / object returns consolidate into one ReturnMembers_* list.
+            // Named vs default-ItemN (and other typed shape splits) need per-site metadata.
+            if (HandlerOutputParameters.RequiresPerSiteReturnMetadata(_returnShapes))
+            {
+                return true;
+            }
+
             var wagonNameSets = new HashSet<string>(StringComparer.Ordinal);
             for (var i = 0; i < _entries.Count; i++)
             {

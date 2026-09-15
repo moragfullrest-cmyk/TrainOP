@@ -153,10 +153,10 @@ public static class BrokenRoute
         }
 
         /// <summary>
-        /// Verifies that default ItemN tuple returns keep input wagon keys so later stations are not TOP001.
+        /// Verifies that default ItemN tuple returns allocate ItemN keys so later stations can read them.
         /// </summary>
         [Fact]
-        public async Task Analyzer_DoesNotReportTop001_WhenDefaultItemNTupleMapsToInputWagonKeys()
+        public async Task Analyzer_DoesNotReportTop001_WhenDefaultItemNTupleAllocatesItemNKeys()
         {
             const string source = @"
 using TrainOP;
@@ -167,8 +167,8 @@ public static class ItemNParityRoute
         .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
         .Station(""Discount"", (string paymentId, decimal amount) =>
             (paymentId + ""-disc"", amount * 0.9m))
-        .Station(""Finalize"", (string paymentId, decimal amount) =>
-            new { paymentId, amount });
+        .Station(""Finalize"", (string Item1, decimal Item2) =>
+            new { paymentId = Item1, amount = Item2 });
 }";
 
             var diagnostics = await RunAnalyzerAsync(source);

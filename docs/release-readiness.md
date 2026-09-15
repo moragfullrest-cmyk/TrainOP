@@ -17,11 +17,11 @@
 | # | Пункт | % | Статус |
 |---|--------|---|--------|
 | A1 | Публичный API data-oriented (seed `Travel`, `RailwaySignals`, `RouteReport`) | 92% | Ядро стабильно; advanced helpers скрыты через `EditorBrowsable`, но остаются public для generated code |
-| A2 | Лицензия MIT + `PackageLicenseExpression` в пакетах | 100% | Готово |
+| A2 | Лицензия MIT + `PackageLicenseExpression` в пакете | 100% | Готово |
 | A3 | Документация пользователя (`getting-started`, `core-api`, `nuget`, samples) | 88% | TFM и TOP IDs (через TOP017) согласованы; advanced API описан отдельно |
 | A4 | Тесты runtime + generators + analyzer (~138 Fact/Theory) | 85% | Хорошо; нет coverage-отчёта и автоматического прогона samples |
-| A5 | CI build + test (ubuntu/windows, .NET 10) + library smoke на 8/9 | 100% | SDK 8/9: только library build; SDK 10: solution + pack |
-| A6 | Упаковка Generators (`analyzers/dotnet/cs` + `.targets`) | 80% | Схема верная; нет PackageReadme у Generators |
+| A5 | CI build + test (ubuntu/windows, .NET 10) + library smoke на 8/9 | 100% | SDK 8/9: build `TrainOP` (тянет Generators); SDK 10: solution + pack |
+| A6 | Единый пакет: runtime + Generators (`analyzers/dotnet/cs` + `build/TrainOP.targets`) | 95% | Один `.nupkg`; отдельный `TrainOP.Generators` не публикуется |
 | A7 | Seed-only вход (`Travel()` без манифеста) | 100% | Канон зафиксирован; публичного `Travel(CargoManifest)` нет |
 
 **По блоку A (среднее):** ~92%
@@ -68,7 +68,7 @@
 | 9 | SourceLink + `.snupkg` | **0%** | Не настроено |
 | 10 | Перенос diagnostic IDs в `AnalyzerReleases.Shipped.md` | **85%** | TOP001–TOP013 (0.7.0) + TOP014–TOP017 (0.13.0) |
 | 11 | Заморозка / сужение публичной поверхности | **45%** | `EditorBrowsable` на `RegisterStation`, schema attributes, `StationMerge`, `WagonStationReturn`, `CallerChainKeyFormat`; для 1.0 — `internal` или formal advanced API |
-| 12 | Политика nullable (`enable` или явный отказ) | **0%** | `Nullable` disable в обоих пакетах |
+| 12 | Политика nullable (`enable` или явный отказ) | **0%** | `Nullable` disable в runtime и Generators |
 | 13 | Dependabot / Renovate на Roslyn pin | **0%** | Нет |
 | 14 | Прогон samples в CI (или smoke pack→consume) | **0%** | Samples только вручную |
 | 15 | Фаза 7D *или* окончательный отказ с docs | **10%** | Отложено; поведение TOP005 задокументировано как ограничение |

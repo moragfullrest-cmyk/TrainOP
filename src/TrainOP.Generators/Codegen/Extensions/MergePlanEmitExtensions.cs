@@ -106,12 +106,54 @@ namespace TrainOP.Generators
             CodegenWriter writer,
             MergeEmitContext context)
         {
+            if (slot.AllocateItemWagon)
+            {
+                EmitAllocatedItemLoad(writer, context, slot.ReturnMemberName);
+                return;
+            }
+
             EmitMappedMemberLoad(
                 writer,
                 context,
                 "\"" + StringHelpers.Escape(slot.ReturnMemberName) + "\"",
                 slot.ReturnMemberName,
                 "overlayExtra_" + slot.ReturnMemberName);
+        }
+
+        private static void EmitAllocatedItemLoad(
+            CodegenWriter writer,
+            MergeEmitContext context,
+            string memberName)
+        {
+            if (context.PreserveManifestComposition)
+            {
+                // ServiceStation cannot add wagons; analyzer reports TOP015.
+                return;
+            }
+
+            if (context.UseRuntimeMemberAccess)
+            {
+                var memberLiteral = "\"" + StringHelpers.Escape(memberName) + "\"";
+                var localName = "allocItem_" + StringHelpers.SanitizeIdentifier(memberName);
+                writer.AppendIndented("if (WagonStationReturn.TryGetMemberValue(")
+                    .Append(context.DataVariable)
+                    .Append(", ")
+                    .Append(memberLiteral)
+                    .Append(", out var ")
+                    .Append(localName)
+                    .Append(")) merged = ItemWagonNames.LoadNextItemWagon(merged, ")
+                    .Append(localName)
+                    .Append(");");
+                writer.EndLine();
+                return;
+            }
+
+            writer.AppendIndented("merged = ItemWagonNames.LoadNextItemWagon(merged, ")
+                .Append(context.DataVariable)
+                .Append(".")
+                .Append(memberName)
+                .Append(");");
+            writer.EndLine();
         }
 
         private static void EmitMappedMemberLoad(

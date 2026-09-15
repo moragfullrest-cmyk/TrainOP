@@ -1,6 +1,6 @@
 # TrainOP: учебник
 
-Этот текст можно читать сверху вниз. Он объясняет, *зачем* нужна библиотека, *как* писать маршруты и *что* происходит между вашей лямбдой и `RouteReport`. Справочные таблицы и глубокий разбор Roslyn-пайплайна остаются в соседних документах; здесь — связная картина.
+Этот текст можно читать сверху вниз. Он — **исчерпывающее** руководство: зачем нужна библиотека, как писать маршруты, как текут данные и сигналы, как устроены генератор/анализатор/runtime, cross-assembly, диагностики, ограничения и карта репозитория. Соседние файлы в `docs/` остаются краткими выдержками и дорожными картами для агентов; для понимания продукта достаточно учебника.
 
 ---
 
@@ -13,6 +13,8 @@ TrainOP воплощает эту идею для .NET (`netstandard2.0`). Вы 
 Главное удобство библиотеки — не в том, что вы руками крутите словарь. Рекомендуемый стиль — **обработчики над данными**: обычные функции. Имена параметров — это ключи вагонов. Возврат — новые данные или сигналы из `RailwaySignals`. Манифест и адаптеры вызова скрыты в коде, который генерирует source generator: он сам достаёт вагоны, вызывает handler и записывает возвращённые поля обратно в манифест.
 
 Без генератора fluent `.Station(...)` над данными не заработает: именно он эмитит типизированные расширения. Анализатор в том же пакете ловит ошибки потока вагонов ещё на этапе компиляции.
+
+На одном и том же checkout-сценарии (валидация, async-шаги, отказы, recovery, `CancellationToken`) TrainOP снимает ручной `StepResult`, nested `if (!ok)`, повторяемые проверки токена и часть `try/catch` — см. главу про объём кода. Цена — инфраструктура hop'а (манифест, адаптер, merge, отчёт); по наносекундам библиотека не гонится за hand-written pipeline.
 
 ---
 
@@ -32,22 +34,87 @@ TrainOP воплощает эту идею для .NET (`netstandard2.0`). Вы 
 
 **Отчёт** (`RouteReport`) — итог рейса: `ReachedDestination`, история визитов, `FailureCode` / `FailureMessage`, доступ к терминальным вагонам через `Get<T>` или индексатор.
 
-Эти слова — не украшение API. Они помогают читать код: ранняя станция загружает состав, проверка ставит семафор, техобслуживание чинит состав или фиксирует ошибку. Имя вроде `"Seed"` — привычка в примерах, а не отдельный тип станции.
+Эти слова — не украшение API. Они помогают читать код: ранняя станция загружает состав, проверка ставит семафор, техобслуживание чинит состав или фиксирует ошибку.
 
 ---
 
 ## 3. Подключение
 
-Нужны оба пакета: библиотека выполнения и генератор.
+Один пакет **TrainOP**: runtime + source generator / chain analyzer.
+
+| Содержимое пакета | Назначение |
+|-------|------------|
+| Runtime (`lib/`) | `TrainRoute`, `CargoManifest`, сигналы, `Travel` |
+| Analyzer (`analyzers/dotnet/cs/`) | Source generator + chain analyzer для `.Station(...)` |
+
+### Требования
+
+- Пакет TrainOP: single-TFM **`netstandard2.0`** (потребитель — любая совместимая платформа, например `net8.0`).
+- **SDK-style** `.csproj` с поддержкой analyzers / source generators (не `packages.config` без analyzers).
+- Дополнительных MSBuild-свойств для chain-dispatch не нужно: режим один — **caller dispatch** (ctor + ordinal).
+
+### NuGet (внешний проект)
 
 ```bash
 dotnet add package TrainOP
-dotnet add package TrainOP.Generators
+# или явно:
+dotnet add package TrainOP --version 0.13.0
 ```
 
-В `.csproj` это два `PackageReference` одной версии (сейчас ориентируйтесь на `CHANGELOG.md` / NuGet). При разработке внутри solution вместо пакетов используют `ProjectReference` на `TrainOP` и на `TrainOP.Generators` с `OutputItemType="Analyzer"`, плюс импорт `TrainOP.Generators.targets` — подробности в [nuget.md](nuget.md) и [getting-started.md](getting-started.md).
+```xml
+<ItemGroup>
+  <PackageReference Include="TrainOP" Version="0.13.0" />
+</ItemGroup>
+```
 
-Требование к целевой платформе потребителя — совместимость с `netstandard2.0`. Проект должен быть SDK-style, иначе analyzers и source generators не подключатся.
+Для NuGet атрибуты `OutputItemType` / `ReferenceOutputAssembly` **не нужны**: генератор подключается из `analyzers/dotnet/cs` внутри пакета. Актуальную версию сверяйте с `CHANGELOG.md` / nuget.org.
+
+В Visual Studio: **Tools → NuGet Package Manager → Manage NuGet Packages for Solution** — установите **TrainOP**.
+
+### Локальный feed (pack из исходников)
+
+```bash
+dotnet pack src/TrainOP/TrainOP.csproj -c Release
+```
+
+Артефакт: `src/TrainOP/bin/Release/TrainOP.*.nupkg`.
+
+```bash
+# одноразовый источник
+dotnet add package TrainOP --source C:\path\to\TrainOP\src\TrainOP\bin\Release
+
+# или постоянный feed
+dotnet nuget add source C:\path\to\local-nuget-feed --name trainop-local
+```
+
+### ProjectReference (разработка в solution)
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="path/to/TrainOP/TrainOP.csproj" />
+  <ProjectReference Include="path/to/TrainOP/TrainOP.Generators/TrainOP.Generators.csproj"
+                    OutputItemType="Analyzer"
+                    ReferenceOutputAssembly="false" />
+</ItemGroup>
+
+<Import Project="path/to/TrainOP/TrainOP.Generators/build/TrainOP.Generators.targets" />
+```
+
+| | NuGet | ProjectReference |
+|---|-------|------------------|
+| Сценарий | Внешние приложения, CI без клона TrainOP | Разработка библиотеки, `samples/` |
+| Генератор | Внутри пакета `TrainOP` | `OutputItemType="Analyzer"` + `.targets` |
+| Версионирование | SemVer | Текущий коммит |
+
+### Проверка подключения
+
+После `dotnet restore` / сборки:
+
+1. В зависимостях виден пакет **TrainOP** (или ProjectReference на оба проекта).
+2. `.Station(...)` компилируется без «метод не найден».
+3. Терминальные вагоны читаются через `report.Get<T>("name")` / `report["name"]`.
+
+Если генератор «молчит»: убедитесь, что установлен **TrainOP** и выполнен restore; пересоберите проект; при кэше IDE — перезапуск; проверьте SDK-style. Ошибки `TOPxxxx` — контракт цепочки (см. главу про диагностики), а не «сломанный NuGet».
 
 ---
 
@@ -309,7 +376,24 @@ else
 
 Имена вагонов сравниваются как обычные строки и **чувствительны к регистру**. Типы должны согласовываться вдоль цепочки: нельзя на одной станции положить `string id`, а на следующей читать его как `int` — будет TOP002 ещё до запуска.
 
-Для кортежей предпочитайте имена: `(paymentId: …, amount: …)` или вывод имён из идентификаторов `(paymentId, amount)`. Голый `(expr1, expr2)` без имён даёт `Item1`/`Item2` и предупреждение TOP006: соответствие полям идёт по позиции и легко ломается при перестановке.
+Для кортежей предпочитайте имена: `(paymentId: …, amount: …)` или вывод имён из идентификаторов `(paymentId, amount)`. Голый `(expr1, expr2)` без имён — предупреждение TOP006: элементы становятся **новыми** вагонами `ItemN`. Сначала снимаются omitted non-`ref` входы (частичный возврат), затем аллоцируются ключи по `max` уже существующих `Item*` + 1. Так соседние станции могут «создал → сразу потратил»: следующая читает `Item1`/`Item2`, при своём unnamed-возврате снова получает `Item1`/`Item2` после unload.
+
+Опасность неименованных кортежей в том, что сложно отследить, сколько и каких вагонов `ItemN` уже нагенерировалось — особенно если создание маршрута разделено на части (factory + extension, несколько сборок). По возможности избегайте их в пользу именованных кортежей, анонимных типов или records.
+
+```csharp
+.Station("Discount", (string paymentId, decimal amount) =>
+    (paymentId + "-disc", amount * 0.9m)); // TOP006
+
+// после Travel — вагоны Item1 / Item2; paymentId / amount сняты
+var a = report.Get<string>("Item1");
+var b = report.Get<decimal>("Item2");
+
+// следующая станция:
+.Station("Finalize", (string Item1, decimal Item2) =>
+    new { paymentId = Item1, amount = Item2 });
+```
+
+Если предыдущие `Item*` ещё живы (их не читали как входы), следующий unnamed кортеж продолжит нумерацию (`Item3`, `Item4`, …). Явное `(Item1: x)` пишет в ключ `Item1` без аллокатора. На `ServiceStation` новые `ItemN` запрещены (**TOP015**).
 
 **Правильно / неправильно** для кортежей:
 
@@ -318,7 +402,7 @@ else
 (paymentId: paymentId + "-x", amount: amount * 0.9m)
 (paymentId, amount)
 
-// Плохо — TOP006, хрупкий ItemN
+// TOP006 — новые вагоны Item1/Item2, входы без имени в возврате снимаются
 (paymentId + "-x", amount * 0.9m)
 ```
 
@@ -438,13 +522,38 @@ var route = new TrainRoute()
     RailwaySignals.Green(new { amount = 1m }))
 ```
 
-Параметры handler'а техобслуживания знакомы: вагоны из манифеста рейса, плюс по желанию служебные параметры — `SignalIssue issue` (непосредственная остановка), `IReadOnlyList<SignalIssue> issues` (полная цепочка), `RedSignal red` (issues), `CargoManifest manifest`, `CancellationToken`.
+Параметры handler'а техобслуживания:
 
-Контракт возврата тот же (зелёный / красный / `RailwaySignals.White` / данные), но запись в манифест — только обновление существующих ключей, как выше.
+| Параметр | Источник |
+|----------|----------|
+| вагоны (`amount`, …) | манифест рейса (по значению или необязательный `ref`) |
+| `CargoManifest manifest` | тот же манифест (framework / escape hatch) |
+| `SignalIssue issue` | `red.Issue` — **последний** элемент цепочки (непосредственная остановка) |
+| `IReadOnlyList<SignalIssue> issues` | `red.Issues` — полная цепочка (корень → непосредственная остановка) |
+| `RedSignal red` | полный красный сигнал (issues; без груза) |
+| `CancellationToken` | токен рейса |
+
+При одной ошибке без вложенных поездов `issue` и `issues[0]` — одна запись. При провале подмаршрута `issue` — обёртка родителя; корневая причина — в `issues[0]`.
+
+Контракт возврата тот же (зелёный / красный / `RailwaySignals.White` / данные), но запись в манифест — только обновление существующих ключей.
+
+Асинхронное восстановление с вагонами — **по значению** (CS1988 запрещает `async` + `ref`):
+
+```csharp
+.ServiceStation("Recovery", async (decimal amount, SignalIssue issue, CancellationToken token) =>
+{
+    await Task.Delay(10, token);
+    return issue.Code == "INVALID"
+        ? RailwaySignals.Green(new { amount = 1m })
+        : RailwaySignals.Red("CANNOT_RECOVER", "unsupported failure");
+});
+```
 
 Если ни одна `ServiceStation` не стоит после упавшей станции (или все снова вернули красный), ошибка доходит до конца рейса.
 
-Есть и низкоуровневый запасной вариант без сгенерированного адаптера вагонов: handler вида `Func<RedSignal, CargoManifest, Signal>` (и асинхронный вариант) с правками через `manifest.LoadWagon(...)`. Для обычного кода достаточно формы над данными.
+Есть и низкоуровневый запасной вариант без сгенерированного адаптера вагонов: handler вида `Func<RedSignal, CargoManifest, Signal>` (и асинхронный с `CancellationToken`) с правками через `manifest.LoadWagon(...)`. Для обычного кода достаточно формы над данными.
+
+Runnable-обзор служебных параметров: `samples/TrainOP.Samples/Examples/FrameworkParametersExample.cs`.
 
 ---
 
@@ -494,6 +603,37 @@ route.Travel(); // InvalidOperationException: Use TravelAsync
 ```
 
 `RailwaySignals.White` при наличии `ref` тоже не записывает изменения: `White` означает «манифест как был». Чтобы сохранить новые значения `ref`-вагонов, нужен пустой/`void`-возврат, частичный возврат или явные данные в возврате.
+
+### Отмена (`CancellationToken`)
+
+Токен передаётся в `Travel(ct)` / `TravelAsync(ct)` и подставляется в handler как служебный параметр (не вагон):
+
+```csharp
+using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+
+var route = new TrainRoute()
+    .Station("Seed", () => new { })
+    .Station("Work", (CancellationToken token) =>
+    {
+        token.ThrowIfCancellationRequested();
+        return RailwaySignals.White;
+    });
+
+route.Travel(cts.Token);
+// или: await route.TravelAsync(cts.Token);
+```
+
+`OperationCanceledException` пробрасывается наружу и **не** преобразуется в красный сигнал.
+
+### Необработанные исключения
+
+Исключение внутри станции (кроме отмены) → красный сигнал:
+
+| Поле | Значение |
+|------|----------|
+| `Issue.Code` | `STATION_EXCEPTION` или `SERVICE_STATION_EXCEPTION` |
+| `Issue.Message` | `Unhandled station exception: {сообщение}` |
+| `Issue.StationName` | имя станции |
 
 ---
 
@@ -579,19 +719,27 @@ Func<string, decimal, object> discount = (paymentId, amount) =>
 .Station("Discount", discount); // переменная Func<> — нет
 ```
 
-Цепочку тоже нужно собирать узнаваемо.
+**Почему.** Source generator читает схему станции (имена параметров-вагонов, `ref`, форму возврата) только из лямбды, anonymous method или однозначного method group / local function в текущей compilation. Ссылка на `Func<>` — непрозрачный делегат без этих метаданных; dataflow к инициализатору не выполняется. У `Func<T1,T2,TResult>` нет ваших имён вагонов, а значение можно переназначить — compile-time схема маршрута перестала бы быть детерминированной.
 
-**Правильно:**
+**Валидные формы сборки цепочки** (analyzer / chain-dispatch):
 
 ```csharp
+// 1) Прямая fluent-цепочка
 var route = new TrainRoute()
     .Station("Seed", () => new { id = 1 })
     .Station("Next", (int id) => new { id = id + 1 });
 
+// 2) Локальная после new TrainRoute()
 var route = new TrainRoute();
 route = route.Station("Seed", () => new { id = 1 });
 
+// 3) Private/internal factory extension
 var route = CreateSeed().Station("Next", (int id) => new { id = id + 1 });
+
+// 4) Public factory из referenced assembly (exported schema)
+var route = PaymentModule.Build()
+    .Station("Finalize", (string paymentId, decimal amount) =>
+        new { paymentId, status = "done" });
 ```
 
 **Неправильно** (TOP005 / TOP014):
@@ -601,7 +749,11 @@ void Extend(TrainRoute baseRoute) =>
     baseRoute.Station("Next", (int id) => new { id }); // receiver-параметр
 
 var a = new TrainRoute(); var b = new TrainRoute(); // два new на одной строке — TOP014
+
+// также TOP005: _route.Station(...), buildRoute().Station(...) где buildRoute — делегат
 ```
+
+`?:` / `??` / `switch` на receiver и parenthesized/cast вокруг factory — поддерживаются; при несовместимых terminal веток — TOP008.
 
 Допустимый пользовательский API — fluent `.Station` / `.ServiceStation`, `RailwaySignals`, `Travel*`. Методы вроде `RegisterStation` существуют для генератора и скрыты из IntelliSense; руками их вызывать не нужно.
 
@@ -611,20 +763,82 @@ var a = new TrainRoute(); var b = new TrainRoute(); // два new на одно�
 
 Когда вы пишете `.Station(...)`, компилятор видит вызов расширения. Откуда берётся overload с вашей сигнатурой делегата?
 
-**Source generator** (`TrainRouteStationGenerator` в пакете `TrainOP.Generators`) сканирует синтаксис, находит кандидатов `.Station` / `.ServiceStation`, строит схему каждого handler'а и эмитит файл вроде `TrainRouteStation.Extensions.g.cs`.
+**Source generator** (`TrainRouteStationGenerator` в проекте `TrainOP.Generators`, внутри NuGet-пакета `TrainOP`) сканирует синтаксис, находит кандидатов `.Station` / `.ServiceStation`, строит схему каждого handler'а и эмитит файлы:
 
-Упрощённо пайплайн такой:
+- `TrainRouteStation.Extensions.g.cs` — типизированные расширения и адаптеры;
+- `RouteSchemas.g.cs` — schema attributes для public factory (cross-assembly).
 
-1. **Обнаружение.** SyntaxProvider отсеивает узлы дешёвым фильтром, затем семантически разбирает handler: параметры (вагон vs служебные), `ref`, форму возврата.
-2. **Граф маршрута.** Из якорей (`new TrainRoute()`, factory) и следующих `.Station` собираются цепочки с ключом цепочки вызывающего кода и порядковым индексом станции.
-3. **Группировка.** Handler'ы с одинаковой CLR-сигнатурой типов попадают в одну группу делегата.
-4. **Эмиссия.** Для группы эмитится публичный `.Station` и тело адаптера: достать вагоны → вызвать handler → записать возврат в манифест → зарегистрировать станцию.
+Параллельно **анализатор** (`ChainValidationAnalyzer`) **не** генерирует код: симулирует поток вагонов и репортит TOP*.
 
-Параллельно **анализатор** (`ChainValidationAnalyzer`) не генерирует код. Он симулирует поток вагонов по цепочке: какие ключи «живы», каких типов, что снято частичным возвратом. Отсюда TOP001 (вагона ещё нет), TOP002 (конфликт типов), TOP003 (сняли, а ниже нужен). Он же ловит станции вне цепочки (TOP005), плохие формы handler'а (TOP009), возврат внутренних типов сигнала (TOP010), несходящиеся ветки (TOP008), разъехавшиеся пути возврата у factory (TOP012/TOP013).
+```mermaid
+flowchart LR
+  A["Исходник<br/>.Station(...)"] --> B["Generator<br/>схема handler"]
+  B --> C["Extensions.g.cs<br/>caller dispatch"]
+  C --> D["RegisterStation<br/>адаптер"]
+  D --> E["TrainRoute.Travel"]
+  E --> F["RouteReport"]
+```
 
-Практический смысл: без генератора API над данными просто не соберётся; без анализатора «едет», но ошибки вагонов всплывут при запуске как `KeyNotFoundException` или неверная запись возврата в манифест. Вместе они переносят контракт маршрута на этап компиляции.
+### Пайплайн генератора
 
-Глубокий разбор шагов Roslyn, `RegisterSourceOutput` и эмиссии — в [architecture-internals.md](architecture-internals.md). Для работы с библиотекой достаточно понимать роли: **генератор пишет адаптеры**, **анализатор проверяет поток данных**, **исполнитель гоняет зарегистрированный план**.
+```mermaid
+flowchart LR
+  S["SyntaxProvider<br/>RouteSiteDiscoverer"] --> R["RouteSite"]
+  R --> A["RouteGraphAssembler"]
+  A --> G["RouteGraph"]
+  G --> TSG["TypeSignatureGroup"]
+  TSG --> RSO["RegisterSourceOutput"]
+  RSO --> E["Extensions.g.cs"]
+```
+
+| Шаг | Компонент | Что делает |
+|-----|-----------|------------|
+| 1 | `RouteSiteDiscoverer` + `HandlerSchemaResolver` | Predicate → semantic parse → `RouteSite` (Station / ServiceStation / Anchor) |
+| 2 | `TryResolveHandler` | Лямбда / anonymous / method group из **текущей** compilation (иначе `null` → TOP009 в analyzer) |
+| 3 | `HandlerInputSchemaBuilder` | Wagon vs framework (`CargoManifest`, `RedSignal`, `SignalIssue`, `CancellationToken`), `ref` |
+| 4 | `HandlerReturnInference` | Anonymous/record, tuple, Green/Red/White, `Task<T>`, void, `CargoManifest` |
+| 5 | `RouteGraphAssembler` | Fluent-граф, `CallerChainKey`, `stationIndex`, bindings |
+| 6 | `TypeSignatureGroup` / `MergedStationSchema` | Группировка по CLR-сигнатуре; решение canonical vs chain-aware |
+| 7 | Emit | Адаптеры: Pull → invoke → `StationMerge` / typed merge |
+| 8 | `RouteSchemaExporter` | Schema для public factory |
+
+Инкрементальность: три источника (`stationSites`, `anchorSites`, `CompilationProvider`) склеиваются через `Combine`; SyntaxProvider отсеивает узлы дешёвым predicate, semantic transform — только для кандидатов. `RouteGraphAssembler` пересчитывается целиком из актуального массива `RouteSite` на каждый callback.
+
+Handler schema строится **один раз** в discovery. Analyzer и generator делят `RouteSiteDiscoverer`, `RouteGraphAssembler`, `ChainDetector`.
+
+### Canonical vs chain-aware эмиссия
+
+| Режим | Когда | Что эмитится |
+|-------|-------|--------------|
+| **Canonical** | Один набор имён вагонов на группу сигнатур | Статические `WagonNames_*`, один публичный `.Station` |
+| **Chain-aware** | Несколько наборов имён (или per-site return metadata) при одной CLR-сигнатуре | `ResolveChainBinding_*(chainKey, index)`, таблицы `ChainBinding_*` |
+
+Service station **не** участвует в caller-dispatch таблицах (`UsesChainDispatch` требует `!IsServiceStation`). Binding resolve при регистрации кэшируется (hot path Travel не зовёт `ResolveChainBinding_*` на каждом hop).
+
+### Что делает анализатор за проход
+
+```mermaid
+flowchart TB
+  Start["CompilationStart<br/>RouteGraph once"] --> PerTree["SemanticModelAction"]
+  PerTree --> Chains["GetChainsInTree"]
+  Chains --> Sim["ChainGraphSimulator"]
+  PerTree --> Factories["Factory paths TOP012/013"]
+  PerTree --> Joins["Branch join TOP008"]
+  PerTree --> Orphans["TOP005 / TOP009"]
+```
+
+`ChainGraphSimulator` station-by-station ведёт модель Live / Removed / HasUnknownReturn и выдаёт TOP001–TOP004, TOP006, TOP010. Ветки (`?:` / `??` / `switch` на receiver): join-валидатор → merged terminal или TOP008. Public factory: все return-path'ы должны сходиться (TOP012/TOP013). Сгенерированный `.g.cs` анализатор **не** трогает.
+
+| | Generator | Analyzer |
+|--|-----------|----------|
+| Цель | эмитить `.g.cs` | волны в IDE / build |
+| Нужен для data-oriented API | да | нет (но без него ошибки уедут в runtime) |
+| TOP007 | да (`TypeSignatureGroup`) | нет |
+| Симуляция вагонов | косвенно (bindings / schema) | полный walk |
+
+Практический смысл: без генератора API над данными не соберётся; без анализатора «едет», но `KeyNotFoundException` / неверный merge всплывут при запуске.
+
+Ключевые файлы: `TrainRouteStationGenerator.cs`, `TypeSignatureGroup.cs`, `MergedStationSchema.cs`, `StationAdapterBodyEmitter.cs`, `ChainValidationAnalyzer.cs`, `ChainGraphSimulator.cs`, `BranchRouteJoinValidator.cs`, `RouteFactoryPathAnalyzer.cs`, `RouteSchemaExporter.cs`.
 
 ---
 
@@ -632,11 +846,19 @@ var a = new TrainRoute(); var b = new TrainRoute(); // два new на одно�
 
 Два handler'а `(string, decimal)` для CLR — один и тот же тип делегата. Но в одном маршруте параметры могут называться `paymentId`/`amount`, в другом — `orderId`/`total`. Одна общая overload не знает, какие имена вагонов подставить на конкретном месте вызова.
 
-TrainOP решает это разведением по цепочке вызывающего кода. На `new TrainRoute()` штампуется `CallerChainKey` — идентичность цепочки. Каждая регистрация станции несёт ещё порядковый индекс. Сгенерированный код по паре «ключ цепочки + индекс станции» выбирает привязки, известные на этапе компиляции: имена входов, члены возврата, флаги `ref`. Разбор имён параметров во время выполнения не нужен: адаптер уже знает ключи.
+```mermaid
+flowchart LR
+  Call[".Station call site"] --> Key["CallerChainKey + index"]
+  Key --> Resolve["ResolveChainBinding_*"]
+  Resolve --> Core["StationCore_* + binding"]
+  Core --> Reg["RegisterStation"]
+```
 
-Если в группе сигнатур только один набор имён, эмитится более простой общий вариант. Если наборов несколько — таблицы выбора привязки (`ResolveChainBinding_*`). В обоих случаях публичный API для вас один: `.Station("Name", handler)`.
+TrainOP решает это **caller dispatch** (единственный режим): на `new TrainRoute()` штампуется `CallerChainKey`; каждая регистрация несёт порядковый индекс. Сгенерированный код по паре «ключ + индекс» выбирает `inputNames` / `returnMembers` / `refFlags`, известные на compile-time. Разбор имён параметров во время Travel не нужен.
 
-Отсюда ограничения вроде TOP014 и запрет «плавающих» receiver'ов: генератору нужна стабильная идентичность цепочки в исходнике.
+Если в группе сигнатур только один набор имён — эмитится более простой canonical вариант. Если наборов несколько — таблицы `ResolveChainBinding_*`. Публичный API один: `.Station("Name", handler)`.
+
+Отсюда TOP014 и запрет «плавающих» receiver'ов: генератору нужна стабильная идентичность цепочки в исходнике. Interceptors и reflection chain-dispatch сняты с очереди (удалены в 0.10.0).
 
 ---
 
@@ -644,15 +866,59 @@ TrainOP решает это разведением по цепочке вызы�
 
 После того как все `.Station` / `.ServiceStation` отработали на этапе построения маршрута, у `TrainRoute` есть единый список шагов — план.
 
+```mermaid
+flowchart TD
+  Start([Стартовый зелёный + пустой манифест]) --> Hop[Следующий шаг]
+  Hop -->|обычная + зелёный| Station[Station]
+  Hop -->|сервисная + красный| Service[ServiceStation]
+  Hop -->|иначе| Skip[Пропуск]
+  Skip --> More{Ещё шаг?}
+  Station --> Signal[Сигнал]
+  Service --> Signal
+  Signal --> More
+  More -->|да| Hop
+  More -->|нет, зелёный| Done([RouteReport — успех])
+  More -->|нет, красный| Fail([RouteReport — красный])
+```
+
 1. `Travel()` / `TravelAsync()` копирует план и создаёт пустой манифест рейса.
 2. Обход стартует с условного зелёного сигнала (без груза в самом сигнале).
-3. Для каждого шага по порядку: обычная станция выполняется только после зелёного, сервисная — только после красного; иначе шаг пропускается.
-4. Обычная станция: достать вагоны → вызвать handler → записать возврат в манифест → получить сигнал.
-5. Сервисная: обработка красного сигнала; зелёный продолжает план, красный идёт дальше по тем же правилам обхода.
-6. Исключение станции → красный с `STATION_EXCEPTION` / `SERVICE_STATION_EXCEPTION` (кроме отмены).
-7. Конец плана на зелёном → успешный `RouteReport` (сигнал + `Manifest`); красный до конца → неудачный отчёт.
+3. Для каждого шага: обычная станция — только после зелёного, сервисная — только после красного; иначе пропуск.
+4. Обычная станция: `PullWagon` → handler → запись возврата (`StationMerge` / typed merge) → сигнал.
+5. Сервисная: обработка красного; зелёный снова открывает обычные шаги.
+6. Исключение станции → красный `STATION_EXCEPTION` / `SERVICE_STATION_EXCEPTION` (кроме отмены).
+7. Конец плана на зелёном → успешный `RouteReport`; красный до конца → неудачный отчёт.
 
-Пользовательский код в счастливом пути не трогает `CargoManifest`. Исключения — служебный параметр `CargoManifest` в handler'е и низкоуровневый `ServiceStation` с `(RedSignal, CargoManifest)`. Для отладки полезны `report.Visits` и `report.Manifest.InspectWagons()`, но итоговый результат рейса — отчёт.
+`Travel()` использует sync-цикл без `async`/`await` на hop; `TravelAsync` — async-цикл. Есть async-станция → только `TravelAsync`.
+
+Пользовательский код в счастливом пути не трогает `CargoManifest`. Исключения — служебный параметр `CargoManifest` и низкоуровневый `ServiceStation` с `(RedSignal, CargoManifest)`.
+
+### Журнал визитов
+
+`StationVisit` — `readonly struct` с `StationName` + `IsGreen`. Полный сигнал только в `RouteReport.TerminalSignal` (перезапись на каждом hop). Промежуточный red с успешным recovery: в журнале будет `IsGreen == false` у упавшей станции и visit сервисной; код исходного red из visit **не** читается — только из терминала / `Failure*`.
+
+```csharp
+foreach (var visit in report.Visits)
+{
+    Console.WriteLine($"{visit.StationName}: {(visit.IsGreen ? "green" : "red")}");
+}
+```
+
+Для отладки также полезны `report.Manifest.InspectWagons()`.
+
+### Как возврат попадает в манифест (runtime)
+
+| Возврат | Поведение |
+|---------|-----------|
+| anonymous / record / named tuple | поля → манифест → Green |
+| `RailwaySignals.Green(...)` | данные из аргумента → манифест → Green |
+| `RailwaySignals.Red(...)` | Red + `SignalIssue`, без успешной записи возврата |
+| `RailwaySignals.White` | манифест без изменений (**без** записи `ref`) |
+| `void` / `new { }` | Station: partial — `ref` пишутся, обычные входы снимаются; ServiceStation: опуск non-`ref` → TOP016 |
+| `CargoManifest` | Station: полная замена (TOP004); ServiceStation: TOP017 |
+| `GreenSignal` / `RedSignal` | запрещено — TOP010 |
+
+Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 
 ---
 
@@ -672,46 +938,71 @@ public static class PaymentModule
 }
 ```
 
-Генератор в проекте библиотеки эмитит метаданные схемы (`RouteSchemaFor`, `RouteSchemaWagon`, включая `CallerChainKey` и `StationCount`). Приложение-потребитель продолжает цепочку:
+В проекте библиотеки нужен пакет `TrainOP` (generator уже внутри). Генератор **эмитит** метаданные на generated partial type (не пишите атрибуты руками в consumer-коде):
+
+- `[RouteSchemaFor(typeof(PaymentModule), "Build", CallerChainKey = "<hash>", StationCount = N)]`
+- повторяющиеся `[RouteSchemaWagon(name, typeof(T))]`
+
+`CallerChainKey` — тот же ключ, что runtime штампует на `new TrainRoute()` внутри factory. `StationCount` — число регистраций Station/ServiceStation в factory (смещение ordinal для станций consumer'а). Вместе они держат caller dispatch при продолжении маршрута. Схемы без `CallerChainKey` (старые пакеты) не могут надёжно диспатчить extension при конфликтующих CLR-сигнатурах.
+
+Типы атрибутов public для reflection/tooling, но `[EditorBrowsable(Never)]` в IDE.
+
+Приложение-потребитель продолжает цепочку:
 
 ```csharp
-PaymentModule.Build()
-    .Station("Finalize", (string paymentId, decimal amount) =>
-        new { paymentId, status = "completed" });
+public static class AppRoute
+{
+    public static TrainRoute Build() =>
+        PaymentModule.Build()
+            .Station("Finalize", (string paymentId, decimal amount) =>
+                new { paymentId, status = "completed" });
+}
 ```
 
-Анализатор сборки-потребителя читает экспортированную схему терминальных вагонов и проверяет продолжение. Закрытая (private/internal) фабрика в том же проекте схему не требует — тело видно межпроцедурно. Публичная фабрика без схемы даст информационный TOP011: стык не проверяется надёжно.
+Анализатор consumer'а читает экспортированную схему терминальных вагонов и проверяет хвост.
 
-Если у фабрики несколько `return`, все пути должны сходиться к одному итоговому набору вагонов (TOP012 / TOP013). Иначе потребитель не сможет честно продолжить маршрут.
+| Видимость factory | Механизм |
+|-------------------|----------|
+| `private` / non-exported `internal` | Inter-procedural анализ тела в текущей compilation |
+| `public` / exported | Generated schema `[RouteSchemaFor]` / `[RouteSchemaWagon]` |
 
-Подробности и тесты: [cross-assembly-routes.md](cross-assembly-routes.md), проекты `TrainOP.RouteLib.Tests` / `TrainOP.RouteConsumer.Tests`.
+Закрытая фабрика в том же проекте схему не требует. Публичная без схемы → информационный **TOP011**: стык не проверяется надёжно.
+
+Если у фабрики несколько `return` / ternary / expression-body путей, все пути должны сходиться к одному итоговому набору вагонов (имена + типы; порядок не важен) — иначе **TOP012**. Unknown terminal на пути → **TOP013**.
+
+При extension после factory локальная seed-станция **не нужна**: первая `.Station` consumer'а может сразу требовать вагоны из upstream.
+
+Тесты: `tests/TrainOP.RouteLib.Tests` (`PaymentModule`) и `tests/TrainOP.RouteConsumer.Tests` (`AppRoute`).
 
 ---
 
 ## 15. Диагностики как учебник ошибок
 
-Когда IDE подчёркивает вызов станции, почти всегда это спор о потоке данных или о форме цепочки. Краткая карта:
+Когда IDE подчёркивает вызов станции, почти всегда это спор о потоке данных или о форме цепочки.
 
-| Код | Смысл |
-|-----|--------|
-| TOP001 | Станция ждёт вагон, которого ещё нет |
-| TOP002 | Конфликт типов одного имени |
-| TOP003 | Вагон сняли, а ниже он снова нужен |
-| TOP004 | `return CargoManifest` — полная замена (warning) |
-| TOP005 | `.Station` вне поддерживаемой цепочки |
-| TOP006 | Tuple без имён → `ItemN` (warning) |
-| TOP007 | Разные имена вагонов при одной type-сигнатуре без разведения цепочек |
-| TOP008 | Ветки не сходятся перед следующей станцией |
-| TOP009 | Неподдерживаемая форма handler'а |
-| TOP010 | Вернули внутренние `GreenSignal`/`RedSignal` вместо `RailwaySignals` |
-| TOP011 | Публичная фабрика без экспортированной схемы (info) |
-| TOP012 / TOP013 | Пути возврата фабрики разъехались / неизвестны |
-| TOP014 | Два `new TrainRoute()` на одной строке |
-| TOP015 | ServiceStation добавляет вагон |
-| TOP016 | ServiceStation опускает входной non-`ref` вагон |
-| TOP017 | ServiceStation возвращает `CargoManifest` |
+| Код | Severity | Смысл | Кто репортит |
+|-----|----------|-------|--------------|
+| TOP001 | Error | Станция ждёт вагон, которого ещё нет | Analyzer (simulator) |
+| TOP002 | Error | Конфликт типов одного имени | Analyzer |
+| TOP003 | Error | Вагон сняли, а ниже он снова нужен | Analyzer |
+| TOP004 | Warning | `return CargoManifest` — полная замена | Analyzer |
+| TOP005 | Error | `.Station` вне поддерживаемой цепочки / якоря | Analyzer (orphans) |
+| TOP006 | Warning | Tuple без имён → новые вагоны `ItemN` | Analyzer (на tuple literal) |
+| TOP007 | Error | Разные имена вагонов при одной type-сигнатуре вне chain dispatch | **Generator** (`TypeSignatureGroup`) |
+| TOP008 | Error | Ветки не сходятся перед следующей станцией | Analyzer (branch join) |
+| TOP009 | Error | Неподдерживаемая форма handler'а | Analyzer |
+| TOP010 | Error | Вернули `GreenSignal`/`RedSignal` вместо `RailwaySignals` | Analyzer |
+| TOP011 | Info | Публичная фабрика без экспортированной схемы | Analyzer |
+| TOP012 | Error | Пути возврата фабрики: разный terminal set | Analyzer |
+| TOP013 | Error | Путь возврата фабрики: unknown terminal | Analyzer |
+| TOP014 | Error | Два `new TrainRoute()` на одной строке | Analyzer |
+| TOP015 | Error | ServiceStation добавляет вагон | Analyzer |
+| TOP016 | Error | ServiceStation опускает входной non-`ref` вагон | Analyzer |
+| TOP017 | Error | ServiceStation возвращает `CargoManifest` | Analyzer |
 
-TOP001–TOP003 чаще всего учат правильной загрузке вагонов в начале цепочки и осторожному частичному возврату. TOP005/TOP009/TOP014 — правильной форме кода, которую видит генератор. TOP010 — границе между `RailwaySignals` и внутренними типами сигналов. TOP008/TOP012 — композиции веток и библиотек маршрутов. TOP015–TOP017 — запрету менять состав манифеста на техобслуживании.
+Описания в коде: `src/TrainOP.Generators/Diagnostics/TrainRouteDiagnostics.cs` (и `AnalyzerReleases.Shipped.md`). TOP001–TOP013 shipped с 0.7.0; TOP014–TOP017 — с 0.13.0.
+
+TOP001–TOP003 учат загрузке вагонов и осторожному частичному возврату. TOP005/TOP009/TOP014 — форме кода. TOP010 — границе DSL и внутренних сигналов. TOP008/TOP012 — композиции. TOP015–TOP017 — составу манифеста на техобслуживании.
 
 ---
 
@@ -719,29 +1010,188 @@ TOP001–TOP003 чаще всего учат правильной загрузк
 
 Соберите привычки в один список — они следуют из глав выше.
 
-1. Вагоны появляются из станций. Частый приём — первая станция-загрузчик (`"Seed"` или вызов метода); можно набирать состав несколькими ранними станциями. У `Build(...)` вход обычно уходит в замыкание первой станции фабрики.
+1. Вагоны появляются из станций. Частый приём — первая станция-загрузчик (`"Seed"` или вызов метода); можно набирать состав несколькими ранними станциями. У `Build(...)` вход обычно уходит в замыкание первой станции фабрики. После public factory локальный seed не обязателен.
 2. Имена параметров = стабильные ключи предметной области (`paymentId`, не `p`).
 3. Для успеха возвращайте данные или `RailwaySignals.Green`; для остановки — только `RailwaySignals.Red`.
 4. Частичный возврат используйте осознанно; иначе верните все поля, нужные хвосту.
 5. При асинхронных станциях — `TravelAsync`; без `ref` на вагонах.
-6. Ветвление — вложенные `Build` + родительская станция, читающая `RouteReport`.
-7. `ServiceStation` в плане по роли: локальное восстановление перед хвостом или финальный лог/аудит в конце без продолжения; на техобслуживании можно только обновить уже существующие вагоны, не меняя состав манифеста.
-8. Держите цепочку «видимой»: fluent от `new` / локальная переменная / factory, без receiver-параметров.
+6. Ветвление — вложенные `Build` + родительская станция, читающая `RouteReport`; либо `?:`/`??`/`switch` на receiver с совместимыми terminal (TOP008).
+7. `ServiceStation` по роли: локальное восстановление перед хвостом или финальный лог/аудит в конце; на техобслуживании только обновление существующих вагонов.
+8. Держите цепочку «видимой»: fluent от `new` / локальная переменная / factory, без receiver-параметров / полей / делегатов.
 9. Читайте TOP* как контракт, а не как шум анализатора.
 10. Смотрите примеры в `samples/TrainOP.Samples/Examples/` и сквозной тест `DataOrientedPaymentRouteEndToEndTests`.
 
 ---
 
-## 17. Куда идти дальше
+## 17. Справочник публичных типов
 
-Вы прошли круг: метафора → первый маршрут → поток данных и сигналы → техобслуживание → async → композиция → компиляция и выполнение → маршруты между сборками.
+### Ключевые типы
 
-Дальше по задаче:
+| Тип | Назначение |
+|-----|------------|
+| `CargoManifest` | Мутабельное хранилище вагонов (`string → object`) |
+| `TrainRoute` | Построитель маршрута + `Travel` / `TravelAsync` |
+| `RouteReport` | Отчёт: визиты, failure, `Manifest`, `Get<T>` / indexer |
+| `Signal` / `GreenSignal` / `RedSignal` | Управление hop'ом (без груза в сигнале) |
+| `RailwaySignals` | DSL handler'а: `Green` / `Red` / `White` |
+| `SignalIssue` | `Code`, `Message`, `StationName` |
+| `StationVisit` | `StationName` + `IsGreen` в журнале |
 
-- детали API и таблицы — [core-api.md](core-api.md);
-- установка и устранение неполадок пакетов — [nuget.md](nuget.md);
-- устройство генератора, разведение цепочек, карта файлов — [architecture-internals.md](architecture-internals.md);
-- библиотеки маршрутов — [cross-assembly-routes.md](cross-assembly-routes.md);
-- объём кода и бенчмарки — [code-volume-comparison.md](code-volume-comparison.md), [`benchmarks/README.md`](../benchmarks/README.md).
+Typed deconstruct (`var (a, b) = …Travel()`) **не** используется: при C# 15 и ниже конфликты декомпозиции на общем terminal-типе языком не решаются. Читайте `report.Get<T>("name")`.
 
-Если читать только один документ «чтобы понять библиотеку» — достаточно этого учебника. Остальное — справочник и углубление, когда конкретный TOP* или сценарий потребует точности.
+### CargoManifest
+
+`LoadWagon` / `UnloadWagon` меняют экземпляр **на месте** и возвращают `this`.
+
+| Метод | Описание |
+|-------|----------|
+| `HasWagon(string)` | Есть ли вагон |
+| `TryGetWagon(string, out object)` | Чтение без исключения |
+| `PullWagon<T>(string)` | Типизированное чтение (иначе исключение) |
+| `LoadWagon(string, object)` | Добавить / заменить |
+| `UnloadWagon(string)` | Удалить |
+| `InspectWagons()` | Live view (`IReadOnlyDictionary<string, object>`) |
+
+Имена сравниваются ordinal (регистр важен). Публичного `Travel(CargoManifest)` нет: канон — seed-станция / замыкание.
+
+### RouteReport
+
+- `ReachedDestination` — доехали ли на зелёном.
+- `Get<T>("wagon")` / `report["wagon"]` — терминальные вагоны (`KeyNotFoundException`, если нет).
+- `FailureCode` / `FailureMessage` / `FailureIssues` — из терминального красного.
+- `TerminalSignal` — единственный полный сигнал.
+- `Visits` — slim-журнал шагов.
+- `Manifest` — манифест рейса на терминале.
+
+### Advanced surface (не для ручного API)
+
+Типы остаются **public** (generated adapters / reflection), но скрыты `[EditorBrowsable(Never)]`:
+
+| Тип | Назначение |
+|-----|------------|
+| `TrainRoute.RegisterStation(...)` | Регистрация адаптеров (генератор) |
+| `StationMerge` | Запись возврата → манифест / сигнал |
+| `WagonStationReturn` | Reflection-путь чтения членов возврата |
+| `RouteSchemaForAttribute` / `RouteSchemaWagonAttribute` | Exported schema |
+| `CallerChainKeyFormat` | Формат ключей caller dispatch |
+
+Поддерживаемый пользовательский API — fluent `.Station` / `.ServiceStation`, `RailwaySignals`, `Travel` / `TravelAsync`.
+
+---
+
+## 18. Объём кода и производительность
+
+### Объём кода (manual vs TrainOP)
+
+Один checkout-пайплайн: валидация, async (loyalty/stock/charge), `CancellationToken`, бизнес-отказы, recovery по `STOCK_LIMIT`, единый итог.
+
+| Реализация | Файл | ≈ строк (non-blank, non-comment) |
+|------------|------|----------------------------------|
+| Без библиотеки | `samples/.../CodeVolume/ManualCheckoutPipeline.cs` | **122** |
+| С TrainOP | `samples/.../CodeVolume/TrainOpCheckoutPipeline.cs` | **95** |
+
+Разница ≈ **27 строк** (~22%). Выигрыш — не в формулах скидки, а в отсутствии ручного `StepResult`, nested `if (!ok)`, повторяемых проверок токена и части `try/catch`. Это закрывают `Red`/`Green`, `ServiceStation` и `TravelAsync(token)`.
+
+Запуск сравнения: `dotnet run --project samples/TrainOP.Samples` (пример «Объём кода»).
+
+### Производительность Travel
+
+Разрыв с manual — цена абстракции (манифест, адаптеры, сигналы, отчёт), не арифметика станций. Ориентир TravelOnly (caller adapter, .NET 10 Release; цифры из плана производительности, сверяйте свежий артефакт бенчмарка):
+
+| Сценарий | Manual | TrainOP TravelOnly | Ratio | Alloc |
+|----------|--------|--------------------|-------|-------|
+| Payment (2 ст.) | ~4.7 ns | ~414 ns | ~89× | ~1840 B |
+| LongPayment (5 ст.) | ~16 ns | ~1094 ns | ~68× | ~4208 B |
+| Checkout (7 ст.) | ~17 ns | ~2531 ns | ~150× | ~12448 B |
+
+Уже сделано по hot path: мутабельный манифест без clone на hop; sync `TravelCore`; typed/`MergePlan` merge для известных return shapes; кэш chain binding при регистрации; slim `StationVisit`. Снято: typed bags в манифесте (регрессия CPU). Pending: opt-in Travel без журнала визитов (`TravelLight` / аналог).
+
+Бенчмарки: [`benchmarks/README.md`](../benchmarks/README.md); фильтр `*LibraryVsManual*`.
+
+---
+
+## 19. Карта репозитория и примеры
+
+```
+TrainOP.sln
+├── src/TrainOP              — runtime + единственный NuGet-пакет
+├── src/TrainOP.Generators   — generator + chain analyzer (внутри пакета TrainOP)
+├── samples/TrainOP.Samples  — консольные примеры
+├── benchmarks/              — BenchmarkDotNet: library vs manual
+└── tests/                   — xUnit (runtime, generators, cross-assembly)
+```
+
+| Путь | Назначение |
+|------|------------|
+| `src/TrainOP` | Runtime + NuGet-пакет (`lib/` + `analyzers/`) |
+| `src/TrainOP.Generators` | Generator + analyzer (не публикуется отдельно) |
+| `samples/TrainOP.Samples/Examples/` | Runnable-сценарии |
+| `tests/TrainOP.Tests` | В т.ч. `DataOrientedPaymentRouteEndToEndTests` |
+| `tests/TrainOP.RouteLib.Tests` + `RouteConsumer.Tests` | Cross-assembly |
+| `docs/` | Учебник и справочные выдержки |
+| `benchmarks/` | Library vs manual |
+
+Примеры в `samples/.../Examples/`:
+
+| Файл | Тема |
+|------|------|
+| `DataOrientedStationExample.cs` | Happy path |
+| `DataOrientedRedSignalExample.cs` | Red + ServiceStation |
+| `AsyncRouteExample.cs` | `TravelAsync` |
+| `PartialWagonReturnExample.cs` | Частичный возврат |
+| `FrameworkParametersExample.cs` | Служебные параметры |
+| `NestedBranchingRouteExample.cs` | Вложенные ветки |
+| `CodeVolume/*` | Manual vs TrainOP |
+
+---
+
+## 20. Известные ограничения и roadmap
+
+### Не поддерживается (намеренно или отложено)
+
+| Ограничение | Статус |
+|-------------|--------|
+| Receiver = параметр / поле / свойство / делегат (`baseRoute.Station`, `_route.Station`, `buildRoute().Station`) | **Отложено** → TOP005 |
+| `Func<>` / переменная-делегат как handler | Не поддерживается → TOP009 |
+| Typed `var (a, b) = Travel()` | **Снято** (C# ≤15) |
+| Динамическая сборка маршрута в runtime (`foreach` + `RegisterStation` руками) | Не-цель |
+| Plugin-станции из произвольных DLL без перекомпиляции | Не-цель |
+| Автоанализ произвольных тел lambda сверх сигнатуры и известных return shapes | Не-цель |
+| Публичный `Travel(CargoManifest)` | Нет; только seed / замыкание |
+| `async` + `ref` | Запрет языка CS1988 |
+| Nullable reference types в пакетах | Пока `Nullable` disable |
+
+Conditional / switch / coalesce и parenthesized/cast на factory receiver — **поддерживаются**.
+
+### Data-oriented roadmap (сводка)
+
+- **Выполнено:** фазы 0–8 (адаптеры, analyzer TOP001+, якоря `new`/local/factory, branch merge, cross-assembly schema, caller dispatch).
+- **Отложено:** якоря параметр / поле / свойство / делегат (возможен opt-in declare upstream-схемы).
+- **Снято:** typed Travel / deconstruct; interceptors; reflection chain-dispatch.
+
+Подробные планы для агентов: [plan-data-oriented-handlers.md](plan-data-oriented-handlers.md), [plan-performance.md](plan-performance.md).
+
+### Готовность к релизу (срез)
+
+Пакет ориентирован на **NuGet Preview 0.x** (версия в csproj — см. `CHANGELOG.md`, на момент среза docs — **0.13.0**). Фундамент продукта сильный; до публичного preview главный разрыв — publish workflow on tag; до стабильного 1.0 — SourceLink/snupkg, nullable policy, API freeze advanced surface, samples smoke в CI. Живой чеклист: [release-readiness.md](release-readiness.md).
+
+---
+
+## 21. Куда идти дальше
+
+Вы прошли круг: метафора → подключение → первый маршрут → поток данных и сигналы → техобслуживание → async → композиция → формы кода → compile-time / runtime → cross-assembly → диагностики → справочник типов → объём/perf → ограничения.
+
+Если читать только один документ — достаточно этого учебника. Краткие выдержки и планы:
+
+| Файл | Зачем открывать |
+|------|-----------------|
+| [getting-started.md](getting-started.md) | Минимальный quick start |
+| [nuget.md](nuget.md) | Только установка / feed / troubleshooting |
+| [core-api.md](core-api.md) | Компактные таблицы API |
+| [architecture-internals.md](architecture-internals.md) | Ещё более детальный Roslyn-разбор для контрибьюторов |
+| [cross-assembly-routes.md](cross-assembly-routes.md) | Короткая карточка library + consumer |
+| [code-volume-comparison.md](code-volume-comparison.md) | Только сравнение строк |
+| [plan-data-oriented-handlers.md](plan-data-oriented-handlers.md) / [plan-performance.md](plan-performance.md) | Roadmap для разработки библиотеки |
+| [release-readiness.md](release-readiness.md) | Чеклист публикации |
+| [`benchmarks/README.md`](../benchmarks/README.md) | Запуск бенчмарков |
+
