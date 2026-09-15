@@ -1,0 +1,8 @@
+---
+description: Не рабочий проект — не применять work-projects, не искать в work-repos.txt
+alwaysApply: true
+---
+
+# Not a work project
+
+Этот репозиторий **не** рабочий. Не читать `work-repos.txt` и не применять скиллы `work-projects` / `basetest-unit-tests`, пока оператор явно не попросит иное.
