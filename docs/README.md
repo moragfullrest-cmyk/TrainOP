@@ -15,12 +15,13 @@ TrainOP — библиотека Railway Oriented Programming (ROP) для .NET 
 
 | [Начало работы](getting-started.md) | Минимальный quick start |
 | [Основной API](core-api.md) | Компактные таблицы API |
-| [Архитектура](architecture-internals.md) | Углублённый Roslyn-разбор для контрибьюторов |
+| [Архитектура](architecture-internals.md) | Roslyn-разбор; IR-first этапы генератора (1a–7) → Emit-last |
 | [Cross-assembly routes](cross-assembly-routes.md) | Краткая карточка library + consumer |
 | [Сравнение объёма кода](code-volume-comparison.md) | Manual vs TrainOP |
 | [Benchmarks](../benchmarks/README.md) | Library vs manual |
 | [План: data-oriented handlers](plan-data-oriented-handlers.md) | Roadmap: фазы 0–8 выполнены; отложены якоря параметр/поле/свойство/делегат |
 | [План: производительность Travel](plan-performance.md) | Roadmap: P0–P3 + P4a done; P5 reverted; P4 pending |
+| [План: ускорение (продолжение)](plan-acceleration.md) | P4 TravelLight → freeze маршрута → slim dispatch |
 | [Готовность к релизу](release-readiness.md) | Чеклист Preview / 1.0 |
 
 ## Структура решения

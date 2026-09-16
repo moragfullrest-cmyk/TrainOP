@@ -28,10 +28,14 @@ namespace TrainOP.Generators
 
         public IReadOnlyList<ChainSiteBinding> ChainBindings => _chainBindings;
 
+        /// <summary>
+        /// Emit path: chain-aware vs canonical. Owned by <see cref="ChainDispatchPolicy"/>.
+        /// </summary>
         public bool UsesChainDispatch =>
-            _chainBindings.Count > 0
-            && (HasDistinctWagonNameSets() || RequiresPerSiteReturnMetadata())
-            && !CanonicalBinding.IsServiceStation;
+            ChainDispatchPolicy.UsesChainDispatch(
+                _chainBindings,
+                _returnShapes,
+                CanonicalBinding.IsServiceStation);
 
         /// <summary>
         /// True when distinct return shapes cannot share consolidated <c>ReturnMembers</c>
@@ -39,17 +43,6 @@ namespace TrainOP.Generators
         /// </summary>
         public bool RequiresPerSiteReturnMetadata() =>
             HandlerOutputParameters.RequiresPerSiteReturnMetadata(_returnShapes);
-
-        private bool HasDistinctWagonNameSets()
-        {
-            var wagonNameSets = new HashSet<string>(StringComparer.Ordinal);
-            for (var i = 0; i < _chainBindings.Count; i++)
-            {
-                wagonNameSets.Add(HandlerInputParameters.FormatWagonNames(_chainBindings[i].Schema.Wagons));
-            }
-
-            return wagonNameSets.Count > 1;
-        }
 
         public string[] ReturnMembers =>
             HandlerOutputParameters.MergeReturnMemberNames(_returnShapes);

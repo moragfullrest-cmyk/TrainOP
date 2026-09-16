@@ -58,12 +58,12 @@ TrainOP воплощает эту идею для .NET (`netstandard2.0`). Вы 
 ```bash
 dotnet add package TrainOP
 # или явно:
-dotnet add package TrainOP --version 0.13.0
+dotnet add package TrainOP --version 0.14.0
 ```
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.13.0" />
+  <PackageReference Include="TrainOP" Version="0.14.0" />
 </ItemGroup>
 ```
 
@@ -1173,7 +1173,7 @@ Conditional / switch / coalesce и parenthesized/cast на factory receiver — 
 
 ### Готовность к релизу (срез)
 
-Пакет ориентирован на **NuGet Preview 0.x** (версия в csproj — см. `CHANGELOG.md`, на момент среза docs — **0.13.0**). Фундамент продукта сильный; до публичного preview главный разрыв — publish workflow on tag; до стабильного 1.0 — SourceLink/snupkg, nullable policy, API freeze advanced surface, samples smoke в CI. Живой чеклист: [release-readiness.md](release-readiness.md).
+Пакет ориентирован на **NuGet Preview 0.x** (версия в csproj — см. `CHANGELOG.md`, на момент среза docs — **0.14.0**). Фундамент продукта сильный; до публичного preview главный разрыв — publish workflow on tag; до стабильного 1.0 — SourceLink/snupkg, nullable policy, API freeze advanced surface, samples smoke в CI. Живой чеклист: [release-readiness.md](release-readiness.md).
 
 ---
 

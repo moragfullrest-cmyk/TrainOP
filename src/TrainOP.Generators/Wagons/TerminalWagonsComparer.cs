@@ -52,6 +52,30 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
+        /// <see cref="TerminalSet"/> overload — compares <see cref="TerminalSet.Wagons"/> only
+        /// (origin is ignored; unknown sets are not equivalent to known non-empty sets).
+        /// </summary>
+        public static bool AreEquivalent(TerminalSet left, TerminalSet right)
+        {
+            if (left == null && right == null)
+            {
+                return true;
+            }
+
+            if (left == null || right == null)
+            {
+                return false;
+            }
+
+            if (left.HasUnknownReturn || right.HasUnknownReturn)
+            {
+                return left.HasUnknownReturn && right.HasUnknownReturn;
+            }
+
+            return AreEquivalent(left.Wagons, right.Wagons);
+        }
+
+        /// <summary>
         /// Builds a human-readable description of how two terminal sets differ.
         /// </summary>
         public static string DescribeDifference(
@@ -110,6 +134,16 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
+        /// <see cref="TerminalSet"/> overload for difference description.
+        /// </summary>
+        public static string DescribeDifference(TerminalSet left, TerminalSet right)
+        {
+            return DescribeDifference(
+                TerminalSetAdapters.ToWagons(left),
+                TerminalSetAdapters.ToWagons(right));
+        }
+
+        /// <summary>
         /// Returns terminal wagons sorted by wagon name for stable schema emit and comparison.
         /// </summary>
         public static ImmutableArray<WagonBinding> Normalize(ImmutableArray<WagonBinding> wagons)
@@ -120,6 +154,24 @@ namespace TrainOP.Generators
             }
 
             return wagons.OrderBy(w => w.Name, StringComparer.Ordinal).ToImmutableArray();
+        }
+
+        /// <summary>
+        /// Normalizes wagons of a <see cref="TerminalSet"/> (preserves origin / unknown flag).
+        /// </summary>
+        public static TerminalSet Normalize(TerminalSet terminals)
+        {
+            if (terminals == null)
+            {
+                return TerminalSet.Empty(TerminalSet.Origin.Linear);
+            }
+
+            if (terminals.HasUnknownReturn)
+            {
+                return TerminalSet.Unknown(terminals.Provenance);
+            }
+
+            return new TerminalSet(Normalize(terminals.Wagons), terminals.Provenance, hasUnknownReturn: false);
         }
     }
 }

@@ -8,12 +8,14 @@ namespace TrainOP.Generators
 {
     /// <summary>
     /// Assembles <see cref="RouteGraph"/> instances from discovered <see cref="RouteSite"/> nodes.
+    /// Primary facade for stage 4 BuildChains (see also <see cref="BuildChainsStage"/>).
     /// </summary>
     internal static class RouteGraphAssembler
     {
         /// <summary>
         /// Builds route chains from discovered anchors via forward chain walk;
         /// station sites supply pre-resolved handler bindings for <see cref="RouteChainWalker.TryAdvanceChain"/>.
+        /// Unified BuildChains entry for the generator / analyzer graph.
         /// </summary>
         public static RouteGraph Build(ImmutableArray<RouteSite> sites, Compilation compilation)
         {

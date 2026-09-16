@@ -1,12 +1,15 @@
 using Microsoft.CodeAnalysis;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using TrainOP.Generators.Chain;
 using TrainOP.Generators.Handlers;
+
 namespace TrainOP.Generators
 {
     /// <summary>
     /// Accumulates handler bindings that share the same delegate type signature.
+    /// Chain context is attached later via <see cref="AttachChainContext"/>.
     /// </summary>
     internal sealed class DelegateSignatureGroup
     {
@@ -25,23 +28,14 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Adds a handler binding to the group and reports conflicting wagon names.
+        /// Adds a handler binding and return shape without chain context.
         /// </summary>
         public void Add(
             StationHandlerBinding handlerBinding,
             Location location,
-            ChainSiteBinding chainBinding,
-            SourceProductionContext context)
+            Location invocationLocation)
         {
-            _entries.Add(new StationEntry(handlerBinding, location, chainBinding));
-            if (chainBinding != null
-                && !_chainBindings.Exists(existing =>
-                    existing.ChainId == chainBinding.ChainId
-                    && ChainSiteBindingLookup.BuildLocationKey(existing.InvocationLocation)
-                        == ChainSiteBindingLookup.BuildLocationKey(chainBinding.InvocationLocation)))
-            {
-                _chainBindings.Add(chainBinding);
-            }
+            _entries.Add(new StationEntry(handlerBinding, location, invocationLocation, chainBinding: null));
 
             if (_canonicalBinding == null)
             {
@@ -52,9 +46,57 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Produces a merged schema with combined return-shape metadata for code generation.
+        /// Joins this group with chain-index bindings by invocation location key.
+        /// Expands one entry per resolved chain binding (preserves prior multi-binding semantics).
         /// </summary>
-        public MergedStationSchema ToMerged(SourceProductionContext context)
+        public void AttachChainContext(
+            IReadOnlyDictionary<string, ImmutableArray<ChainSiteBinding>> chainIndex)
+        {
+            if (_entries.Count == 0)
+            {
+                return;
+            }
+
+            var attached = new List<StationEntry>(_entries.Count);
+            for (var i = 0; i < _entries.Count; i++)
+            {
+                var entry = _entries[i];
+                if (ChainSiteBindingLookup.TryResolveAll(chainIndex, entry.InvocationLocation, out var chainBindings)
+                    && chainBindings.Length > 0)
+                {
+                    for (var j = 0; j < chainBindings.Length; j++)
+                    {
+                        var chainBinding = chainBindings[j];
+                        attached.Add(new StationEntry(
+                            entry.HandlerBinding,
+                            entry.Location,
+                            entry.InvocationLocation,
+                            chainBinding));
+                        AddUniqueChainBinding(chainBinding);
+                    }
+                }
+                else
+                {
+                    attached.Add(entry);
+                }
+            }
+
+            _entries.Clear();
+            _entries.AddRange(attached);
+        }
+
+        /// <summary>
+        /// Builds a branch plan (merged schema + TOP007) using <see cref="ChainDispatchPolicy"/>.
+        /// </summary>
+        public BranchPlan ToBranchPlan(SourceProductionContext context)
+        {
+            return ToBranchPlan(context.ReportDiagnostic);
+        }
+
+        /// <summary>
+        /// Builds a branch plan with an explicit diagnostic sink (generator context or tests).
+        /// </summary>
+        public BranchPlan ToBranchPlan(Action<Diagnostic> reportDiagnostic)
         {
             var merged = new MergedStationSchema(_canonicalBinding, _typeSignature.TypeId);
             for (var i = 0; i < _returnShapes.Count; i++)
@@ -62,22 +104,54 @@ namespace TrainOP.Generators
                 merged.AddReturnShape(_returnShapes[i]);
             }
 
-            if (RequiresChainDispatch())
+            if (ChainDispatchPolicy.RequiresChainDispatch(
+                _chainBindings,
+                _returnShapes,
+                CollectEntryWagonNameKeys()))
             {
-                ReportNonChainConflicts(context);
+                ReportNonChainConflicts(reportDiagnostic);
                 merged.SetChainBindings(_chainBindings);
             }
             else
             {
-                ReportCanonicalConflicts(context);
+                ReportCanonicalConflicts(reportDiagnostic);
             }
 
-            return merged;
+            return new BranchPlan(merged);
         }
 
-        private void ReportCanonicalConflicts(SourceProductionContext context)
+        private string[] CollectEntryWagonNameKeys()
         {
-            if (_canonicalBinding == null)
+            var keys = new string[_entries.Count];
+            for (var i = 0; i < _entries.Count; i++)
+            {
+                keys[i] = HandlerInputParameters.FormatWagonNames(_entries[i].HandlerBinding.Wagons);
+            }
+
+            return keys;
+        }
+
+        private void AddUniqueChainBinding(ChainSiteBinding chainBinding)
+        {
+            if (chainBinding == null)
+            {
+                return;
+            }
+
+            if (_chainBindings.Exists(existing =>
+                existing.ChainId == chainBinding.ChainId
+                && ChainSiteBindingLookup.BuildLocationKey(existing.InvocationLocation)
+                    == ChainSiteBindingLookup.BuildLocationKey(chainBinding.InvocationLocation)))
+            {
+                return;
+            }
+
+            _chainBindings.Add(chainBinding);
+        }
+
+        private void ReportCanonicalConflicts(Action<Diagnostic> reportDiagnostic)
+        {
+            if (_canonicalBinding == null || reportDiagnostic == null)
             {
                 return;
             }
@@ -92,7 +166,7 @@ namespace TrainOP.Generators
 
                 if (!HandlerInputParameters.WagonNamesMatch(_canonicalBinding.Wagons, entry.HandlerBinding.Wagons))
                 {
-                    context.ReportDiagnostic(Diagnostic.Create(
+                    reportDiagnostic(Diagnostic.Create(
                         TrainRouteDiagnostics.ConflictingWagonNames,
                         entry.Location,
                         HandlerInputParameters.FormatWagonNames(entry.HandlerBinding.Wagons),
@@ -101,31 +175,13 @@ namespace TrainOP.Generators
             }
         }
 
-        private bool RequiresChainDispatch()
+        private void ReportNonChainConflicts(Action<Diagnostic> reportDiagnostic)
         {
-            if (_chainBindings.Count == 0)
+            if (reportDiagnostic == null)
             {
-                return false;
+                return;
             }
 
-            // Anonymous / object returns consolidate into one ReturnMembers_* list.
-            // Named vs default-ItemN (and other typed shape splits) need per-site metadata.
-            if (HandlerOutputParameters.RequiresPerSiteReturnMetadata(_returnShapes))
-            {
-                return true;
-            }
-
-            var wagonNameSets = new HashSet<string>(StringComparer.Ordinal);
-            for (var i = 0; i < _entries.Count; i++)
-            {
-                wagonNameSets.Add(HandlerInputParameters.FormatWagonNames(_entries[i].HandlerBinding.Wagons));
-            }
-
-            return wagonNameSets.Count > 1;
-        }
-
-        private void ReportNonChainConflicts(SourceProductionContext context)
-        {
             for (var i = 0; i < _entries.Count; i++)
             {
                 var left = _entries[i];
@@ -144,7 +200,7 @@ namespace TrainOP.Generators
                     var right = _entries[j];
                     if (!HandlerInputParameters.WagonNamesMatch(left.HandlerBinding.Wagons, right.HandlerBinding.Wagons))
                     {
-                        context.ReportDiagnostic(Diagnostic.Create(
+                        reportDiagnostic(Diagnostic.Create(
                             TrainRouteDiagnostics.ConflictingWagonNames,
                             left.Location,
                             HandlerInputParameters.FormatWagonNames(left.HandlerBinding.Wagons),
@@ -173,16 +229,20 @@ namespace TrainOP.Generators
             public StationEntry(
                 StationHandlerBinding handlerBinding,
                 Location location,
+                Location invocationLocation,
                 ChainSiteBinding chainBinding)
             {
                 HandlerBinding = handlerBinding;
                 Location = location;
+                InvocationLocation = invocationLocation;
                 ChainBinding = chainBinding;
             }
 
             public StationHandlerBinding HandlerBinding { get; }
 
             public Location Location { get; }
+
+            public Location InvocationLocation { get; }
 
             public ChainSiteBinding ChainBinding { get; }
         }

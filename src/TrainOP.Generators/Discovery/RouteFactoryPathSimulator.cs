@@ -131,7 +131,10 @@ namespace TrainOP.Generators
                 yield break;
             }
 
-            if (TrySimulateForkJoinPaths(expression, semanticModel, out var forkJoinPaths))
+            if (JoinChainsStage.TrySimulateFactoryForkJoin(
+                expression,
+                semanticModel,
+                out var forkJoinPaths))
             {
                 foreach (var path in forkJoinPaths)
                 {
@@ -148,128 +151,28 @@ namespace TrainOP.Generators
                 expression.GetLocation());
         }
 
-        private static bool TrySimulateForkJoinPaths(
-            ExpressionSyntax expression,
-            SemanticModel semanticModel,
-            out ImmutableArray<FactoryPathSimulation> paths)
-        {
-            paths = ImmutableArray<FactoryPathSimulation>.Empty;
-            if (!TryFindForkJoinAnchor(expression, out var forkReceiver, out var firstDownstreamStation))
-            {
-                return false;
-            }
-
-            var branches = BranchRouteGraphDiscoverer.Discover(forkReceiver, semanticModel);
-            if (branches.IsDefaultOrEmpty)
-            {
-                return false;
-            }
-
-            if (!RouteChainWalker.TryBuildChainFromStationInvocation(
-                firstDownstreamStation,
-                semanticModel,
-                out var downstreamChain))
-            {
-                return false;
-            }
-
-            var builder = ImmutableArray.CreateBuilder<FactoryPathSimulation>();
-            foreach (var branch in branches)
-            {
-                var location = branch.BranchExpression?.GetLocation() ?? expression.GetLocation();
-                if (!branch.IsResolved
-                    || branch.Simulation == null
-                    || branch.Simulation.HasUnknownReturn)
-                {
-                    builder.Add(new FactoryPathSimulation(
-                        ImmutableArray<WagonBinding>.Empty,
-                        hasUnknownReturn: true,
-                        location));
-                    continue;
-                }
-
-                var simulation = ChainGraphSimulator.Simulate(
-                    downstreamChain,
-                    branch.Simulation.TerminalWagons);
-                builder.Add(new FactoryPathSimulation(
-                    simulation.TerminalWagons,
-                    simulation.HasUnknownReturn,
-                    location));
-            }
-
-            paths = builder.ToImmutable();
-            return paths.Length > 0;
-        }
-
-        private static bool TryFindForkJoinAnchor(
-            ExpressionSyntax endpoint,
-            out ExpressionSyntax forkReceiver,
-            out InvocationExpressionSyntax firstDownstreamStation)
-        {
-            forkReceiver = null;
-            firstDownstreamStation = null;
-
-            var current = ReceiverExpressionSyntaxPeel.UnwrapTransparent(endpoint);
-            if (current == null || !IsStationInvocation(current))
-            {
-                return false;
-            }
-
-            while (true)
-            {
-                var invocation = (InvocationExpressionSyntax)current;
-                var memberAccess = (MemberAccessExpressionSyntax)invocation.Expression;
-                var receiver = memberAccess.Expression;
-                if (IsForkingExpression(ReceiverExpressionSyntaxPeel.UnwrapTransparent(receiver)))
-                {
-                    forkReceiver = receiver;
-                    firstDownstreamStation = invocation;
-                    return true;
-                }
-
-                if (receiver is not InvocationExpressionSyntax receiverInvocation
-                    || !IsStationInvocation(receiverInvocation))
-                {
-                    return false;
-                }
-
-                current = receiverInvocation;
-            }
-        }
-
-        private static bool IsStationInvocation(ExpressionSyntax expression)
-        {
-            return expression is InvocationExpressionSyntax invocation
-                && StationSyntaxHelper.MatchesStationOrServiceStationShape(invocation, out _);
-        }
-
-        private static bool IsForkingExpression(ExpressionSyntax expression)
-        {
-            if (expression is ConditionalExpressionSyntax || expression is SwitchExpressionSyntax)
-            {
-                return true;
-            }
-
-            return expression is BinaryExpressionSyntax binary
-                && binary.IsKind(SyntaxKind.CoalesceExpression);
-        }
-
         private static FactoryPathSimulation SimulateReturnExpression(
             ExpressionSyntax expression,
             SemanticModel semanticModel,
             Compilation compilation,
             Location location)
         {
-            if (RouteChainWalker.TryBuildChainEndingAt(expression, semanticModel, out var chain))
+            if (BuildChainsStage.EndingAt(expression, semanticModel, out var chain))
             {
-                var simulation = ChainGraphSimulator.Simulate(chain, chain.Anchor.InitialWagons);
+                var seed = TerminalSetAdapters.FromAnchorSeed(chain.Anchor.InitialWagons);
+                var simulation = ChainGraphSimulator.Simulate(
+                    chain,
+                    TerminalSetAdapters.ToWagons(seed));
+                var terminals = TerminalSetAdapters.FromSimulation(
+                    simulation,
+                    TerminalSet.Origin.FactoryPath);
                 return new FactoryPathSimulation(
-                    simulation.TerminalWagons,
-                    simulation.HasUnknownReturn,
+                    TerminalSetAdapters.ToWagons(terminals),
+                    terminals.HasUnknownReturn,
                     location);
             }
 
-            if (RouteChainWalker.TryBuildFactoryExtensionChain(
+            if (BuildChainsStage.FactoryExtension(
                 expression,
                 semanticModel,
                 compilation,
@@ -284,12 +187,16 @@ namespace TrainOP.Generators
                         location);
                 }
 
+                var seed = TerminalSetAdapters.FromAnchorSeed(extensionChain.Anchor.InitialWagons);
                 var simulation = ChainGraphSimulator.Simulate(
                     extensionChain,
-                    extensionChain.Anchor.InitialWagons);
+                    TerminalSetAdapters.ToWagons(seed));
+                var terminals = TerminalSetAdapters.FromSimulation(
+                    simulation,
+                    TerminalSet.Origin.FactoryPath);
                 return new FactoryPathSimulation(
-                    simulation.TerminalWagons,
-                    simulation.HasUnknownReturn,
+                    TerminalSetAdapters.ToWagons(terminals),
+                    terminals.HasUnknownReturn,
                     location);
             }
 
@@ -347,7 +254,14 @@ namespace TrainOP.Generators
                 return true;
             }
 
-            simulation = new FactoryPathSimulation(terminalWagons, hasUnknownReturn: false, location);
+            var terminals = new TerminalSet(
+                terminalWagons,
+                TerminalSet.Origin.FactoryPath,
+                hasUnknownReturn: false);
+            simulation = new FactoryPathSimulation(
+                TerminalSetAdapters.ToWagons(terminals),
+                terminals.HasUnknownReturn,
+                location);
             return true;
         }
     }

@@ -141,7 +141,7 @@ namespace TrainOP.Generators
                 return null;
             }
 
-            var result = HandlerSchemaResolver.ResolveParsedInvocation(
+            var result = StationSignatureStage.ResolveParsedInvocation(
                 invocation,
                 semanticModel,
                 stationKind,
@@ -172,7 +172,7 @@ namespace TrainOP.Generators
                 return null;
             }
 
-            if (!RouteChainWalker.TryDetectAnchorSite(node, semanticModel, out var anchor))
+            if (!AnchorStage.TryResolve(node, semanticModel, out var anchor))
             {
                 return null;
             }

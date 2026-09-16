@@ -34,6 +34,7 @@ namespace TrainOP.Generators.Route
 
         /// <summary>
         /// Intersection of compatible terminal wagons across branches; empty when <see cref="CanMerge"/> is false.
+        /// Prefer <see cref="TerminalSetAdapters.FromJoin"/> when tagging provenance for IR.
         /// </summary>
         public ImmutableArray<WagonBinding> MergedTerminalWagons { get; }
     }

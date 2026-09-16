@@ -25,6 +25,7 @@ namespace TrainOP.Generators.Chain
         /// <summary>
         /// Live wagons at the end of the chain, in live order.
         /// Empty when <see cref="HasUnknownReturn"/> is set (terminal state is not trustworthy for merge).
+        /// Prefer <see cref="TerminalSetAdapters.FromSimulation"/> when tagging provenance for IR.
         /// </summary>
         public ImmutableArray<WagonBinding> TerminalWagons { get; }
 

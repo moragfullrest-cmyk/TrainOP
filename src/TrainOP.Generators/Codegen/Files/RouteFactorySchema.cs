@@ -1,68 +1,61 @@
-using Microsoft.CodeAnalysis;
 using System.Collections.Immutable;
 using TrainOP.Generators.Wagons;
 
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Emits one exported route factory schema type.
+    /// Emits one exported route factory schema type from a <see cref="SchemaDescriptor"/>.
     /// </summary>
     internal sealed class RouteFactorySchema
     {
         /// <summary>
-        /// Creates a route factory schema from a factory method and its terminal wagons.
+        /// Creates a route factory schema emitter from an export descriptor.
         /// </summary>
-        public RouteFactorySchema(
-            IMethodSymbol method,
-            ImmutableArray<WagonBinding> terminalWagons,
-            string callerChainKey,
-            int stationCount)
+        public RouteFactorySchema(SchemaDescriptor descriptor)
         {
-            Method = method;
-            TerminalWagons = terminalWagons;
-            CallerChainKey = callerChainKey ?? string.Empty;
-            StationCount = stationCount < 0 ? 0 : stationCount;
+            Descriptor = descriptor
+                ?? throw new System.ArgumentNullException(nameof(descriptor));
         }
 
-        /// <summary>Exported factory method symbol.</summary>
-        public IMethodSymbol Method { get; }
+        /// <summary>Export descriptor backing this emit unit.</summary>
+        public SchemaDescriptor Descriptor { get; }
 
-        /// <summary>Terminal wagon slots discovered for the factory path.</summary>
-        public ImmutableArray<WagonBinding> TerminalWagons { get; }
+        /// <summary>Terminal wagon slots from the descriptor.</summary>
+        public ImmutableArray<WagonBinding> TerminalWagons => Descriptor.TerminalWagons;
 
         /// <summary>Caller chain key for the factory's <c>new TrainRoute()</c> site.</summary>
-        public string CallerChainKey { get; }
+        public string CallerChainKey => Descriptor.CallerChainKey;
 
         /// <summary>Number of Station/ServiceStation registrations inside the factory.</summary>
-        public int StationCount { get; }
+        public int StationCount => Descriptor.StationCount;
 
         /// <summary>
         /// Emits schema attributes on a generated holder type.
         /// </summary>
         internal void Emit(CodegenWriter writer)
         {
-            var ownerDisplay = Method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            var schemaTypeName = BuildSchemaTypeName(Method);
+            var descriptor = Descriptor;
             writer.AppendIndented("[RouteSchemaFor(typeof(")
-                .Append(ownerDisplay)
+                .Append(descriptor.OwnerTypeDisplay)
                 .Append("), \"")
-                .Append(Method.Name)
+                .Append(descriptor.MethodName)
                 .Append("\"");
 
-            if (!string.IsNullOrEmpty(CallerChainKey))
+            if (descriptor.HasDispatchIdentity)
             {
                 writer.Append(", CallerChainKey = \"")
-                    .Append(StringHelpers.Escape(CallerChainKey))
+                    .Append(StringHelpers.Escape(descriptor.CallerChainKey))
                     .Append("\", StationCount = ")
-                    .Append(StationCount);
+                    .Append(descriptor.StationCount);
             }
 
             writer.Append(")]");
             writer.EndLine();
 
-            for (var i = 0; i < TerminalWagons.Length; i++)
+            var wagons = descriptor.TerminalWagons;
+            for (var i = 0; i < wagons.Length; i++)
             {
-                var wagon = TerminalWagons[i];
+                var wagon = SchemaWagonDescriptor.FromBinding(wagons[i]);
                 writer.AppendIndented("[RouteSchemaWagon(\"")
                     .Append(StringHelpers.Escape(wagon.Name) ?? string.Empty)
                     .Append("\", typeof(")
@@ -72,7 +65,7 @@ namespace TrainOP.Generators
             }
 
             writer.AppendIndented("internal static class ")
-                .Append(schemaTypeName)
+                .Append(descriptor.SchemaTypeName)
                 .Append(" { }");
             writer.EndLine();
             writer.AppendLine();
@@ -81,16 +74,9 @@ namespace TrainOP.Generators
         /// <summary>
         /// Builds the generated schema type name for a factory method.
         /// </summary>
-        internal static string BuildSchemaTypeName(IMethodSymbol methodSymbol)
+        internal static string BuildSchemaTypeName(Microsoft.CodeAnalysis.IMethodSymbol methodSymbol)
         {
-            var typeName = methodSymbol.ContainingType.Name;
-            var methodName = methodSymbol.Name;
-            if (typeName.Length == 0)
-            {
-                return methodName + "_Schema";
-            }
-
-            return typeName + "_" + methodName + "_Schema";
+            return SchemaDescriptor.BuildSchemaTypeName(methodSymbol);
         }
     }
 }

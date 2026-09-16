@@ -51,7 +51,7 @@ namespace TrainOP.Generators
         /// </summary>
         private static void AnalyzeCompilation(CompilationStartAnalysisContext context)
         {
-            var graph = RouteGraphAssembler.Build(
+            var graph = BuildChainsStage.Build(
                 RouteSiteDiscoverer.CollectAll(context.Compilation),
                 context.Compilation);
 
@@ -142,8 +142,9 @@ namespace TrainOP.Generators
                     }
                 }
 
+                var seed = TerminalSetAdapters.FromAnchorSeed(chain.Anchor.InitialWagons);
                 foreach (var diagnostic in ChainGraphSimulator
-                    .Simulate(chain, chain.Anchor.InitialWagons)
+                    .Simulate(chain, TerminalSetAdapters.ToWagons(seed))
                     .Diagnostics)
                 {
                     modelContext.ReportDiagnostic(diagnostic);
@@ -157,16 +158,15 @@ namespace TrainOP.Generators
             SyntaxTree tree,
             SemanticModel semanticModel)
         {
-            var joinSets = BranchRouteJoinSetFinder.Find(tree, semanticModel);
-            foreach (var joinSet in joinSets)
+            foreach (var joinSet in JoinChainsStage.Find(tree, semanticModel))
             {
-                var validation = BranchRouteJoinValidator.Validate(joinSet, semanticModel);
-                foreach (var diagnostic in validation.Diagnostics)
+                var joined = JoinChainsStage.Join(joinSet, semanticModel);
+                foreach (var diagnostic in joined.Validation.Diagnostics)
                 {
                     modelContext.ReportDiagnostic(diagnostic);
                 }
 
-                if (!validation.CanMerge || joinSet.DownstreamStation == null)
+                if (!joined.Validation.CanMerge || joinSet.DownstreamStation == null)
                 {
                     continue;
                 }
@@ -177,7 +177,7 @@ namespace TrainOP.Generators
                 }
 
                 foreach (var diagnostic in ChainGraphSimulator
-                    .Simulate(downstreamChain, validation.MergedTerminalWagons)
+                    .Simulate(downstreamChain, TerminalSetAdapters.ToWagons(joined.MergedTerminals))
                     .Diagnostics)
                 {
                     modelContext.ReportDiagnostic(diagnostic);
@@ -192,7 +192,7 @@ namespace TrainOP.Generators
             SemanticModel semanticModel)
         {
             var joinDownstream = new HashSet<InvocationExpressionSyntax>();
-            foreach (var joinSet in BranchRouteJoinSetFinder.Find(tree, semanticModel))
+            foreach (var joinSet in JoinChainsStage.Find(tree, semanticModel))
             {
                 if (joinSet.DownstreamStation != null)
                 {

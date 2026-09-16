@@ -4,7 +4,8 @@
 > **Цель:** снизить стоимость инфраструктуры hop в `Travel()` / `TravelAsync` без изменения data-oriented UX handler'ов.  
 > **Метрика успеха:** снижение Ratio и Alloc в `LibraryVsManualBenchmarks` (TravelOnly); **не** цель догнать manual ns.  
 > **Аудитория:** разработчики и AI-агенты, продолжающие работу над TrainOP.  
-> **Связанный план:** data-oriented handlers — [`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) (фазы 0–8 выполнены).
+> **Связанный план:** data-oriented handlers — [`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) (фазы 0–8 выполнены).  
+> **Продолжение:** [`plan-acceleration.md`](plan-acceleration.md) — P4 → freeze маршрута → slim dispatch.
 
 ---
 

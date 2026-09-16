@@ -12,8 +12,19 @@ using TrainOP.Generators.Wagons;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Walk-primitives for fluent route chain traversal (used by RouteGraphAssembler).
+    /// Walk-primitives for fluent route chain traversal (used by <see cref="RouteGraphAssembler"/> /
+    /// <see cref="BuildChainsStage"/>).
     /// </summary>
+    /// <remarks>
+    /// Stage 4 BuildChains entry variants (same stage, different ingress):
+    /// <list type="bullet">
+    /// <item><see cref="TryBuildChainFromStationInvocation"/> — forward from a station (join / fork downstream)</item>
+    /// <item><see cref="TryBuildChainEndingAt"/> — root → endpoint inclusive</item>
+    /// <item><see cref="TryBuildFactoryExtensionChain"/> — factory-extension ending at endpoint</item>
+    /// <item>Forward from anchor via <see cref="TryAdvanceChain"/> inside <see cref="RouteGraphAssembler.Build"/></item>
+    /// </list>
+    /// Prefer <see cref="BuildChainsStage"/> at call sites when folding setup.
+    /// </remarks>
     internal static class RouteChainWalker
     {
         /// <summary>
@@ -48,8 +59,8 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Builds a <see cref="RouteChain"/> starting at an already-identified Station invocation
-        /// (inclusive) and continuing through further fluent stations.
+        /// BuildChains variant: builds a <see cref="RouteChain"/> starting at an already-identified
+        /// Station invocation (inclusive) and continuing through further fluent stations.
         /// </summary>
         internal static bool TryBuildChainFromStationInvocation(
             InvocationExpressionSyntax startStation,
@@ -136,7 +147,7 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Builds a <see cref="RouteChain"/> from a known chain root forward until
+        /// BuildChains variant: builds a <see cref="RouteChain"/> from a known chain root forward until
         /// <paramref name="endpoint"/> (inclusive), without continuing past a fork into an outer join.
         /// </summary>
         /// <remarks>
@@ -187,7 +198,7 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Builds a factory extension chain ending at <paramref name="endpoint"/>.
+        /// BuildChains variant: builds a factory extension chain ending at <paramref name="endpoint"/>.
         /// </summary>
         internal static bool TryBuildFactoryExtensionChain(
             ExpressionSyntax endpoint,

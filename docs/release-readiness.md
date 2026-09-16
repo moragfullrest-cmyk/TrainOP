@@ -1,6 +1,6 @@
 # Чеклист готовности TrainOP к релизу
 
-Срез: **2026-09-15** · версия в csproj: **0.13.0** · целевой статус сейчас: **NuGet Preview (0.x)**
+Срез: **2026-09-16** · версия в csproj: **0.14.0** · целевой статус сейчас: **NuGet Preview (0.x)**
 
 | Показатель | Скор |
 |------------|------|
@@ -33,8 +33,8 @@
 | # | Пункт | % | Что осталось |
 |---|--------|---|--------------|
 | 1 | Согласовать TFM docs ↔ пакет | **80%** | Single-TFM `netstandard2.0`; docs обновлены под TFM и chain-dispatch режимы |
-| 2 | CHANGELOG с историей 0.1 → 0.13 | **92%** | `CHANGELOG.md` включает 0.13.0; ранние версии кратко |
-| 3 | Git-тег, согласованный с `Version` | **90%** | Version=0.13.0; тег `v0.13.0` после merge в `master` |
+| 2 | CHANGELOG с историей 0.1 → 0.14 | **92%** | `CHANGELOG.md` включает 0.14.0; ранние версии кратко |
+| 3 | Git-тег, согласованный с `Version` | **90%** | Version=0.14.0; тег `v0.14.0` после merge в `master` |
 | 4 | CI: `dotnet pack` (артефакты `.nupkg`) | **100%** | Smoke pack на .NET 10 job |
 | 5 | CI/ритуал publish (хотя бы ручной on tag) | **0%** | Нет release workflow / публикации |
 | 6 | Known limitations в пользовательских docs (7D / фаза 8) | **75%** | `core-api`, `cross-assembly-routes.md`, tuple warning TOP006 (default ItemN) |

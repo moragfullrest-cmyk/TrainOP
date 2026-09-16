@@ -151,13 +151,13 @@ public static class Route
 
         private static BranchRouteJoinValidation ValidateFirstJoin(string source)
         {
-            return BranchRouteJoinValidator.Validate(FindFirstJoin(source));
+            return JoinChainsStage.Validate(FindFirstJoin(source));
         }
 
         private static BranchRouteJoinSet FindFirstJoin(string source)
         {
             var (syntaxTree, model) = Compile(source);
-            var joinSets = BranchRouteJoinSetFinder.Find(syntaxTree, model);
+            var joinSets = JoinChainsStage.Find(syntaxTree, model);
             Assert.NotEmpty(joinSets);
             return joinSets[0];
         }

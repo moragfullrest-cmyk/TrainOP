@@ -189,7 +189,7 @@ public static class Route
         private static ImmutableArray<BranchRouteJoinSet> Find(string source)
         {
             var (syntaxTree, model) = Compile(source);
-            return BranchRouteJoinSetFinder.Find(syntaxTree, model);
+            return JoinChainsStage.Find(syntaxTree, model);
         }
 
         private static (SyntaxTree SyntaxTree, SemanticModel Model) Compile(string source)

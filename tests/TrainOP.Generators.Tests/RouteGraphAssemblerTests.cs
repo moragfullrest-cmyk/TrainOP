@@ -113,7 +113,7 @@ public static class FactoryOffsetRoute
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
             var sites = RouteSiteDiscoverer.CollectAll(compilation);
-            var graph = RouteGraphAssembler.Build(sites, compilation);
+            var graph = BuildChainsStage.Build(sites, compilation);
 
             var consumerBinding = graph.ChainIndex.Values
                 .SelectMany(x => x)
@@ -223,7 +223,7 @@ public static class DownstreamRoute
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
             var sites = RouteSiteDiscoverer.CollectAll(compilation);
-            return RouteGraphAssembler.Build(sites, compilation);
+            return BuildChainsStage.Build(sites, compilation);
         }
 
         private static MetadataReference[] GetMetadataReferences()

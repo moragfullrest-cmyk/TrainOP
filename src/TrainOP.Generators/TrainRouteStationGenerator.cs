@@ -1,11 +1,7 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
-using TrainOP.Generators.Chain;
-using TrainOP.Generators.Handlers;
+
 namespace TrainOP.Generators
 {
     /// <summary>
@@ -44,98 +40,28 @@ namespace TrainOP.Generators
             {
                 var compilation = source.Left;
                 var sites = source.Right;
-                RouteSchemasFile.AddSource(productionContext, compilation);
-                var graph = RouteGraphAssembler.Build(sites, compilation);
-                var groups = new Dictionary<string, DelegateSignatureGroup>(StringComparer.Ordinal);
-                var processedInvocationKeys = new HashSet<string>(StringComparer.Ordinal);
 
-                foreach (var site in graph.StationSites
-                    .OrderBy(site => site.IdentityLocation.SourceSpan.Start))
-                {
-                    AddDiscoveredCall(
-                        groups,
-                        processedInvocationKeys,
-                        graph.ChainIndex,
-                        productionContext,
-                        site.HandlerBinding,
-                        site.HandlerLocation,
-                        site.Invocation);
-                }
+                // Stages 1a–7: populate IR only (no AddSource).
+                var schemaCollect = SchemaDescriptorsStage.Collect(compilation);
+                var graph = BuildChainsStage.Build(sites, compilation);
+                var generationModel = GenerationModel.Build(
+                    sites,
+                    graph,
+                    compilation,
+                    schemaCollect.Descriptors,
+                    schemaCollect.Diagnostics);
 
-                foreach (var chainBinding in graph.ChainIndex.Values
-                    .SelectMany(x => x)
-                    .OrderBy(binding => binding.InvocationLocation.SourceSpan.Start))
-                {
-                    if (chainBinding.Schema == null || chainBinding.Invocation == null)
-                    {
-                        continue;
-                    }
+                // Stage 2 GroupSignatures, then Attach → stage 3 BranchPlans
+                // (logical ∥ with BuildChains is still single-callback; Cluster C fan-out deferred).
+                var groups = SignatureGroupingStage.Group(generationModel.RouteGraph);
+                AttachChainContextStage.Attach(groups.Values, generationModel.RouteGraph.ChainIndex);
+                var branchPlans = BranchPlanStage.Build(groups.Values, productionContext);
+                generationModel = generationModel.WithSignaturePipeline(
+                    groups.Values.ToImmutableArray(),
+                    branchPlans);
 
-                    AddDiscoveredCall(
-                        groups,
-                        processedInvocationKeys,
-                        graph.ChainIndex,
-                        productionContext,
-                        chainBinding.Schema,
-                        chainBinding.InvocationLocation,
-                        chainBinding.Invocation);
-                }
-
-                if (groups.Count == 0)
-                {
-                    return;
-                }
-
-                var mergedSchemas = groups.Values
-                    .Select(group => group.ToMerged(productionContext))
-                    .OrderBy(x => x.DelegateTypeId, StringComparer.Ordinal)
-                    .ToImmutableArray();
-
-                TrainRouteExtensionsFile.AddSource(productionContext, mergedSchemas);
+                GenerationEmit.EmitAll(productionContext, generationModel);
             });
-        }
-
-        private static void AddDiscoveredCall(
-            Dictionary<string, DelegateSignatureGroup> groups,
-            HashSet<string> processedInvocationKeys,
-            IReadOnlyDictionary<string, ImmutableArray<ChainSiteBinding>> chainIndex,
-            SourceProductionContext productionContext,
-            StationHandlerBinding handlerBinding,
-            Location location,
-            InvocationExpressionSyntax invocation)
-        {
-            if (handlerBinding == null || invocation == null)
-            {
-                return;
-            }
-
-            var invocationLocation = invocation.GetLocation();
-            var invocationKey = ChainSiteBindingLookup.BuildLocationKey(invocationLocation);
-            if (invocationKey.Length == 0 || !processedInvocationKeys.Add(invocationKey))
-            {
-                return;
-            }
-
-            var typeSignature = DelegateTypeSignature.From(handlerBinding);
-            var groupingKey = handlerBinding.BuildGroupingKey(typeSignature.TypeId);
-            if (!groups.TryGetValue(groupingKey, out var group))
-            {
-                group = new DelegateSignatureGroup(typeSignature);
-                groups[groupingKey] = group;
-            }
-
-            if (ChainSiteBindingLookup.TryResolveAll(chainIndex, invocationLocation, out var chainBindings)
-                && chainBindings.Length > 0)
-            {
-                for (var i = 0; i < chainBindings.Length; i++)
-                {
-                    group.Add(handlerBinding, location, chainBindings[i], productionContext);
-                }
-            }
-            else
-            {
-                group.Add(handlerBinding, location, null, productionContext);
-            }
         }
     }
 }

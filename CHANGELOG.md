@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-16
+
 ### Breaking
 
 - **Single NuGet package:** `TrainOP` now ships runtime + source generator / analyzer in one `.nupkg`. Remove any `PackageReference` to `TrainOP.Generators`; that package is no longer published (`IsPackable=false`). ProjectReference consumers still reference both projects explicitly.
@@ -14,10 +16,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 ### Changed
 
 - **CI / pack:** SDK 8/9 smoke builds only `TrainOP.csproj` (pulls Generators); .NET 10 packs a single `TrainOP` package.
+- **Generator pipeline (IR-first):** stages 1a–7 populate a data-oriented `GenerationModel`; `AddSource` runs only at the end via `GenerationEmit`. Orchestrator slimmed to discovery + stage wiring; chain build, join, signature grouping, branch plans, terminals, and schema descriptors live under `Pipeline/`.
+
+### Added
+
+- **Pipeline stage modules:** `BuildChainsStage`, `JoinChainsStage`, `SignatureGroupingStage`, `AttachChainContextStage`, `BranchPlanStage`, `SchemaDescriptorsStage`, `ChainDispatchPolicy`, `TerminalSet`, and related IR holders.
+- **`SchemaDescriptor` / `HandlerSignatureGrouping`:** explicit DTOs for schema export and signature clustering.
 
 ### Documentation
 
-- **nuget / getting-started / README / textbook / cross-assembly / release-readiness:** installation and pack instructions updated for the unified package.
+- **nuget / getting-started / README / textbook / cross-assembly / release-readiness:** installation and pack instructions updated for the unified package; version snippets bumped to 0.14.0.
+- **architecture-internals:** documented IR-first stages 1a–7 → Emit-last and the `GenerationModel` contract.
+- **plan-acceleration:** follow-on performance roadmap (TravelLight → freeze → slim dispatch).
 
 ### Fixed
 

@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
 using TrainOP.Generators.Route;
@@ -38,12 +37,12 @@ namespace TrainOP.Generators
                 }
 
                 var peeled = ReceiverExpressionSyntaxPeel.UnwrapTransparent(memberAccess.Expression);
-                if (!IsForkingExpression(peeled))
+                if (!JoinChainsStage.IsForkingExpression(peeled))
                 {
                     continue;
                 }
 
-                var branches = BranchRouteGraphDiscoverer.Discover(memberAccess.Expression, model);
+                var branches = JoinChainsStage.DiscoverBranches(memberAccess.Expression, model);
                 builder.Add(new BranchRouteJoinSet(
                     joinReceiver: memberAccess.Expression,
                     downstreamStation: invocation,
@@ -59,20 +58,6 @@ namespace TrainOP.Generators
         private static bool IsCandidateDownstreamStation(SyntaxNode node)
         {
             return StationSyntaxHelper.IsCandidateRouteHandlerInvocation(node);
-        }
-
-        /// <summary>
-        /// Determines whether an expression is a forking receiver (<c>?:</c> / <c>??</c> / <c>switch</c>).
-        /// </summary>
-        private static bool IsForkingExpression(ExpressionSyntax expression)
-        {
-            if (expression is ConditionalExpressionSyntax || expression is SwitchExpressionSyntax)
-            {
-                return true;
-            }
-
-            return expression is BinaryExpressionSyntax binary
-                && binary.IsKind(SyntaxKind.CoalesceExpression);
         }
     }
 }

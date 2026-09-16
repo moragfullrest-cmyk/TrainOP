@@ -7,6 +7,7 @@ namespace TrainOP.Generators
 {
     /// <summary>
     /// Discovers all branch route graphs under a forking TrainRoute receiver expression.
+    /// JoinChains leaf expansion (see <see cref="JoinChainsStage.DiscoverBranches"/>).
     /// </summary>
     internal static class BranchRouteGraphDiscoverer
     {
@@ -62,7 +63,7 @@ namespace TrainOP.Generators
                 return new BranchRouteGraph(leaf, isResolved: false, chain: null, simulation: null);
             }
 
-            if (RouteChainWalker.TryBuildChainEndingAt(leaf, semanticModel, out var chain))
+            if (BuildChainsStage.EndingAt(leaf, semanticModel, out var chain))
             {
                 var simulation = ChainGraphSimulator.Simulate(chain);
                 return new BranchRouteGraph(leaf, isResolved: true, chain, simulation);

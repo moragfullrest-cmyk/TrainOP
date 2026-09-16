@@ -60,20 +60,6 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Builds a stable grouping key for handler schemas that share the same generated extension signature.
-        /// </summary>
-        internal static string BuildGroupingKey(this StationHandlerBinding schema, string delegateTypeId)
-        {
-            var routeMethod = schema.ExtensionMethodName;
-            if (schema.RequiresCustomDelegate())
-            {
-                return routeMethod + "|delegate|" + delegateTypeId;
-            }
-
-            return routeMethod + "|" + schema.BuildHandlerTypeName("unused");
-        }
-
-        /// <summary>
         /// Emits a custom delegate declaration when Func/Action is insufficient.
         /// </summary>
         internal static void EmitCustomDelegateDeclaration(
