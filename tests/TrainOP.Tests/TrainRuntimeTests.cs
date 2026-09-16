@@ -12,6 +12,44 @@ namespace TrainOP.Tests
     public sealed class TrainRuntimeTests
     {
         /// <summary>
+        /// Verifies that TravelLight returns terminal wagons with an empty visit journal.
+        /// </summary>
+        [Fact]
+        public void Train_TravelLight_EmptyVisits_KeepsTerminalWagons()
+        {
+            var report = new TrainRoute()
+                .Station("Seed", () => new { id = "ok", amount = 10m })
+                .Station("Bump", (string id, decimal amount) => new { id, amount = amount + 1m })
+                .TravelLight();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Empty(report.Visits);
+            Assert.Equal("ok", report.Get<string>("id"));
+            Assert.Equal(11m, report.Get<decimal>("amount"));
+        }
+
+        /// <summary>
+        /// Verifies that TravelLightAsync returns terminal wagons with an empty visit journal.
+        /// </summary>
+        [Fact]
+        public async Task Train_TravelLightAsync_EmptyVisits_KeepsTerminalWagons()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { counter = 10 })
+                .Station("Multiply", async (int counter, CancellationToken token) =>
+                {
+                    await Task.Delay(1, token);
+                    return new { counter = counter * 2 };
+                });
+
+            var report = await route.TravelLightAsync();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Empty(report.Visits);
+            Assert.Equal(20, report.Get<int>("counter"));
+        }
+
+        /// <summary>
         /// Verifies that a data-oriented route executes and propagates wagon values.
         /// </summary>
         [Fact]

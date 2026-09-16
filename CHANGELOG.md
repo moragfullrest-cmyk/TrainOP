@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-16
+
+### Added
+
+- **TravelLight / TravelLightAsync:** opt-in travel without recording `StationVisit` journal (`Visits` is empty); terminal signal and manifest unchanged vs `Travel` / `TravelAsync`.
+
+### Documentation
+
+- **plan-performance:** P4 marked done; remaining course P6 → P7.
+- **core-api:** TravelLight API documented.
+- **nuget / getting-started / README / textbook / release-readiness:** version snippets bumped to 0.15.0.
+
 ## [0.14.0] - 2026-09-16
 
 ### Breaking
@@ -27,7 +39,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 - **nuget / getting-started / README / textbook / cross-assembly / release-readiness:** installation and pack instructions updated for the unified package; version snippets bumped to 0.14.0.
 - **architecture-internals:** documented IR-first stages 1a–7 → Emit-last and the `GenerationModel` contract.
-- **plan-acceleration:** follow-on performance roadmap (TravelLight → freeze → slim dispatch).
+- **plan-performance:** единый roadmap hot path — P0–P4a done; P5 снято; курс вперёд P4 TravelLight → P6 freeze → P7 slim dispatch (бывший `plan-acceleration` влит).
 
 ### Fixed
 

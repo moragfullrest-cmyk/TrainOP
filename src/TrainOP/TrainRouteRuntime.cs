@@ -696,7 +696,7 @@ namespace TrainOP
         /// </summary>
         public RouteReport Travel()
         {
-            return TravelCore(CancellationToken.None);
+            return TravelCore(CancellationToken.None, recordVisits: true);
         }
 
         /// <summary>
@@ -705,7 +705,25 @@ namespace TrainOP
         /// </summary>
         public RouteReport Travel(CancellationToken cancellationToken)
         {
-            return TravelCore(cancellationToken);
+            return TravelCore(cancellationToken, recordVisits: true);
+        }
+
+        /// <summary>
+        /// Executes the route without recording per-station visits.
+        /// <see cref="RouteReport.Visits"/> is empty; terminal signal and manifest behave as in <see cref="Travel()"/>.
+        /// </summary>
+        public RouteReport TravelLight()
+        {
+            return TravelCore(CancellationToken.None, recordVisits: false);
+        }
+
+        /// <summary>
+        /// Executes the route without recording per-station visits, with cancellation support.
+        /// <see cref="RouteReport.Visits"/> is empty; terminal signal and manifest behave as in <see cref="Travel(CancellationToken)"/>.
+        /// </summary>
+        public RouteReport TravelLight(CancellationToken cancellationToken)
+        {
+            return TravelCore(cancellationToken, recordVisits: false);
         }
 
         /// <summary>
@@ -714,7 +732,7 @@ namespace TrainOP
         /// </summary>
         public Task<RouteReport> TravelAsync()
         {
-            return TravelCoreAsync(CancellationToken.None);
+            return TravelCoreAsync(CancellationToken.None, recordVisits: true);
         }
 
         /// <summary>
@@ -723,7 +741,25 @@ namespace TrainOP
         /// </summary>
         public Task<RouteReport> TravelAsync(CancellationToken cancellationToken)
         {
-            return TravelCoreAsync(cancellationToken);
+            return TravelCoreAsync(cancellationToken, recordVisits: true);
+        }
+
+        /// <summary>
+        /// Asynchronously executes the route without recording per-station visits.
+        /// <see cref="RouteReport.Visits"/> is empty; terminal signal and manifest behave as in <see cref="TravelAsync()"/>.
+        /// </summary>
+        public Task<RouteReport> TravelLightAsync()
+        {
+            return TravelCoreAsync(CancellationToken.None, recordVisits: false);
+        }
+
+        /// <summary>
+        /// Asynchronously executes the route without recording per-station visits, with cancellation support.
+        /// <see cref="RouteReport.Visits"/> is empty; terminal signal and manifest behave as in <see cref="TravelAsync(CancellationToken)"/>.
+        /// </summary>
+        public Task<RouteReport> TravelLightAsync(CancellationToken cancellationToken)
+        {
+            return TravelCoreAsync(cancellationToken, recordVisits: false);
         }
 
         /// <summary>
@@ -861,11 +897,11 @@ namespace TrainOP
         /// Executes all route hops synchronously and returns the final report.
         /// Regular stations run after green; service stations run after red; otherwise the hop is skipped.
         /// </summary>
-        private RouteReport TravelCore(CancellationToken cancellationToken)
+        private RouteReport TravelCore(CancellationToken cancellationToken, bool recordVisits)
         {
             var route = new List<StationPlan>(_route);
             var current = new CargoManifest();
-            var visits = new List<StationVisit>(route.Count);
+            var visits = recordVisits ? new List<StationVisit>(route.Count) : null;
             Signal previous = RailwaySignals.Green();
 
             for (var i = 0; i < route.Count; i++)
@@ -885,7 +921,7 @@ namespace TrainOP
             }
 
             return new RouteReport(
-                visits,
+                visits ?? (IReadOnlyList<StationVisit>)Array.Empty<StationVisit>(),
                 previous.IsGreen ? RailwaySignals.Green() : previous,
                 current);
         }
@@ -894,11 +930,11 @@ namespace TrainOP
         /// Executes all route hops asynchronously and returns the final report.
         /// Regular stations run after green; service stations run after red; otherwise the hop is skipped.
         /// </summary>
-        private async Task<RouteReport> TravelCoreAsync(CancellationToken cancellationToken)
+        private async Task<RouteReport> TravelCoreAsync(CancellationToken cancellationToken, bool recordVisits)
         {
             var route = new List<StationPlan>(_route);
             var manifest = new ManifestHolder(new CargoManifest());
-            var visits = new List<StationVisit>(route.Count);
+            var visits = recordVisits ? new List<StationVisit>(route.Count) : null;
             Signal previous = RailwaySignals.Green();
 
             for (var i = 0; i < route.Count; i++)
@@ -922,7 +958,7 @@ namespace TrainOP
             }
 
             return new RouteReport(
-                visits,
+                visits ?? (IReadOnlyList<StationVisit>)Array.Empty<StationVisit>(),
                 previous.IsGreen ? RailwaySignals.Green() : previous,
                 manifest.Current);
         }
@@ -1135,7 +1171,7 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Normalizes the hop signal, records a visit, and returns the signal that becomes "previous" for the next hop.
+        /// Normalizes the hop signal, optionally records a visit, and returns the signal that becomes "previous" for the next hop.
         /// </summary>
         private static Signal RecordHop(
             Signal signal,
@@ -1144,7 +1180,10 @@ namespace TrainOP
         {
             EnsureStationSignal(signal, stationName);
             signal = NormalizeRequestSignal(signal, stationName);
-            visits.Add(new StationVisit(stationName, signal.IsGreen));
+            if (visits != null)
+            {
+                visits.Add(new StationVisit(stationName, signal.IsGreen));
+            }
 
             if (!signal.IsGreen && !(signal is RedSignal))
             {

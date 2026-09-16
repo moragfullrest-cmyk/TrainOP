@@ -440,7 +440,7 @@ var route = PaymentModule.Build()
         new { paymentId, status = "done" });
 ```
 
-Параметр / поле / свойство / делегат как receiver пока **не** поддерживаются (**TOP005**).
+Параметр / поле / свойство / делегат как receiver **не поддерживаются** (**TOP005**; не отложено — opaque upstream).
 
 ---
 

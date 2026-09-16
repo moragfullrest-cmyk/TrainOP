@@ -75,7 +75,7 @@ var route = PaymentModule.Build()
 
 `CreateSeed().Station(...)` поддерживается для **private/internal** factory (inter-procedural analysis). **Public** factory использует generated schema (`[RouteSchemaFor]`). См. [cross-assembly-routes.md](cross-assembly-routes.md).
 
-Параметр / поле / свойство / делегат как receiver (`baseRoute.Station(...)`, `buildRoute().Station(...)`) пока **не** поддерживаются (TOP005).
+Параметр / поле / свойство / делегат как receiver (`baseRoute.Station(...)`, `_route.Station(...)`, `buildRoute().Station(...)`) **не поддерживаются** (TOP005; не отложено — opaque upstream).
 
 ### Запуск
 
@@ -96,12 +96,18 @@ var amount = report.Get<decimal>("amount");
 
 // С отменой
 var reportWithCt = route.Travel(cancellationToken);
+
+// Без журнала шагов (Visits пустой; Get / TerminalSignal — как у Travel)
+var light = route.TravelLight();
+var lightAsync = await route.TravelLightAsync(cancellationToken);
 ```
 
 **Правильно:** `() => new { paymentId, amount }`, `() => repo.Get(id)`, или несколько станций, пока analyzer видит произведённые вагоны.  
 **Неправильно:** читать вагон до его появления (TOP001).
 
 Доступ к терминальным вагонам — через `RouteReport` (`Get<T>` / индексатор). Typed deconstruct (`var (a, b) = …Travel()`) **не** используется: при C# 15 и ниже конфликты декомпозиции кортежей на общем terminal-типе не решаются языком.
+
+`TravelLight` / `TravelLightAsync` — opt-in без накопления `StationVisit`: `report.Visits` пустой (`Array.Empty`), терминальный результат и манифест те же, что у `Travel` / `TravelAsync`.
 
 ### Асинхронное выполнение
 
@@ -488,7 +494,7 @@ Cross-assembly: [cross-assembly-routes.md](cross-assembly-routes.md). Release tr
 | `RouteSchemaForAttribute` / `RouteSchemaWagonAttribute` | Metadata exported schema (генератор) |
 | `CallerChainKeyFormat` | Формат caller-dispatch keys |
 
-Поддерживаемый пользовательский API — fluent `.Station` / `.ServiceStation`, `RailwaySignals`, `Travel()`.
+Поддерживаемый пользовательский API — fluent `.Station` / `.ServiceStation`, `RailwaySignals`, `Travel()` / `TravelLight()` (и async-пары).
 
 ## Схема выполнения
 

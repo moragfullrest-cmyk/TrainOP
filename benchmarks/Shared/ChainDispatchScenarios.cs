@@ -62,6 +62,15 @@ namespace TrainOP.Benchmarks.Caller
             return report.Manifest.PullWagon<decimal>("amount");
         }
 
+        /// <summary>
+        /// Travels an already built route without recording visits.
+        /// </summary>
+        public static decimal TravelLight(TrainRoute route)
+        {
+            var report = route.TravelLight();
+            return report.Manifest.PullWagon<decimal>("amount");
+        }
+
         private static TrainRoute PaymentRoute() => new TrainRoute()
             .Station("Seed", () => new { paymentId = "pay-1", amount = 100m })
             .Station("Discount", (string paymentId, decimal amount) =>

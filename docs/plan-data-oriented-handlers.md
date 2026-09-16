@@ -1,9 +1,9 @@
 # План: data-oriented handlers (только данные на вход и выход)
 
-> **Статус:** **выполнено** фазы 0–8 (включая factory anchors + schema export/import, merge ветвлений §3.8.5, caller dispatch §4.3); **отложено** якоря параметр / поле / свойство / делегат; **снято** typed Travel (фазы 9–12), interceptors и reflection chain-dispatch.  
+> **Статус:** **выполнено** фазы 0–8 (включая factory anchors + schema export/import, merge ветвлений §3.8.5, caller dispatch §4.3); **не поддерживаются** opaque-якоря параметр / поле / свойство / делегат; **снято** typed Travel (фазы 9–12), interceptors и reflection chain-dispatch.  
 > **Терминалы:** `RouteReport` indexer / `Get<T>` (C# ≤15 — конфликты декомпозиции кортежей нерешаемы).  
 > **Цель:** handler станции = чистая функция над данными; `CargoManifest`, `LoadWagon`, `PullWagon`, `RailwaySignals` скрыты в сгенерированном адаптере.  
-> **Производительность Travel:** см. [`plan-performance.md`](plan-performance.md) (P0–P3 + P4a; P5 снято).  
+> **Производительность Travel:** см. [`plan-performance.md`](plan-performance.md) (P0–P4a + P4; P5 снято; дальше P6 → P7).  
 > **Аудитория:** разработчики и AI-агенты, продолжающие работу над TrainOP.
 
 ---
@@ -145,7 +145,7 @@ Runtime-типы: `GreenPayload<T>`, `RedFailure`, `WhitePass` (`StationDataResu
 
 Return-paths factory: set equality (имя + тип terminal-вагонов); расхождение → **TOP012**; unknown return → **TOP013**.
 
-**Отложено:** параметр / поле / свойство / делегат как якорь (`baseRoute.Station`, `_route.Station`, `buildRoute().Station`). Возможное решение — §4.2.2.
+**Не поддерживается:** параметр / поле / свойство / делегат как якорь (`baseRoute.Station`, `_route.Station`, `buildRoute().Station`) — opaque upstream без const-подобного origin (см. §4.2).
 
 ### 3.3. Cross-assembly composition
 
@@ -198,8 +198,8 @@ Chain-dispatch (TOP007 при конфликте имён вне цепочки)
 | Категория | Содержание |
 |-----------|------------|
 | **Выполнено** | Фазы **0–8** (см. §4.1), caller dispatch (§4.3) |
-| **Отложено** | Якоря параметр / поле / свойство / делегат |
-| **Снято** | Фазы **9–12** (typed Travel / deconstruct); interceptors; reflection chain-dispatch |
+| **Не поддерживается** | Якоря параметр / поле / свойство / делегат (§4.2) |
+| **Снято** | Фазы **9–12** (typed Travel / deconstruct); interceptors; reflection chain-dispatch; opt-in `[RouteUpstream]` (§4.2.2) |
 
 ### 4.1. Выполненное (сводка)
 
@@ -218,90 +218,36 @@ Chain-dispatch (TOP007 при конфликте имён вне цепочки)
 
 Ключевые файлы реализации §4.5: `RouteFactoryPathAnalyzer`, `RouteFactoryResolver`, `ExternalRouteSchemaResolver`, `RouteSchemaExporter`, `TerminalWagonsComparer`.
 
-### 4.2. Отложено
+### 4.2. Не поддерживается: opaque-якоря
 
-| Якорь | Пример |
-|-------|--------|
-| Параметр метода | `baseRoute.Station(...)` |
-| Поле / свойство | `_route.Station(...)` |
-| Делегат (invoke) | `buildRoute().Station(...)`, `Func<TrainRoute>` / custom delegate |
+| Якорь | Пример | Статус |
+|-------|--------|--------|
+| Параметр метода | `baseRoute.Station(...)` | **Не поддерживается** |
+| Поле / свойство | `_route.Station(...)` | **Не поддерживается** |
+| Делегат (invoke) | `buildRoute().Station(...)`, `Func<TrainRoute>` / custom delegate | **Не поддерживается** |
 
 Conditional / switch / coalesce на call site — **реализовано** (§3.7). Parenthesized / cast на внешнем factory (`(GetRoute()).Station(...)`) — **реализовано** (`ReceiverExpressionPeel`).
 
-#### 4.2.1. Причина отложения
+#### 4.2.1. Причина
 
 Analyzer'у для extension-цепочки нужны **terminal wagons upstream** до первой downstream `.Station`. Поддерживаемые якоря дают **один статически привязанный origin** (`new TrainRoute()`, локальная после `new`, factory invocation с анализом тела или exported schema).
 
-Для §4.2 происхождение `TrainRoute` **не зафиксировано в точке `.Station(...)`**:
+У всех opaque-якорей происхождение `TrainRoute` **не зафиксировано в точке `.Station(...)`** — одна и та же дыра:
 
 | Якорь | Проблема |
 |-------|----------|
-| Параметр | Значение приходит от call sites вызывающего метода; inter-procedural анализ не реализован |
-| Поле | Значение — результат присваиваний в разных местах; нет единого return-body |
-| Свойство | Getter близок к factory-методу, но call site — `MemberAccess`, не `Invocation`; для public — нет schema export на property |
-| Делегат | `buildRoute()` резолвится в `Invoke` делегата; target (метод / lambda) не анализируется; тот же opaque upstream, что у parameter / field |
+| Параметр | Значение приходит от call sites вызывающего; inter-procedural анализ не реализован |
+| Поле | Присваивания где угодно; `const TrainRoute` невозможен |
+| Свойство | Тот же opaque storage / reassignment; call site — `MemberAccess`, не factory |
+| Делегат | `buildRoute()` → `Invoke`; target не анализируется |
 
-Попытка extension от delegate invoke без opt-in схемы → **TOP005** (не легитимный якорь). Ранее ошибочно мог распознаваться как factory `Invoke` (TOP011 / TOP001); исправлено: `IsUserDefinedRouteFactory` отвергает `TypeKind.Delegate`.
+Без const-подобного origin схема недетерминирована. Поддержку opaque-якорей **не планируем** (не «отложено»). Попытка → **TOP005**. Ранее delegate invoke ошибочно мог распознаваться как factory `Invoke` (TOP011 / TOP001); исправлено: `IsUserDefinedRouteFactory` отвергает `TypeKind.Delegate`.
 
-Альтернатива полному data-flow / inter-procedural анализу — **opt-in декларация upstream-схемы** пользователем (§4.2.2).
+#### 4.2.2. Opt-in declare upstream — снято
 
-#### 4.2.2. Возможное решение: явная фиксация upstream-схемы
+Ранее рассматривался `[RouteUpstream]` / inline `[RouteSchemaWagon]` на parameter / field / property / delegate. Это не закрывает проблему: контракт не доказывает, что caller / присваивание / target делегата реально несут заявленные wagons (drift без inter-procedural / data-flow). Класс якорей остаётся opaque.
 
-**Идея:** для parameter / field / property / **delegate** как receiver **обязать** пользователя явно указать upstream-схему. Analyzer не выводит происхождение маршрута, а читает **заявленный контракт** и использует его как `InitialWagons` для downstream-цепочки (аналогично factory extension).
-
-**Политика:** infer по умолчанию (`new`, factory invocation); **declare — opt-in** только для отложенных якорей §4.2. Не отменяет §1.2 «No handler attributes» (атрибуты не на data-handler lambda).
-
-**Предпочтительный API — ссылка на factory** (reuse `[RouteSchemaFor]` / `ExternalRouteSchemaResolver`, без дублирования wagons):
-
-```csharp
-public static TrainRoute Extend(
-    [RouteUpstream(typeof(PaymentModule), nameof(PaymentModule.Build))]
-    TrainRoute baseRoute) =>
-    baseRoute.Station("Finalize", (string paymentId, decimal amount) =>
-        new { paymentId, status = "completed" });
-
-public static TrainRoute Extend(
-    [RouteUpstream(typeof(PaymentModule), nameof(PaymentModule.Build))]
-    Func<TrainRoute> buildRoute) =>
-    buildRoute().Station("Finalize", (string paymentId, decimal amount) =>
-        new { paymentId, status = "completed" });
-
-public class RouteHost
-{
-    [RouteUpstream(typeof(PaymentModule), nameof(PaymentModule.Build))]
-    private TrainRoute _route;
-
-    public TrainRoute Extend() =>
-        _route.Station("Finalize", (string paymentId, decimal amount) =>
-            new { paymentId, status = "completed" });
-}
-```
-
-**Альтернатива — inline wagons** на символе (повтор `[RouteSchemaWagon]` на parameter / field / property / delegate). Покрывает opaque source без именованного factory; риск drift между декларацией и реальностью.
-
-**Ожидаемые изменения реализации** (оценка — умеренный diff):
-
-| Компонент | Изменение |
-|-----------|-----------|
-| Новый атрибут `[RouteUpstream]` (и/или разрешение `[RouteSchemaWagon]` на пользовательских символах) | Маркер upstream для parameter / field / property / delegate |
-| `ChainDetector` | Ветка: receiver с атрибутом → новый `RouteChainAnchorKind`; delegate `Invoke` не считается factory |
-| Resolver | Читать wagons с символа или делегировать в `ExternalRouteSchemaResolver` по ссылке на factory |
-| `RouteSchemaExporter` | Опционально: export schema для public property-getter (если не только `RouteUpstream`) |
-
-**Диагностики** (часть — новые ID, часть — reuse):
-
-| ID | Условие |
-|----|---------|
-| `TOP005` | Receiver parameter / field / property / delegate invoke **без** upstream-атрибута |
-| `TOP011` | `[RouteUpstream]` ссылается на public factory без exported schema |
-| `TOP001` / `TOP002` | Заявленные wagons не сходятся с downstream handler'ом |
-
-**Ограничения контракта** (compile-time ожидание, не доказательство runtime):
-
-- Caller мог передать в parameter маршрут с другими terminal wagons — без inter-procedural анализа не проверяется.
-- Поле могли переприсвоить — атрибут не отслеживает flow присваиваний.
-
-**Статус:** реализовано (caller-mode). Обновления уже сделаны в §3.2, `core-api.md`, и правилах для generated adapters.
+**Статус:** **снято**; не реализуется.
 
 ### 4.3. Caller dispatch (chain-dispatch)
 
@@ -451,7 +397,7 @@ Release tracking: `AnalyzerReleases.Shipped.md`.
 - [x] Terminal-доступ: `RouteReport.Get` / indexer
 - [x] Legacy API удалён
 - [x] Документация: `getting-started`, `core-api`, `cross-assembly-routes`, `nuget`
-- [ ] Якоря параметр / поле / свойство / делегат (отложено; возможное решение — §4.2.2)
+- [x] Якоря параметр / поле / свойство / делегат — **не поддерживаются** (TOP005; §4.2; opt-in declare снят)
 - [x] Caller dispatch через Caller* (единственный режим chain-dispatch; §4.3)
 
 ---
@@ -469,7 +415,7 @@ Release tracking: `AnalyzerReleases.Shipped.md`.
 | `tests/TrainOP.Tests/DataOrientedPaymentRouteEndToEndTests.cs` | Сквозной payment flow |
 | `tests/TrainOP.RouteConsumer.Tests/` | Cross-assembly PoC |
 | `docs/cross-assembly-routes.md` | Межсборочная композиция |
-| `docs/plan-performance.md` | Roadmap оптимизаций Travel (P0–P3 + P4a; P5 снято) |
+| `docs/plan-performance.md` | Roadmap оптимизаций Travel (P0–P4a + P4; P5 снято; P6/P7) |
 
 ---
 

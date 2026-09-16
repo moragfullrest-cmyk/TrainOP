@@ -58,12 +58,12 @@ TrainOP воплощает эту идею для .NET (`netstandard2.0`). Вы 
 ```bash
 dotnet add package TrainOP
 # или явно:
-dotnet add package TrainOP --version 0.14.0
+dotnet add package TrainOP --version 0.15.0
 ```
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.14.0" />
+  <PackageReference Include="TrainOP" Version="0.15.0" />
 </ItemGroup>
 ```
 
@@ -1151,7 +1151,7 @@ TrainOP.sln
 
 | Ограничение | Статус |
 |-------------|--------|
-| Receiver = параметр / поле / свойство / делегат (`baseRoute.Station`, `_route.Station`, `buildRoute().Station`) | **Отложено** → TOP005 |
+| Receiver = параметр / поле / свойство / делегат (`baseRoute.Station`, `_route.Station`, `buildRoute().Station`) | **Не поддерживается** → TOP005 |
 | `Func<>` / переменная-делегат как handler | Не поддерживается → TOP009 |
 | Typed `var (a, b) = Travel()` | **Снято** (C# ≤15) |
 | Динамическая сборка маршрута в runtime (`foreach` + `RegisterStation` руками) | Не-цель |
@@ -1166,14 +1166,14 @@ Conditional / switch / coalesce и parenthesized/cast на factory receiver — 
 ### Data-oriented roadmap (сводка)
 
 - **Выполнено:** фазы 0–8 (адаптеры, analyzer TOP001+, якоря `new`/local/factory, branch merge, cross-assembly schema, caller dispatch).
-- **Отложено:** якоря параметр / поле / свойство / делегат (возможен opt-in declare upstream-схемы).
-- **Снято:** typed Travel / deconstruct; interceptors; reflection chain-dispatch.
+- **Не поддерживается:** opaque-якоря параметр / поле / свойство / делегат (TOP005; не отложено).
+- **Снято:** typed Travel / deconstruct; interceptors; reflection chain-dispatch; opt-in `[RouteUpstream]`.
 
 Подробные планы для агентов: [plan-data-oriented-handlers.md](plan-data-oriented-handlers.md), [plan-performance.md](plan-performance.md).
 
 ### Готовность к релизу (срез)
 
-Пакет ориентирован на **NuGet Preview 0.x** (версия в csproj — см. `CHANGELOG.md`, на момент среза docs — **0.14.0**). Фундамент продукта сильный; до публичного preview главный разрыв — publish workflow on tag; до стабильного 1.0 — SourceLink/snupkg, nullable policy, API freeze advanced surface, samples smoke в CI. Живой чеклист: [release-readiness.md](release-readiness.md).
+Пакет ориентирован на **NuGet Preview 0.x** (версия в csproj — см. `CHANGELOG.md`, на момент среза docs — **0.15.0**). Фундамент продукта сильный; до публичного preview главный разрыв — publish workflow on tag; до стабильного 1.0 — SourceLink/snupkg, nullable policy, API freeze advanced surface, samples smoke в CI. Живой чеклист: [release-readiness.md](release-readiness.md).
 
 ---
 

@@ -40,6 +40,10 @@ namespace TrainOP.Benchmarks
         [BenchmarkCategory("Payment")]
         public decimal TrainOP_TravelOnly_Payment() => LibraryChains.Travel(_paymentRoute);
 
+        [Benchmark]
+        [BenchmarkCategory("Payment")]
+        public decimal TrainOP_TravelLightOnly_Payment() => LibraryChains.TravelLight(_paymentRoute);
+
         [Benchmark(Baseline = true)]
         [BenchmarkCategory("LongPayment")]
         public decimal Manual_LongPayment() => ManualPipelineScenarios.TravelLongPayment();
@@ -52,6 +56,10 @@ namespace TrainOP.Benchmarks
         [BenchmarkCategory("LongPayment")]
         public decimal TrainOP_TravelOnly_LongPayment() => LibraryChains.Travel(_longPaymentRoute);
 
+        [Benchmark]
+        [BenchmarkCategory("LongPayment")]
+        public decimal TrainOP_TravelLightOnly_LongPayment() => LibraryChains.TravelLight(_longPaymentRoute);
+
         [Benchmark(Baseline = true)]
         [BenchmarkCategory("Checkout")]
         public decimal Manual_Checkout() => ManualPipelineScenarios.TravelCheckout();
@@ -63,5 +71,9 @@ namespace TrainOP.Benchmarks
         [Benchmark]
         [BenchmarkCategory("Checkout")]
         public decimal TrainOP_TravelOnly_Checkout() => Library.Travel(_checkoutRoute);
+
+        [Benchmark]
+        [BenchmarkCategory("Checkout")]
+        public decimal TrainOP_TravelLightOnly_Checkout() => Library.TravelLight(_checkoutRoute);
     }
 }

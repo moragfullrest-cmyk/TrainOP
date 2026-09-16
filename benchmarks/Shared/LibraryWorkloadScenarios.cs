@@ -30,6 +30,15 @@ namespace TrainOP.Benchmarks.Caller
             return report.Manifest.PullWagon<decimal>("amount");
         }
 
+        /// <summary>
+        /// Travels a pre-built checkout route without recording visits.
+        /// </summary>
+        public static decimal TravelLight(TrainRoute route, CancellationToken cancellationToken = default)
+        {
+            var report = route.TravelLight(cancellationToken);
+            return report.Manifest.PullWagon<decimal>("amount");
+        }
+
         private static TrainRoute CheckoutRoute() => new TrainRoute()
             .Station("Seed", () => new { orderId = "ORD-1001", amount = 200m, units = 8, currency = "USD" })
             .Station("Validate", (string orderId, decimal amount, int units, string currency, CancellationToken token) =>

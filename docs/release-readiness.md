@@ -1,6 +1,6 @@
 # Чеклист готовности TrainOP к релизу
 
-Срез: **2026-09-16** · версия в csproj: **0.14.0** · целевой статус сейчас: **NuGet Preview (0.x)**
+Срез: **2026-09-16** · версия в csproj: **0.15.0** · целевой статус сейчас: **NuGet Preview (0.x)**
 
 | Показатель | Скор |
 |------------|------|
@@ -33,8 +33,8 @@
 | # | Пункт | % | Что осталось |
 |---|--------|---|--------------|
 | 1 | Согласовать TFM docs ↔ пакет | **80%** | Single-TFM `netstandard2.0`; docs обновлены под TFM и chain-dispatch режимы |
-| 2 | CHANGELOG с историей 0.1 → 0.14 | **92%** | `CHANGELOG.md` включает 0.14.0; ранние версии кратко |
-| 3 | Git-тег, согласованный с `Version` | **90%** | Version=0.14.0; тег `v0.14.0` после merge в `master` |
+| 2 | CHANGELOG с историей 0.1 → 0.15 | **92%** | `CHANGELOG.md` включает 0.15.0; ранние версии кратко |
+| 3 | Git-тег, согласованный с `Version` | **90%** | Version=0.15.0; тег `v0.15.0` после merge в `master` |
 | 4 | CI: `dotnet pack` (артефакты `.nupkg`) | **100%** | Smoke pack на .NET 10 job |
 | 5 | CI/ритуал publish (хотя бы ручной on tag) | **0%** | Нет release workflow / публикации |
 | 6 | Known limitations в пользовательских docs (7D / фаза 8) | **75%** | `core-api`, `cross-assembly-routes.md`, tuple warning TOP006 (default ItemN) |
@@ -71,7 +71,7 @@
 | 12 | Политика nullable (`enable` или явный отказ) | **0%** | `Nullable` disable в runtime и Generators |
 | 13 | Dependabot / Renovate на Roslyn pin | **0%** | Нет |
 | 14 | Прогон samples в CI (или smoke pack→consume) | **0%** | Samples только вручную |
-| 15 | Фаза 7D *или* окончательный отказ с docs | **10%** | Отложено; поведение TOP005 задокументировано как ограничение |
+| 15 | Фаза 7D *или* окончательный отказ с docs | **100%** | Окончательный отказ: opaque-якоря не поддерживаются (TOP005); см. `plan-data-oriented-handlers.md` §4.2 |
 | 16 | Фаза 8 cross-assembly *или* окончательный отказ с docs | **80%** | Реализовано + `cross-assembly-routes.md` |
 
 **По блоку C (среднее): ~27%**

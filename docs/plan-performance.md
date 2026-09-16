@@ -1,11 +1,10 @@
 # План: производительность Travel / hot path
 
-> **Статус:** **P0–P3 + P4a выполнены**; **P5 снято** (typed bags откачены — регрессия CPU); P4 не начат.  
+> **Статус:** **P0–P3 + P4a + P4 выполнены**; **P5 снято** (typed bags — регрессия CPU); **P6 / P7 не начаты**.  
 > **Цель:** снизить стоимость инфраструктуры hop в `Travel()` / `TravelAsync` без изменения data-oriented UX handler'ов.  
-> **Метрика успеха:** снижение Ratio и Alloc в `LibraryVsManualBenchmarks` (TravelOnly); **не** цель догнать manual ns.  
+> **Метрика успеха:** снижение Ratio и Alloc в `LibraryVsManualBenchmarks` (TravelOnly; отдельно — TravelLight). **Не** цель догнать manual ns.  
 > **Аудитория:** разработчики и AI-агенты, продолжающие работу над TrainOP.  
-> **Связанный план:** data-oriented handlers — [`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) (фазы 0–8 выполнены).  
-> **Продолжение:** [`plan-acceleration.md`](plan-acceleration.md) — P4 → freeze маршрута → slim dispatch.
+> **Связанный план:** data-oriented handlers — [`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) (фазы 0–8 выполнены).
 
 ---
 
@@ -32,11 +31,11 @@
 | Журнал (P4a) | В visit — имя + флаг; полный сигнал только в `TerminalSignal` (перезапись на hop) |
 | Метрики | Ratio/Alloc в `LibraryVsManual*` TravelOnly |
 
-### 1.4. Уже доступно без кода
+### 1.4. Уже доступно без нового кода
 
-Рекомендация: **caller dispatch** (ctor+ordinal; единственный режим) — chain-dispatch без Roslyn interceptors; см. `LibraryVsManualBenchmarks`.
-
-Caller dispatch реализован; см. [`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) §4.3 и [`architecture-internals.md`](architecture-internals.md).
+- **Caller dispatch** (ctor+ordinal; единственный режим) — chain-dispatch без Roslyn interceptors; см. [`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) §4.3 и [`architecture-internals.md`](architecture-internals.md).
+- Кэшировать `TrainRoute` и гонять только `Travel()` (бенчмарки: BuildAndTravel vs TravelOnly).
+- В handler'ах предпочитать named / `ValueTuple` вместо `new { ... }` — меньше аллокаций на hop (сторона вызывающего кода).
 
 ---
 
@@ -83,7 +82,7 @@ flowchart TD
 
 | Символ / файл | Роль |
 |---------------|------|
-| `Train.Travel` → `TravelCore` | Sync-цикл без `async`/`await` на hop (`Railway.cs`) |
+| `Train.Travel` → `TravelCore` | Sync-цикл без `async`/`await` на hop (`TrainRouteRuntime.cs`) |
 | `Train.TravelAsync` → `TravelCoreAsync` | Async-цикл с `await` на hop |
 | `ExecuteStation` / `ExecuteStationAsync` / `ProcessStationStep*` | Диспетчер `StationPlan` + bookkeeping |
 | `CargoManifest.LoadWagon` / `UnloadWagon` | In-place запись в `Dictionary<string,object>` (без clone) |
@@ -106,10 +105,15 @@ flowchart LR
   P2[P2 Typed merge chain-dispatch]
   P3[P3 Binding cache at register]
   P4a[P4a Slim StationVisit]
-  P4[P4 Lightweight travel API]
+  P4[P4 TravelLight]
+  P6[P6 Freeze route]
+  P7[P7 Slim ExecuteStation]
   P5[P5 Reduce boxing]
-  P0 --> P1 --> P2 --> P3 --> P4a --> P4 --> P5
+  P0 --> P1 --> P2 --> P3 --> P4a --> P4 --> P6 --> P7
+  P4a -.-> P5
 ```
+
+P5 снято (не на основном курсе). Курс вперёд: **P6 → P7** (P4 сделано).
 
 ### P0 — Mutable CargoManifest
 
@@ -117,7 +121,7 @@ flowchart LR
 
 **Суть:** `CargoManifest` мутабелен: `LoadWagon` / `UnloadWagon` пишут in-place и возвращают `this`. Убраны `CloneWagons`. Добавлен `TryGetWagon`. `InspectWagons` — live view внутреннего словаря.
 
-**Файлы:** `src/TrainOP/Railway.cs`, `src/TrainOP/StationMerge.cs`, docs.
+**Файлы:** `src/TrainOP/Railway.cs` / `TrainRouteRuntime.cs`, `src/TrainOP/StationMerge.cs`, docs.
 
 **Ожидание:** главный выигрыш по Gen0 и CPU на маршрутах с несколькими вагонами и hop'ами.
 
@@ -127,7 +131,7 @@ flowchart LR
 
 **Суть:** `Travel()` / `Travel(CancellationToken)` исполняют sync-цикл (`TravelCore`) без `async`/`await` на hop и без `GetAwaiter().GetResult()` вокруг `TravelCoreAsync`. Общие sync helpers (`ExecuteStation`, `ProcessStationStep`, `InvokeServiceStation`) и shared exception/visit helpers. `TravelAsync` сохраняет контракт через `TravelCoreAsync`.
 
-**Файлы:** `src/TrainOP/Railway.cs` (executor ~789–1028).
+**Файлы:** `src/TrainOP/TrainRouteRuntime.cs` (executor).
 
 **Ожидание:** снятие async state machine tax на sync hot path.
 
@@ -135,11 +139,11 @@ flowchart LR
 
 **Статус:** сделано (2026-07-17); **уточнено (2026-07-21)** — unrolled `MergePlan` вместо runtime-циклов.
 
-**Суть:** расширить `TypedStationReturnCodegen` на chain-aware адаптеры (`EmitChainAware*`). Убрать runtime reflection через `WagonStationReturn` там, где return shape известен на compile-time (`binding.ReturnMembers` или compile-time `string[]` из `ReturnShape.Members`).
+**Суть:** расширить typed merge на chain-aware адаптеры. Убрать runtime reflection через `WagonStationReturn` там, где return shape известен на compile-time.
 
 **2026-07-21:** typed merge больше не копирует `StationMerge.Apply` через `for`/`switch` по именам. `MergePlanBuilder` строит статический план (by-name, positional ItemN, partial unload, extra members); codegen эмитит прямые `LoadWagon`/`UnloadWagon` с `wagonNames[i]` и `stationReturn.{member}`.
 
-**Файлы:** `src/TrainOP.Generators/TypedStationReturnCodegen.cs`, `MergePlanBuilder.cs`, `MergePlan.cs`, `TrainRouteStationGenerator.cs`, при необходимости `ChainAwareStationCodegen.cs`.
+**Файлы:** generators — `TypedStationReturn*`, `MergePlan*`, `TrainRouteStationGenerator`, chain-aware emit.
 
 **Ожидание:** заметный выигрыш на сценариях бенчмарков Payment / LongPayment / Checkout (chain-dispatch).
 
@@ -149,7 +153,7 @@ flowchart LR
 
 **Суть:** resolve `chainKey` + `chainStationIndex` (binding table) один раз при регистрации станции; travel lambda закрывается над стабильными `inputNames` / `returnMembers` / `refFlags`. Передача статического `ChainBinding_*` в overload `StationCore_*(..., binding)` без `ResolveChainBinding_*` на hot path.
 
-**Файлы:** `ChainAwareStationCodegen.cs`, `TrainRouteStationGenerator.cs`.
+**Файлы:** chain-aware codegen, `TrainRouteStationGenerator`.
 
 ### P4a — Slim StationVisit (флаг + только TerminalSignal)
 
@@ -168,7 +172,7 @@ flowchart LR
 | На hop | `terminalSignal = signal` (перезапись); в журнал — visit **без** полного сигнала |
 | `StationVisit` | `StationName` + флаг исхода (`IsGreen` / эквивалент); предпочтительно `readonly struct` |
 | `RouteReport.TerminalSignal` | единственный полный сигнал (финал green или стоп-red, в т.ч. после service station) |
-| `visit.Signal` | убрать или `[Obsolete]` → breaking / migration в docs и samples |
+| `visit.Signal` | убран |
 
 **Семантика журнала после P4a:**
 
@@ -176,21 +180,23 @@ flowchart LR
 - Детали ошибки (`FailureCode` / `FailureMessage` / `Issue`) — только из `TerminalSignal`, не из промежуточных visit.
 - Промежуточный red с успешным recovery: в журнале будет `IsGreen == false` у станции и visit service; код/текст исходного red в visit **не** сохраняются.
 
-**Файлы:** `src/TrainOP/Railway.cs` (`StationVisit`, `ProcessStationStep*`, `CompleteRedSignalStep`, `RouteReport`), docs `core-api.md`, samples/tests, обращающиеся к `visit.Signal`.
+**Файлы:** `TrainRouteRuntime.cs` (`StationVisit`, `ProcessStationStep*`, `CompleteRedSignalStep`, `RouteReport`), docs `core-api.md`, samples/tests.
 
 **Ожидание:** средний выигрыш Alloc / давления на GC на любом `Travel()` с визитами; меньше, чем полный отказ от журнала (P4), но без нового API.
 
-**Связь с P4:** P4a меняет **форму** дефолтного журнала; P4 — opt-in **без** журнала вовсе. Порядок: сначала P4a, затем P4.
+**Связь с P4:** P4a меняет **форму** дефолтного журнала; P4 — opt-in **без** журнала вовсе. Порядок: сначала P4a (готово), затем P4.
 
-### P4 — Lightweight travel API
+### P4 — Lightweight travel API (TravelLight)
 
-**Статус:** не начато.
+**Статус:** сделано (2026-09-16).
 
-**Суть:** opt-in API без накопления списка `StationVisit` (например `TravelLight` / `recordVisits: false`), не ломая `Travel()` → `RouteReport` с визитами (уже slim после P4a). `Visits` в light-режиме — пустая коллекция (не `null`); `TerminalSignal` / `Get` / `Failure*` работают как обычно.
+**Суть:** opt-in без накопления `StationVisit`: `TravelLight()` / `TravelLightAsync()` (+ CT). Не ломает `Travel()` → `RouteReport` с визитами (slim после P4a).
 
-**Файлы:** `Railway.cs` (публичный API `Train`), docs `core-api.md`.
+- В [`src/TrainOP/TrainRouteRuntime.cs`](../src/TrainOP/TrainRouteRuntime.cs): `recordVisits` в `TravelCore` / `TravelCoreAsync`; light не аллоцирует journal и не вызывает `visits.Add`; `RouteReport.Visits` = `Array.Empty<StationVisit>()`.
+- `TerminalSignal` / `Manifest` / `Get` / `Failure*` без изменений семантики.
+- Бенч: `TrainOP_TravelLightOnly_*` в `LibraryVsManualBenchmarks`.
 
-**Ожидание:** средний выигрыш alloc на длинных маршрутах, когда отчёт по шагам не нужен.
+**Ожидание:** средний выигрыш Alloc на длинных маршрутах, когда журнал шагов не нужен.
 
 ### P5 — Reduce boxing / typed slots
 
@@ -198,18 +204,52 @@ flowchart LR
 
 **Суть (попытка):** typed bags для value types + `LoadWagon<T>` + home-index. На коротких маршрутах (Payment/Checkout) CPU от multi-bag / typeof / home lookup оказался **хуже**, чем boxing в один словарь; home-index не вернул уровень post-P4a.
 
-**Итог:** storage снова единый object-dict (как после P0/P4a). `LoadWagon<T>` удалён; codegen снова эмитит `LoadWagon(name, value)`.
+**Итог:** storage снова единый object-dict (как после P0/P4a). `LoadWagon<T>` удалён; codegen снова эмитит `LoadWagon(name, value)`. **Не возобновлять.**
 
-**Файлы:** `src/TrainOP/Railway.cs` (`CargoManifest`).
+**Файлы:** `CargoManifest` / runtime.
+
+### P6 — Freeze маршрута (только явный API)
+
+**Статус:** не начато.
+
+Сейчас каждый прогон копирует список:
+
+```csharp
+var route = new List<StationPlan>(_route);
+```
+
+- Публичный `Freeze()` только (без lazy freeze-on-first-Travel): после freeze `RegisterStation` / `.Station` бросают; executor читает `StationPlan[]` без копии.
+- Без `Freeze` — snapshot как сейчас; достраивание маршрута между `Travel` разрешено.
+
+**Ожидание:** −1 `List` + копирование N ссылок на каждый повторный TravelOnly у тех, кто явно вызвал `Freeze()`.
+
+### P7 — Slim диспетчер hop
+
+**Статус:** не начато.
+
+В `ExecuteStation` / `ExecuteStationAsync` — цепочка `if (plan.X != null)` по нескольким делегатам ([`StationPlan.cs`](../src/TrainOP/StationPlan.cs)).
+
+- Ввести `enum StationInvokeKind` (или аналог) + один релевантный делегат на plan при регистрации.
+- Убрать лишние null-проверки на hot path; поведение async/sync и service station без изменений.
+
+**Файлы:** `StationPlan.cs`, `TrainRouteRuntime.cs`.
+
+**Ожидание:** небольшой, но стабильный выигрыш CPU на hop (особенно короткие маршруты вроде Payment).
+
+### Не делать (отвергнуто / высокий риск)
+
+- **P5 typed bags** — не возобновлять (регрессия на Payment/Checkout).
+- Полная генерация unrolled `Travel` под цепочку — отдельный spike только после профилирования post-P4/P6; в этот курс не входит.
+- Смена `Dictionary<string,object>` на слоты по индексу — только как отдельный эксперимент после замеров; не смешивать с P4/P6/P7.
 
 ---
 
 ## 5. Критерии готовности фазы
 
-Для каждой фазы P0–P3, P4a, P4, P5:
+Для каждой фазы P0–P3, P4a, P4, P6, P7 (и исторически P5):
 
 - [ ] Поведение публичного API и семантика сигналов / отмены без регрессий (оператор гоняет тесты)
-- [ ] `LibraryVsManualBenchmarks` TravelOnly: Ratio и/или Alloc ниже baseline §2 (артефакт в `BenchmarkDotNet.Artifacts` или обновление цифр в этом плане)
+- [ ] `LibraryVsManualBenchmarks` TravelOnly (и TravelLight для P4): Ratio и/или Alloc ниже baseline §2 (артефакт в `BenchmarkDotNet.Artifacts` или обновление цифр в этом плане)
 - [ ] Краткая запись в §7 истории этого плана
 - [ ] При необходимости — строка в `CHANGELOG.md` / `benchmarks/README.md`
 
@@ -219,16 +259,16 @@ flowchart LR
 
 | Файл | Назначение |
 |------|------------|
-| `src/TrainOP/Railway.cs` | `CargoManifest`, `Train.Travel`, executor |
+| `src/TrainOP/TrainRouteRuntime.cs` | `Travel` / freeze / executor |
+| `src/TrainOP/StationPlan.cs` | kind + делегаты hop |
 | `src/TrainOP/StationMerge.cs` | Runtime merge / `ToSignal` |
 | `src/TrainOP/WagonStationReturn.cs` | Reflection return members |
 | `src/TrainOP.Generators/TrainRouteStationGenerator.cs` | Адаптеры, chain-dispatch |
-| `src/TrainOP.Generators/TypedStationReturnCodegen.cs` | Typed merge (non-chain и chain-dispatch) |
-| `src/TrainOP.Generators/ChainAwareStationCodegen.cs` | Binding tables, pull codegen |
 | `benchmarks/README.md` | Запуск и категории бенчмарков |
 | `benchmarks/TrainOP.Benchmarks/LibraryVsManualBenchmarks.cs` | Library vs manual |
 | `benchmarks/TrainOP.Benchmarks/ManualPipelineScenarios.cs` | Manual baseline |
 | `docs/code-volume-comparison.md` | Trade-off объём кода vs абстракция |
+| `docs/core-api.md` | Публичный API |
 | `docs/plan-data-oriented-handlers.md` | UX / analyzer roadmap (выполнено) |
 
 ---
@@ -250,3 +290,6 @@ flowchart LR
 | 2026-07-17 | **P5 снято:** откат typed bags → один `Dictionary<string,object>`; `LoadWagon<T>` удалён |
 | 2026-07-17 | Ссылка на идею Caller*-альтернативы Station-interceptors ([`plan-data-oriented-handlers.md`](plan-data-oriented-handlers.md) §4.3) |
 | 2026-07-20 | Ссылка на spike S0–S4 и go/no-go в §4.3.11–4.3.12 |
+| 2026-09-16 | Продолжение курса (бывший `plan-acceleration.md`): P4 → freeze → slim dispatch |
+| 2026-09-16 | **Объединение** с `plan-acceleration.md`: P4 уточнён (`TravelLight`); добавлены **P6** freeze и **P7** slim `ExecuteStation`; файл `plan-acceleration.md` удалён |
+| 2026-09-16 | **P4 сделано:** `TravelLight` / `TravelLightAsync` (+ CT); empty `Visits`; бенч `TravelLightOnly_*` |
