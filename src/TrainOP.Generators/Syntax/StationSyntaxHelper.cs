@@ -127,6 +127,144 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
+        /// Determines whether a factory return type is <c>TrainRoute</c> or
+        /// <c>Task&lt;TrainRoute&gt;</c> / <c>ValueTask&lt;TrainRoute&gt;</c> (async factory under <c>await</c>).
+        /// </summary>
+        public static bool IsTrainRouteFactoryReturnType(ITypeSymbol typeSymbol)
+        {
+            if (IsTrainRoute(typeSymbol))
+            {
+                return true;
+            }
+
+            return TryGetTaskLikeOfTrainRoute(typeSymbol, out _);
+        }
+
+        /// <summary>
+        /// If <paramref name="typeSymbol"/> is <c>Task&lt;TrainRoute&gt;</c> or
+        /// <c>ValueTask&lt;TrainRoute&gt;</c>, returns the element <c>TrainRoute</c> type.
+        /// </summary>
+        public static bool TryGetTaskLikeOfTrainRoute(
+            ITypeSymbol typeSymbol,
+            out ITypeSymbol trainRouteType)
+        {
+            trainRouteType = null;
+            if (typeSymbol is not INamedTypeSymbol named
+                || named.TypeArguments.Length != 1
+                || !IsTrainRoute(named.TypeArguments[0]))
+            {
+                return false;
+            }
+
+            if (!IsTaskLikeTypeName(named.Name)
+                || !IsSystemThreadingTasksNamespace(named.ContainingNamespace))
+            {
+                return false;
+            }
+
+            trainRouteType = named.TypeArguments[0];
+            return true;
+        }
+
+        private static bool IsTaskLikeTypeName(string typeName)
+        {
+            return string.Equals(typeName, "Task", StringComparison.Ordinal)
+                || string.Equals(typeName, "ValueTask", StringComparison.Ordinal);
+        }
+
+        private static bool IsSystemThreadingTasksNamespace(INamespaceSymbol ns)
+        {
+            if (ns == null || ns.IsGlobalNamespace)
+            {
+                return false;
+            }
+
+            return string.Equals(ns.ToDisplayString(), "System.Threading.Tasks", StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Returns the single <c>out TrainRoute</c> parameter when the method has exactly one.
+        /// </summary>
+        public static bool TryGetSingleOutTrainRouteParameter(
+            IMethodSymbol methodSymbol,
+            out IParameterSymbol outParameter)
+        {
+            outParameter = null;
+            if (methodSymbol == null)
+            {
+                return false;
+            }
+
+            IParameterSymbol found = null;
+            foreach (var parameter in methodSymbol.Parameters)
+            {
+                if (parameter.RefKind != RefKind.Out
+                    || !IsTrainRoute(parameter.Type))
+                {
+                    continue;
+                }
+
+                if (found != null)
+                {
+                    return false;
+                }
+
+                found = parameter;
+            }
+
+            if (found == null)
+            {
+                return false;
+            }
+
+            outParameter = found;
+            return true;
+        }
+
+        /// <summary>
+        /// Matches an <c>out TrainRoute</c> argument at a call site to its parameter.
+        /// </summary>
+        public static bool TryMatchOutTrainRouteArgument(
+            InvocationExpressionSyntax invocation,
+            IMethodSymbol methodSymbol,
+            SemanticModel semanticModel,
+            out IParameterSymbol outParameter,
+            out ArgumentSyntax outArgument)
+        {
+            outParameter = null;
+            outArgument = null;
+            if (invocation?.ArgumentList == null
+                || methodSymbol == null
+                || semanticModel == null)
+            {
+                return false;
+            }
+
+            var arguments = invocation.ArgumentList.Arguments;
+            for (var i = 0; i < arguments.Count && i < methodSymbol.Parameters.Length; i++)
+            {
+                var parameter = methodSymbol.Parameters[i];
+                if (parameter.RefKind != RefKind.Out
+                    || !IsTrainRoute(parameter.Type))
+                {
+                    continue;
+                }
+
+                var argument = arguments[i];
+                if (!argument.RefOrOutKeyword.IsKind(SyntaxKind.OutKeyword))
+                {
+                    continue;
+                }
+
+                outParameter = parameter;
+                outArgument = argument;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Determines whether an expression is or derives from a TrainRoute receiver.
         /// </summary>
         public static bool IsTrainRouteReceiver(
@@ -141,6 +279,16 @@ namespace TrainOP.Generators
             }
 
             if (IsTrainRoute(receiverType))
+            {
+                return true;
+            }
+
+            // Analyzer-only compilations lack generated Station stubs, so
+            // `var route = new TrainRoute().Station(...)` types the local as error.
+            // Still treat the identifier as a TrainRoute receiver; chain assembly
+            // validates known origins (unknown → TOP005).
+            if (receiverType?.TypeKind == TypeKind.Error
+                && receiverExpression is IdentifierNameSyntax)
             {
                 return true;
             }

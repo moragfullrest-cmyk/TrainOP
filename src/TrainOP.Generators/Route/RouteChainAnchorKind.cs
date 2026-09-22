@@ -1,34 +1,38 @@
 namespace TrainOP.Generators.Route
 {
     /// <summary>
-    /// Identifies the syntactic form of a route chain anchor.
+    /// Legacy syntactic discriminator for <see cref="RouteChainAnchor"/> (adapter stamp only).
     /// </summary>
+    /// <remarks>
+    /// Prefer first-class Parts (<c>CreationSeed</c>, <c>FactoryCall</c>, <c>LocalBinding</c>,
+    /// <c>JoinSeed</c>) and their ports for new logic. Hot paths must not switch on this enum;
+    /// it remains the downward stamp on <see cref="RouteChainAnchor"/> / <see cref="RouteSite"/>.
+    /// </remarks>
     internal enum RouteChainAnchorKind
     {
         /// <summary>
-        /// Anchor at <c>new TrainRoute()</c>.
+        /// Anchor at <c>new TrainRoute()</c> (→ <c>CreationSeed</c>).
         /// </summary>
         ObjectCreation,
 
         /// <summary>
-        /// Anchor at a local variable assigned once from <c>new TrainRoute()</c>.
+        /// Anchor at a local variable assigned from a TrainRoute origin (→ <c>LocalBinding</c>).
         /// </summary>
         LocalVariable,
 
         /// <summary>
-        /// Synthetic anchor for a downstream chain after a forking receiver join.
+        /// Synthetic anchor after a forking receiver join (→ <c>JoinSeed</c>).
         /// </summary>
         BranchJoin,
 
         /// <summary>
-        /// Anchor at a private/internal factory invocation resolved inline.
+        /// Private/internal factory invocation resolved inline (→ <c>FactoryCall</c> Inline).
         /// </summary>
         MethodInvocation,
 
         /// <summary>
-        /// Anchor at a public/exported factory invocation resolved via exported schema.
+        /// Public/exported factory invocation resolved via schema (→ <c>FactoryCall</c> Schema).
         /// </summary>
         FactorySchema,
     }
 }
-

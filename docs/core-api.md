@@ -56,7 +56,7 @@ var route = new TrainRoute()
     .Station("Seed", () => new { id = 1 })
     .Station("Next", (int id) => new { id = id + 1 });
 
-// 2) Локальная после new TrainRoute()
+// 2) Локальная после new + fluent-присваивание
 var route = new TrainRoute();
 route = route
     .Station("Seed", () => new { id = 1 })
@@ -71,11 +71,69 @@ var route = PaymentModule.Build()
     .Station("Finalize", (string paymentId, decimal amount) => new { paymentId, status = "done" });
 ```
 
+**Statement-local** — несколько statement-вызовов `.Station` / `.ServiceStation` на одной локали после одного known origin (одна `RouteChain`):
+
+```csharp
+// Bare new
+var route = new TrainRoute();
+route.Station("Seed", () => new { id = 1 });
+route.Station("Next", (int id) => new { id = id + 1 });
+
+// Bare private/internal factory (или public + schema)
+var route = CreateSeed();
+route.Station("Next", (int id) => new { id = id + 1 });
+
+// Fluent-RHS root new + statement-хвост
+var route = new TrainRoute()
+    .Station("Seed", () => new { id = 1 });
+route.Station("Next", (int id) => new { id = id + 1 });
+
+// Fluent-RHS root factory + statement-хвост
+var route = CreateSeed()
+    .Station("Mid", (int id) => new { id });
+route.Station("Tail", (int id) => new { id = id + 1 });
+```
+
 `PaymentRoute.Build()` с цепочкой **внутри** и вызовом только `.Travel()` снаружи по-прежнему поддерживается.
 
-`CreateSeed().Station(...)` поддерживается для **private/internal** factory (inter-procedural analysis). **Public** factory использует generated schema (`[RouteSchemaFor]`). См. [cross-assembly-routes.md](cross-assembly-routes.md).
+`CreateSeed().Station(...)` поддерживается для **private/internal** factory (inter-procedural analysis), включая **local function** с тем же контрактом. **Public** factory использует generated schema (`[RouteSchemaFor]`). См. [cross-assembly-routes.md](cross-assembly-routes.md).
 
-Параметр / поле / свойство / делегат как receiver (`baseRoute.Station(...)`, `_route.Station(...)`, `buildRoute().Station(...)`) **не поддерживаются** (TOP005; не отложено — opaque upstream).
+`await` прозрачен: `(await CreateAsync()).Station(...)` и `var r = await CreateAsync(); r.Station(...)` — те же правила, что у sync factory (`Task`/`ValueTask<TrainRoute>`). Opaque под `await` остаётся TOP005.
+
+`out TrainRoute` — как factory/return: `Get(out TrainRoute r); r.Station(...)` (private/internal inline). `ref` / `in` — TOP005.
+
+Узкий tuple/deconstruct: `(var r, _) = (new TrainRoute()..., x);` / `var (r, _) = (...)` — элемент с known origin. `(var r, _) = GetPair();` — TOP005.
+
+Pattern: `if (new TrainRoute()... is TrainRoute r)` / `case TrainRoute r` при known origin под `is`/`switch`. `GetObject() is TrainRoute r` — TOP005 (`is` не создаёт origin).
+
+Условное / `switch` присваивание локали: `r = cond ? new TrainRoute() : CreateSeed();` / `r = kind switch { 0 => new TrainRoute(), _ => CreateSeed() };` — join веток (TOP008 при конфликте), затем statement-хвост. Аналогично fluent `?:` / `switch` на receiver.
+
+**Init before Station:** объявление `null` / `default` допустимо как заготовка; перед первой `.Station` / `.ServiceStation` обязана быть init known origin. Иначе TOP005.
+
+```csharp
+TrainRoute r = null;      // OK — заготовка
+r = new TrainRoute();     // known origin
+r.Station("X", ...);      // OK
+
+TrainRoute r2 = null;
+r2.Station("X", ...);     // TOP005 — Station без init
+```
+
+**Прозрачные обёртки** (peel; origin под ними должен быть допустимым): `(expr)`, `expr!`, cast, `await`, `await Task.FromResult(...)`.
+
+```csharp
+((TrainRoute)(object)new TrainRoute()).Station("Seed", () => new { id = 1 }); // OK
+((TrainRoute)GetObject()).Station(...); // TOP005 — opaque под cast
+```
+
+**Не поддерживается** (TOP005 / вне модели):
+
+- параметр / поле / свойство / делегат как receiver (`baseRoute.Station(...)`, `_route.Station(...)`, `buildRoute().Station(...)`);
+- алиас локали (`var r2 = r1;` / `r2 = r1.Station(...)` затем `r2.Station(...)`);
+- CFG statement-ветвление (`if`/`else` с регистрацией станций на локали без join);
+- cast / `await` / paren над opaque (peel не делает источник known).
+
+Параметр / поле / свойство / делегат как receiver **не отложены** — opaque upstream.
 
 ### Запуск
 

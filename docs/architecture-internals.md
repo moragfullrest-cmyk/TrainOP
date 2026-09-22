@@ -115,7 +115,7 @@ flowchart TB
 | 1b | **Anchors** | ∥ 1a | receiver/factory → якорь (`InitialWagons`, dispatch identity, kind). **Import внешней schema** — вариант resolve якоря, не отдельная стадия |
 | 2 | **GroupSignatures** | ∥ 4 | bindings → группы **без** chain |
 | 3 | **BranchPlans** | после Attach 2+4 | groups+chain → canonical ∥ chain-aware **как данные** (+ политика TOP007) |
-| 4 | **BuildChains** | ∥ 2 | stations+anchors → `RouteGraph` (единый API; entry points walker — варианты входа) |
+| 4 | **BuildChains** | ∥ 2 | stations+anchors → `RouteGraph`: **Materialize → Construct → Validate** (Parts IR); entry points walker/peel — варианты входа |
 | 5 | **Terminals** | после 4 (и 7 для join-origin) | → `TerminalSet` + `Origin` |
 | 6 | **SchemaDescriptors** | после 5 | factory terminals → **только export**-descriptors в IR |
 | 7 | **JoinChains** | после 4 | forks (`?:` / `??` / `switch`, factory fork) → join IR / merged terminals |
@@ -132,6 +132,26 @@ flowchart TB
 | Параллель groups ∥ chains | логически есть, в одном callback | независимые `IncrementalValuesProvider` + `Combine` |
 
 Детали ниже описывают discovery, binding и emit относительно контракта стадий.
+
+### 4 BuildChains: Materialize → Construct → Validate
+
+Внутренний IR этапа 4 — first-class **части маршрута** (`TrainOP.Generators.Parts`), не switch по `RouteChainAnchorKind`:
+
+```mermaid
+flowchart LR
+  M["1 Materialize<br/>parts"] --> C["2 ChainConstructor<br/>Connect"]
+  C --> V["3 Validate<br/>on edge"]
+  V --> G["RouteChain / RouteGraph"]
+```
+
+| Шаг | Смысл | Код |
+|-----|--------|-----|
+| **Materialize** | syntax/semantic → `CreationSeed` / `FactoryCall` / `LocalBinding` / `StationLink` / `JoinArm` / `ExtensionTail` | `*Materializer`, `RouteAnchorDetector` |
+| **Construct** | `TryBind` / `TryAppend` / `TryJoin` / `TryExtend` | `ChainConstructor`, `*ChainConnector` |
+| **Validate** | structural ports + существующие TOP* / soft reject | `PartEdgeValidator`, join/factory validators |
+| **Adapt** | вниз на legacy `RouteChainAnchor` / `RouteChain` | `LegacyRoutePartAdapter` |
+
+Фасад: `BuildChainsStage` / `RouteGraphAssembler`. Peel одного fluent-шага: `RouteChainPeel`. Origin-window (preceding / Collect SL): `RouteOriginWindow`. Backward root walk: `RouteChainRootResolver`. План миграции: [`plan-route-parts-constructor.md`](plan-route-parts-constructor.md).
 
 ### Параллелизм
 
@@ -162,7 +182,7 @@ RegisterSourceOutput(model, EmitAll);
 | **1a StationSignatures** | lambda / anonymous / method group / local function; Station ∥ ServiceStation; sync ∥ async; классификация параметра; формы return | `StationHandlerBinding` (+ site). `MergePlan` handler→manifest — следствие return shape (1a / emit-prep), не JoinChains |
 | **1b Anchors** | `new` / local / private·internal factory / **public + external schema** / seed после join | якорь с `InitialWagons`, dispatch identity, kind |
 | **3 BranchPlans** | canonical ∥ chain-aware; TOP007 canonical vs non-chain | `BranchPlan` + diagnostics policy |
-| **4 BuildChains** | forward от якоря / ending-at / factory-extension walk | один `BuildChains` / `RouteGraph` |
+| **4 BuildChains** | Materialize parts → `ChainConstructor` Connect → Validate on edge; forward / ending-at / factory-extension | один `BuildChains` / `RouteGraph` |
 | **5 Terminals** | linear sim / factory path sim / join merge / upstream `InitialWagons` | `TerminalSet` + `Origin` |
 | **7 JoinChains** | `?:` / `??` / `switch`; analyzer join ∥ factory fork-join | один JoinChains API → join IR |
 | **Потребитель IR** | generator emit ∥ analyzer | одна модель, два выхода (**не** этап) |
@@ -296,11 +316,15 @@ Handler schema строится **один раз** в discovery; walk цепо�
 4. **GroupSignatures → Attach → BranchPlans** — grouping без chain, затем attach, затем `BranchPlanStage`.
 5. **EmitAll** — diagnostics + `RouteSchemas.g.cs` + `TrainRouteStation.Extensions.g.cs`.
 
-`RouteGraphAssembler.Build`:
+`RouteGraphAssembler.Build` (этап **4 BuildChains**):
 
 1. Station sites + якоря (`RouteSiteKind.Anchor`).
-2. Forward через `ChainDetector.TryAdvanceChain` с pre-built binding.
-3. `RouteGraph`: `Chains`, `ChainIndex`, chained-set.
+2. **Materialize** origin parts (`CreationSeed` / `FactoryCall` / `LocalBinding`) и station links.
+3. **Construct** — `ChainConstructor` / `LinearChainConnector` (Bind·Append; Extend / Join — отдельные connectors).
+4. **Validate** на каждом ребре (`PartEdgeValidator` + существующие TOP* / soft reject).
+5. Адаптер вниз → legacy `RouteChain` / `RouteGraph` (`Chains`, `ChainIndex`, chained-set). Peel одного шага — `RouteChainPeel.TryAdvanceChain`; origin window — `RouteOriginWindow`; root walk — `RouteChainRootResolver`.
+
+Внутренний IR частей: [`plan-route-parts-constructor.md`](plan-route-parts-constructor.md). `RouteChainAnchorKind` — legacy adapter stamp (не switch в горячих путях; Parts-порты предпочтительны).
 
 Analyzer: `RouteSiteDiscoverer.CollectAll` + `RouteGraphAssembler.Build` раз на compilation; per-tree — `GetChainsInTree` / `IsChainedInvocation`.
 
@@ -424,7 +448,7 @@ var route = new TrainRoute()
     .Station("Seed", () => new { id = 1 })
     .Station("Next", (int id) => new { id = id + 1 });
 
-// 2) Локальная после new TrainRoute()
+// 2) Локальная после new + fluent-присваивание
 var route = new TrainRoute();
 route = route
     .Station("Seed", () => new { id = 1 })
@@ -440,7 +464,40 @@ var route = PaymentModule.Build()
         new { paymentId, status = "done" });
 ```
 
-Параметр / поле / свойство / делегат как receiver **не поддерживаются** (**TOP005**; не отложено — opaque upstream).
+**Statement-local** (одна цепочка на локали после known origin):
+
+```csharp
+var route = new TrainRoute();
+route.Station("Seed", () => new { id = 1 });
+route.Station("Next", (int id) => new { id = id + 1 });
+
+var route = CreateSeed();
+route.Station("Next", (int id) => new { id = id + 1 });
+
+var route = new TrainRoute().Station("Seed", () => new { id = 1 });
+route.Station("Next", (int id) => new { id = id + 1 });
+
+var route = CreateSeed().Station("Mid", (int id) => new { id });
+route.Station("Tail", (int id) => new { id = id + 1 });
+
+var route = flag ? new TrainRoute() : CreateSeed();
+route.Station("Next", (int id) => new { id = id + 1 });
+
+var route = kind switch { 0 => new TrainRoute(), _ => CreateSeed() };
+route.Station("Next", (int id) => new { id = id + 1 });
+
+TrainRoute route = null;   // заготовка OK
+route = new TrainRoute();  // init known origin
+route.Station("Seed", () => new { id = 1 });
+```
+
+Сборщик: `CollectLocalStatementStationLinks` в `RouteChainWalker` + `BuildAnchorKey` по location origin. Ключевые файлы: `RouteChainWalker.cs`, `RouteGraphAssembler.cs`.
+
+**Init before Station:** `null` / `default` не запрещены; `.Station` без предшествующей init known origin → **TOP005**.
+
+Прозрачные обёртки receiver (`ReceiverExpressionSyntaxPeel`): paren, `!`, cast, `await`, `Task.FromResult`. Cast над `new` / factory — OK; cast над opaque (`(TrainRoute)GetObject()`) — **TOP005**.
+
+Параметр / поле / свойство / делегат как receiver **не поддерживаются** (**TOP005**; не отложено — opaque upstream). Алиас локали и CFG statement-`if`/`else` регистрации станций — тоже **TOP005** / вне модели.
 
 ---
 

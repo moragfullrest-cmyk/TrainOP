@@ -29,6 +29,9 @@ namespace TrainOP.Generators.Route
             InitialWagons = initialWagons.IsDefault ? ImmutableArray<WagonBinding>.Empty : initialWagons;
         }
 
+        /// <summary>
+        /// Legacy kind stamp (<see cref="RouteChainAnchorKind"/>). Prefer Parts ports for new logic.
+        /// </summary>
         public RouteChainAnchorKind Kind { get; }
 
         /// <summary>

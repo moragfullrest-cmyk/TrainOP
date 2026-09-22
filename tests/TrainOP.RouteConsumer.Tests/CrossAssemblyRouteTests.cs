@@ -22,6 +22,20 @@ public sealed class CrossAssemblyRouteTests
     }
 
     /// <summary>
+    /// Verifies statement-local extension after a public cross-assembly factory travels correctly.
+    /// </summary>
+    [Fact]
+    public void Travel_StatementLocalAfterPublicFactory_CompletesSuccessfully()
+    {
+        var report = AppRoute.BuildStatementLocal().Travel();
+
+        Assert.True(report.ReachedDestination);
+        Assert.Equal("pay-1", report.Get<string>("paymentId"));
+        Assert.Equal("completed", report.Get<string>("status"));
+        Assert.Equal(90m, report.Get<decimal>("amount"));
+    }
+
+    /// <summary>
     /// Verifies factory-extension chain-dispatch across assemblies keeps alpha/beta wagon names distinct.
     /// </summary>
     [Fact]

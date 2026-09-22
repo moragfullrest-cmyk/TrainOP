@@ -20,6 +20,10 @@ TrainOP — библиотека Railway Oriented Programming (ROP) для .NET 
 | [Сравнение объёма кода](code-volume-comparison.md) | Manual vs TrainOP |
 | [Benchmarks](../benchmarks/README.md) | Library vs manual |
 | [План: data-oriented handlers](plan-data-oriented-handlers.md) | Roadmap: фазы 0–8 выполнены; opaque-якоря параметр/поле/свойство/делегат не поддерживаются |
+| [План: statement-цепочки](plan-statement-local-chains.md) | SL закрыт; имплементация → [plan-anchors-implementation](plan-anchors-implementation.md) |
+| [План: якоря «Прочий C#»](plan-misc-csharp-anchors.md) | C/D/DOC-4 закрыты; имплементация → [plan-anchors-implementation](plan-anchors-implementation.md) |
+| [План: реализация якорей](plan-anchors-implementation.md) | Единый backlog SL + D + C + DOC-4 — **закрыт** (gate — у оператора) |
+| [План: части маршрута (constructor IR)](plan-route-parts-constructor.md) | Materialize → Construct → Validate — **закрыт**; post-Z0 nesting extract O1–O4 — **сделано** (gate — у оператора) |
 | [План: производительность Travel](plan-performance.md) | Roadmap: P0–P4a + P4 done; P5 reverted; дальше P6 freeze → P7 slim dispatch |
 | [Готовность к релизу](release-readiness.md) | Чеклист Preview / 1.0 |
 

@@ -58,9 +58,23 @@ namespace TrainOP.Generators
             ExpressionSyntax leaf,
             SemanticModel semanticModel)
         {
-            if (RouteChainWalker.IsBareUserDefinedFactoryInvocation(leaf, semanticModel))
+            leaf = ReceiverExpressionSyntaxPeel.UnwrapTransparent(leaf);
+            if (leaf == null)
             {
-                return new BranchRouteGraph(leaf, isResolved: false, chain: null, simulation: null);
+                return new BranchRouteGraph(
+                    branchExpression: SyntaxFactory.IdentifierName("_"),
+                    isResolved: false,
+                    chain: null,
+                    simulation: null);
+            }
+
+            if (RouteChainWalker.TryBuildBareFactoryBranch(
+                    leaf,
+                    semanticModel,
+                    out var factoryChain,
+                    out var factorySimulation))
+            {
+                return new BranchRouteGraph(leaf, isResolved: true, factoryChain, factorySimulation);
             }
 
             if (BuildChainsStage.EndingAt(leaf, semanticModel, out var chain))

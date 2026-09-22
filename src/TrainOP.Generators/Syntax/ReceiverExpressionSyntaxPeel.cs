@@ -9,8 +9,9 @@ namespace TrainOP.Generators
     /// Peels transparent syntactic wrappers around TrainRoute chain receivers.
     /// </summary>
     /// <remarks>
-    /// Transparent wrappers are parentheses, null-forgiving <c>!</c>, casts, <c>await</c>,
-    /// and a single-argument <c>Task.FromResult</c> / <c>Task.FromResult&lt;T&gt;</c> used with <c>await</c>.
+    /// Transparent wrappers are parentheses, null-forgiving <c>!</c>, casts, <c>await</c>
+    /// (any awaitable expression — not only <c>Task.FromResult</c>),
+    /// and a single-argument <c>Task.FromResult</c> / <c>Task.FromResult&lt;T&gt;</c>.
     /// Conditional, coalescing, switch, and other method invocations are not transparent.
     /// </remarks>
     internal static class ReceiverExpressionSyntaxPeel

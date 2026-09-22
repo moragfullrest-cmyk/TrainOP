@@ -102,6 +102,38 @@ public static class Route
         }
 
         /// <summary>
+        /// Local assigned from a switch expression, then statement <c>.Station</c>, yields one join set.
+        /// </summary>
+        [Fact]
+        public void Find_LocalAfterSwitchAssign_OneJoinSet_TwoBranches()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class Route
+{
+    public static TrainRoute Build(int kind)
+    {
+        var route = kind switch
+        {
+            0 => new TrainRoute().Station(""Zero"", () => new { value = 0 }),
+            _ => new TrainRoute().Station(""Other"", () => new { value = 1 })
+        };
+        route.Station(""Join"", (int value) => new { value });
+        return route;
+    }
+}";
+
+            var joinSets = Find(source);
+
+            Assert.Single(joinSets);
+            var joinSet = joinSets[0];
+            Assert.Equal("Join", GetDownstreamStationName(joinSet.DownstreamStation));
+            Assert.Equal(2, joinSet.Branches.Length);
+            Assert.All(joinSet.Branches, b => Assert.True(b.IsResolved));
+        }
+
+        /// <summary>
         /// Nested ternary under an outer Station yields one join set with three flattened branches.
         /// </summary>
         [Fact]

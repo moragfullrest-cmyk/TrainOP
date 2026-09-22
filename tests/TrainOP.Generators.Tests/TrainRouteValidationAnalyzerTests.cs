@@ -252,6 +252,118 @@ public static class LocalRoute
         }
 
         /// <summary>
+        /// Verifies statement-local Seed+Next on one bare-new local without TOP001/TOP005.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalChain_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class StatementLocalRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute();
+        route.Station(""Seed"", () => new { id = 1 });
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies fluent-RHS <c>new</c> plus statement-local tail without TOP001/TOP005/TOP013.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_FluentRhsNewThenStatementLocal_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class FluentRhsNewRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute()
+            .Station(""Seed"", () => new { id = 1 });
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP013");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies fluent-RHS private factory plus statement-local Mid+Tail without TOP001/TOP005/TOP013.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_FluentRhsFactoryThenStatementLocal_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class FluentRhsFactoryRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = CreateSeed()
+            .Station(""Mid"", (int id) => new { id });
+        route.Station(""Tail"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static TrainRoute CreateSeed() =>
+        new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP013");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies a wagon hole across statement-local stations still reports TOP001.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalChain_ReportsTop001_WhenWagonMissing()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class StatementLocalBrokenRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute();
+        route.Station(""Seed"", () => new { paymentId = ""pay-1"" });
+        route.Station(""Discount"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP001");
+        }
+
+        /// <summary>
         /// Verifies that a reused local variable is anchored to its latest preceding assignment.
         /// </summary>
         [Fact]
@@ -403,6 +515,29 @@ public static class CastRoute
         }
 
         /// <summary>
+        /// Verifies TOP005 when cast peels to an opaque <c>object</c> factory (not a known origin).
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop005_WhenCastReceiverIsOpaqueObjectFactory()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class CastOpaqueRoute
+{
+    public static TrainRoute Build() =>
+        ((TrainRoute)GetObject())
+            .Station(""Seed"", () => new { id = 1 });
+
+    private static object GetObject() => new TrainRoute();
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP005");
+        }
+
+        /// <summary>
         /// Verifies that a cast around a local creation receiver does not break chain detection.
         /// </summary>
         [Fact]
@@ -480,23 +615,424 @@ public static class AwaitLocalRoute
         }
 
         /// <summary>
-        /// Verifies that TOP005 is reported when a local is assigned from a non-creation source.
+        /// Verifies fluent extension after <c>await CreateAsync()</c> (Task&lt;TrainRoute&gt; factory).
         /// </summary>
         [Fact]
-        public async Task Analyzer_ReportsTop005_WhenLocalIsNotAssignedFromCreation()
+        public async Task Analyzer_AwaitAsyncFactoryExtension_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class AwaitAsyncFactoryRoute
+{
+    public static async Task<TrainRoute> BuildAsync() =>
+        (await CreateAsync())
+            .Station(""Next"", (int id) => new { id = id + 1 });
+
+    private static async Task<TrainRoute> CreateAsync() =>
+        new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies statement-local after <c>var r = await CreateAsync()</c>.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterAwaitAsyncFactory_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class StatementAwaitAsyncFactoryRoute
+{
+    public static async Task<TrainRoute> BuildAsync()
+    {
+        var route = await CreateAsync();
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static async Task<TrainRoute> CreateAsync() =>
+        new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies await of a local async factory function plus statement-local tail.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterAwaitLocalAsyncFactory_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class StatementAwaitLocalAsyncFactoryRoute
+{
+    public static async Task<TrainRoute> BuildAsync()
+    {
+        async Task<TrainRoute> LocalAsync() =>
+            new TrainRoute().Station(""Seed"", () => new { id = 1 });
+
+        var route = await LocalAsync();
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies await of ValueTask&lt;TrainRoute&gt; factory extension.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_AwaitValueTaskFactoryExtension_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class AwaitValueTaskFactoryRoute
+{
+    public static async Task<TrainRoute> BuildAsync() =>
+        (await CreateAsync())
+            .Station(""Next"", (int id) => new { id = id + 1 });
+
+    private static async ValueTask<TrainRoute> CreateAsync() =>
+        new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies statement-local after <c>Get(out TrainRoute r)</c> without TOP001/TOP005.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterOutFactory_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class StatementOutFactoryRoute
+{
+    public static TrainRoute Build()
+    {
+        Get(out TrainRoute route);
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static void Get(out TrainRoute route) =>
+        route = new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies <c>ref TrainRoute</c> remains opaque (TOP005), unlike <c>out</c>.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop005_WhenLocalIsAssignedViaRefParameter()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class RefFactoryRoute
+{
+    public static TrainRoute Build()
+    {
+        TrainRoute route = null;
+        Mutate(ref route);
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static void Mutate(ref TrainRoute route) =>
+        route = new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP005");
+        }
+
+        /// <summary>
+        /// Verifies statement-local after tuple deconstruct from a known origin without TOP001/TOP005.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterTupleDeconstruct_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class TupleDeconstructRoute
+{
+    public static TrainRoute Build()
+    {
+        (var route, _) = (new TrainRoute().Station(""Seed"", () => new { id = 1 }), 0);
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies TOP005 when deconstruct RHS is an opaque factory pair.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop005_WhenTupleDeconstructUsesOpaqueGetPair()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class OpaqueTupleRoute
+{
+    public static TrainRoute Build()
+    {
+        (var route, _) = GetPair();
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static (TrainRoute, int) GetPair() =>
+        (new TrainRoute().Station(""Seed"", () => new { id = 1 }), 0);
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP005");
+        }
+
+        /// <summary>
+        /// Verifies statement-local after <c>is TrainRoute r</c> with known fluent origin.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterIsPattern_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class IsPatternRoute
+{
+    public static TrainRoute Build()
+    {
+        if (new TrainRoute().Station(""Seed"", () => new { id = 1 }) is TrainRoute route)
+        {
+            route.Station(""Next"", (int id) => new { id = id + 1 });
+            return route;
+        }
+
+        return new TrainRoute()
+            .Station(""Seed"", () => new { id = 1 })
+            .Station(""Next"", (int id) => new { id = id + 1 });
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP012");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies TOP005 when <c>is TrainRoute r</c> matches an opaque expression.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop005_WhenIsPatternUsesOpaqueExpression()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class OpaqueIsPatternRoute
+{
+    public static TrainRoute Build()
+    {
+        if (GetObject() is TrainRoute route)
+        {
+            route.Station(""Next"", (int id) => new { id = id + 1 });
+            return route;
+        }
+
+        return new TrainRoute();
+    }
+
+    private static object GetObject() =>
+        new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP005");
+        }
+
+        /// <summary>
+        /// Verifies statement-local after switch <c>case TrainRoute r</c> with factory origin.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterSwitchCasePattern_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class SwitchCasePatternRoute
+{
+    public static TrainRoute Build()
+    {
+        switch (CreateSeed())
+        {
+            case TrainRoute route:
+                route.Station(""Next"", (int id) => new { id = id + 1 });
+                return route;
+            default:
+                return CreateSeed()
+                    .Station(""Next"", (int id) => new { id = id + 1 });
+        }
+    }
+
+    private static TrainRoute CreateSeed() =>
+        new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP012");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies that TOP005 is reported when a local is assigned from an opaque source
+        /// (not bare <c>new</c> and not a resolvable private/internal factory).
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop005_WhenLocalIsAssignedFromOpaqueParameter()
         {
             const string source = @"
 using TrainOP;
 
 public static class BrokenRoute
 {
-    public static TrainRoute Build()
+    public static TrainRoute Build(TrainRoute incoming)
     {
-        var route = GetRoute();
+        var route = incoming;
         return route.Station(""Seed"", () => new { paymentId = ""pay-1"" });
     }
+}";
 
-    private static TrainRoute GetRoute() => new TrainRoute();
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP005");
+        }
+
+        /// <summary>
+        /// Verifies TOP005 when <c>.Station</c> runs on a null local without known-origin init.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop005_WhenStationOnNullLocalWithoutInit()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class NullWithoutInitRoute
+{
+    public static TrainRoute Build()
+    {
+        TrainRoute route = null;
+        route.Station(""Seed"", () => new { id = 1 });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP005");
+        }
+
+        /// <summary>
+        /// Verifies that null/default placeholder then known-origin assign allows statement-local.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterNullThenKnownInit_ProducesNoTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class NullThenInitRoute
+{
+    public static TrainRoute Build()
+    {
+        TrainRoute route = null;
+        route = new TrainRoute();
+        route.Station(""Seed"", () => new { id = 1 });
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies TOP005 when a Station is invoked on an alias of a fluent Station result.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop005_WhenStationUsesAliasOfFluentStation()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class AliasRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute();
+        var route1 = route.Station(""A"", () => new { id = 1 });
+        route1.Station(""B"", (int id) => new { id });
+        route.Station(""C"", (int id) => new { id });
+        return route;
+    }
 }";
 
             var diagnostics = await RunAnalyzerAsync(source);
@@ -525,6 +1061,122 @@ public static class ExtensionRoute
 
             var diagnostics = await RunAnalyzerAsync(source);
 
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies local-function factory fluent extension without TOP005.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_LocalFunctionFactoryExtension_DoesNotReportTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class LocalFunctionExtensionRoute
+{
+    public static TrainRoute Build()
+    {
+        TrainRoute Local() =>
+            new TrainRoute().Station(""Seed"", () => new { amount = 100m });
+
+        return Local()
+            .Station(""Discount"", (decimal amount) => new { amount = amount * 0.9m });
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies statement-local extension after a local-function factory without TOP001/TOP005.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterLocalFunctionFactory_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class StatementLocalFunctionFactoryRoute
+{
+    public static TrainRoute Build()
+    {
+        TrainRoute Local() =>
+            new TrainRoute().Station(""Seed"", () => new { id = 1 });
+
+        var route = Local();
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies statement-local extension after a private factory without TOP001/TOP005.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterPrivateFactory_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class StatementFactoryLocalRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = CreateSeed();
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static TrainRoute CreateSeed() =>
+        new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies a statement-style private factory body yields known terminals (no TOP013)
+        /// when extended fluently.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementStylePrivateFactory_ProducesNoTop013()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class StatementStyleFactoryRoute
+{
+    public static TrainRoute Build() =>
+        CreateSeed()
+            .Station(""Next"", (int id) => new { id = id + 1 });
+
+    private static TrainRoute CreateSeed()
+    {
+        var route = new TrainRoute();
+        route.Station(""Seed"", () => new { id = 1 });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP013");
             Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
             Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         }
@@ -664,6 +1316,188 @@ public static class BrokenJoinRoute
             ? new TrainRoute().Station(""Left"", () => new { value = 1 })
             : new TrainRoute().Station(""Right"", () => new { value = ""text"" }))
         .Station(""Join"", (int value) => new { value });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP008");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+        }
+
+        /// <summary>
+        /// Verifies statement-local after equivalent ternary assign without TOP001/TOP005/TOP008.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterTernaryAssign_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class TernaryAssignRoute
+{
+    public static TrainRoute Build(bool flag)
+    {
+        var route = flag
+            ? new TrainRoute()
+            : new TrainRoute();
+        route.Station(""Seed"", () => new { id = 1 });
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP008");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies statement-local after ternary of matching factories.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterTernaryFactoryAssign_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class TernaryFactoryAssignRoute
+{
+    public static TrainRoute Build(bool flag)
+    {
+        var route = flag ? CreateSeed() : CreateSeed();
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static TrainRoute CreateSeed() =>
+        new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP008");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies TOP008 when ternary assign arms have conflicting terminal types.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterTernaryAssign_ConflictingTypes_ReportsTop008()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class TernaryConflictAssignRoute
+{
+    public static TrainRoute Build(bool flag)
+    {
+        var route = flag
+            ? new TrainRoute().Station(""Left"", () => new { value = 1 })
+            : new TrainRoute().Station(""Right"", () => new { value = ""text"" });
+        route.Station(""Join"", (int value) => new { value });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP008");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+        }
+
+        /// <summary>
+        /// Verifies statement-local after equivalent switch assign without TOP001/TOP005/TOP008.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterSwitchAssign_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class SwitchAssignRoute
+{
+    public static TrainRoute Build(int kind)
+    {
+        var route = kind switch
+        {
+            0 => new TrainRoute(),
+            _ => new TrainRoute()
+        };
+        route.Station(""Seed"", () => new { id = 1 });
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP008");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies statement-local after switch of matching factories.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterSwitchFactoryAssign_ProducesNoTop001OrTop005()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class SwitchFactoryAssignRoute
+{
+    public static TrainRoute Build(int kind)
+    {
+        var route = kind switch
+        {
+            0 => CreateSeed(),
+            _ => CreateSeed()
+        };
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static TrainRoute CreateSeed() =>
+        new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP008");
+            Assert.DoesNotContain(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        }
+
+        /// <summary>
+        /// Verifies TOP008 when switch assign arms have conflicting terminal types.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_StatementLocalAfterSwitchAssign_ConflictingTypes_ReportsTop008()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class SwitchConflictAssignRoute
+{
+    public static TrainRoute Build(int kind)
+    {
+        var route = kind switch
+        {
+            0 => new TrainRoute().Station(""Left"", () => new { value = 1 }),
+            _ => new TrainRoute().Station(""Right"", () => new { value = ""text"" })
+        };
+        route.Station(""Join"", (int value) => new { value });
+        return route;
+    }
 }";
 
             var diagnostics = await RunAnalyzerAsync(source);

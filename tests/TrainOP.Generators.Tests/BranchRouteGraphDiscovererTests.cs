@@ -218,10 +218,38 @@ public static class Route
         }
 
         /// <summary>
-        /// An unresolved arm (e.g. <c>GetRoute()</c>) yields <c>IsResolved == false</c> for that branch.
+        /// An unresolved arm (opaque <c>TrainRoute</c> parameter) yields <c>IsResolved == false</c>.
         /// </summary>
         [Fact]
         public void Discover_UnresolvedArm_IsResolvedFalse()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class Route
+{
+    public static TrainRoute Build(bool useOther, TrainRoute other) =>
+        (useOther
+            ? other
+            : new TrainRoute().Station(""Ok"", () => new { value = 1 }))
+        .Station(""Join"", (int value) => new { value });
+}";
+
+            var graphs = Discover(source);
+
+            Assert.Equal(2, graphs.Length);
+            Assert.False(graphs[0].IsResolved);
+            Assert.Null(graphs[0].Chain);
+            Assert.Null(graphs[0].Simulation);
+            Assert.True(graphs[1].IsResolved);
+            Assert.Equal("Ok", graphs[1].Chain.Stations[0].StationName);
+        }
+
+        /// <summary>
+        /// A private factory invocation arm resolves via bare-factory branch expansion.
+        /// </summary>
+        [Fact]
+        public void Discover_BareFactoryArm_IsResolvedTrue()
         {
             const string source = @"
 using TrainOP;
@@ -234,16 +262,18 @@ public static class Route
             : new TrainRoute().Station(""Ok"", () => new { value = 1 }))
         .Station(""Join"", (int value) => new { value });
 
-    private static TrainRoute GetRoute() => new TrainRoute();
+    private static TrainRoute GetRoute() =>
+        new TrainRoute().Station(""Factory"", () => new { value = 0 });
 }";
 
             var graphs = Discover(source);
 
             Assert.Equal(2, graphs.Length);
-            Assert.False(graphs[0].IsResolved);
-            Assert.Null(graphs[0].Chain);
-            Assert.Null(graphs[0].Simulation);
-            Assert.True(graphs[1].IsResolved);
+            Assert.All(graphs, g => Assert.True(g.IsResolved));
+            Assert.Empty(graphs[0].Chain.Stations);
+            Assert.False(graphs[0].Simulation.HasUnknownReturn);
+            Assert.Single(graphs[0].Simulation.TerminalWagons);
+            Assert.Equal("value", graphs[0].Simulation.TerminalWagons[0].Name);
             Assert.Equal("Ok", graphs[1].Chain.Stations[0].StationName);
         }
 

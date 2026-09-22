@@ -21,30 +21,80 @@ namespace TrainOP.Generators
             terminalWagons = ImmutableArray<WagonBinding>.Empty;
             diagnostics = ImmutableArray<Diagnostic>.Empty;
 
-            if (factoryMethod == null || !StationSyntaxHelper.IsTrainRoute(factoryMethod.ReturnType))
+            if (factoryMethod == null || compilation == null)
             {
                 return false;
             }
 
-            if (FactoryAccessibilityHelper.RequiresSchemaLookup(factoryMethod, compilation))
+            if (StationSyntaxHelper.IsTrainRouteFactoryReturnType(factoryMethod.ReturnType))
             {
-                if (ExternalRouteSchemaResolver.TryResolve(factoryMethod, compilation, out terminalWagons))
+                if (FactoryAccessibilityHelper.RequiresSchemaLookup(factoryMethod, compilation))
                 {
-                    return true;
+                    if (ExternalRouteSchemaResolver.TryResolve(factoryMethod, compilation, out terminalWagons))
+                    {
+                        return true;
+                    }
+
+                    if (IsExternalAssemblyFactory(factoryMethod, compilation))
+                    {
+                        diagnostics = ImmutableArray.Create(Diagnostic.Create(
+                            TrainRouteDiagnostics.ExternalFactorySchemaMissing,
+                            diagnosticLocation,
+                            factoryMethod.ToDisplayString()));
+                    }
+
+                    return false;
                 }
 
-                if (IsExternalAssemblyFactory(factoryMethod, compilation))
-                {
-                    diagnostics = ImmutableArray.Create(Diagnostic.Create(
-                        TrainRouteDiagnostics.ExternalFactorySchemaMissing,
-                        diagnosticLocation,
-                        factoryMethod.ToDisplayString()));
-                }
+                return TryResolveInline(factoryMethod, compilation, diagnosticLocation, out terminalWagons, out diagnostics);
+            }
 
+            if (StationSyntaxHelper.TryGetSingleOutTrainRouteParameter(factoryMethod, out var outParameter))
+            {
+                return TryResolveOut(
+                    factoryMethod,
+                    outParameter,
+                    compilation,
+                    diagnosticLocation,
+                    out terminalWagons,
+                    out diagnostics);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Resolves terminal wagons by analyzing assignments to an <c>out TrainRoute</c> parameter.
+        /// </summary>
+        public static bool TryResolveOut(
+            IMethodSymbol factoryMethod,
+            IParameterSymbol outParameter,
+            Compilation compilation,
+            Location diagnosticLocation,
+            out ImmutableArray<WagonBinding> terminalWagons,
+            out ImmutableArray<Diagnostic> diagnostics)
+        {
+            terminalWagons = ImmutableArray<WagonBinding>.Empty;
+            diagnostics = ImmutableArray<Diagnostic>.Empty;
+
+            if (factoryMethod == null
+                || outParameter == null
+                || compilation == null
+                || FactoryAccessibilityHelper.RequiresSchemaLookup(factoryMethod, compilation)
+                || !FactoryAccessibilityHelper.IsInlineAnalyzable(factoryMethod, compilation))
+            {
                 return false;
             }
 
-            return TryResolveInline(factoryMethod, compilation, diagnosticLocation, out terminalWagons, out diagnostics);
+            var validation = RouteFactoryPathValidator.ValidateOut(factoryMethod, outParameter, compilation);
+            diagnostics = validation.Diagnostics;
+            if (!validation.IsValid)
+            {
+                return false;
+            }
+
+            terminalWagons = validation.TerminalWagons;
+            return true;
         }
 
         /// <summary>

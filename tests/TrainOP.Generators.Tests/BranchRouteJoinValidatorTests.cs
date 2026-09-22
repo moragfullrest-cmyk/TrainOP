@@ -65,7 +65,8 @@ public static class Route
         }
 
         /// <summary>
-        /// An unresolved arm (<c>GetRoute()</c>) fails the join with TOP008.
+        /// An unresolved arm (opaque <c>TrainRoute</c> parameter) fails the join with TOP008.
+        /// Private factories are resolvable; they are not a negative case here.
         /// </summary>
         [Fact]
         public void Validate_TernaryUnresolvedArm_CannotMerge_ReportsTop008()
@@ -75,14 +76,11 @@ using TrainOP;
 
 public static class Route
 {
-    public static TrainRoute Build(bool useLeft) =>
+    public static TrainRoute Build(bool useLeft, TrainRoute other) =>
         (useLeft
             ? new TrainRoute().Station(""Left"", () => new { value = 1 })
-            : GetRoute())
+            : other)
         .Station(""Join"", (int value) => new { value });
-
-    private static TrainRoute GetRoute() =>
-        new TrainRoute().Station(""Other"", () => new { value = 0 });
 }";
 
             var validation = ValidateFirstJoin(source);

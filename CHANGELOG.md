@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-22
+
+### Changed
+
+- **BuildChains Parts IR:** route fragments are first-class parts (`CreationSeed`, `FactoryCall`, `LocalBinding`, `StationLink`, `JoinArm`, `JoinSeed`, `ExtensionTail`) glued by `ChainConstructor` with per-edge validation; Assembler / keys / factory dispatch no longer switch on `RouteChainAnchorKind` on the hot path.
+- **Walker split:** `RouteChainWalker` is a thin BuildChains facade; origin/SL window lives in `RouteOriginWindow`, backward root walk in `RouteChainRootResolver`, peel/detect remain `RouteChainPeel` / `RouteAnchorDetector`.
+
+### Added
+
+- **Parts connectors / materializers:** linear, join, and extension connectors plus materializers and adapters under `TrainOP.Generators/Parts/`.
+- **Statement-local and misc C# anchors:** broader local origin forms (fluent RHS, factories, join-assign C-10/C-11) with matching generator tests.
+
+### Documentation
+
+- **plan-route-parts-constructor** (D0–Z0 + post-Z0 nesting extract O1–O4), statement-local / anchors plans, architecture-internals BuildChains Materialize→Construct→Validate.
+- **nuget / getting-started / README / textbook / release-readiness:** version snippets bumped to 0.16.0.
+
 ## [0.15.0] - 2026-09-16
 
 ### Added

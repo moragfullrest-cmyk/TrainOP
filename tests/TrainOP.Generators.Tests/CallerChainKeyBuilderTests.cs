@@ -266,6 +266,50 @@ public static class Consumer
             Assert.Equal(string.Empty, CallerChainKeyBuilder.Build(anchor, consumerCompilation));
         }
 
+        [Fact]
+        public void CallerChainKeyBuilder_Build_from_FactoryCall_part_matches_anchor()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class Route
+{
+    public static TrainRoute Build() => CreateSeed()
+        .Station(""Next"", (int id) => new { id = id + 1 });
+
+    private static TrainRoute CreateSeed() => new TrainRoute()
+        .Station(""Seed"", () => new { id = 1 });
+}";
+
+            var syntaxTree = CSharpSyntaxTree.ParseText(source, path: @"C:\repo\PartKey.cs");
+            var compilation = CSharpCompilation.Create(
+                "CallerChainKeyBuilderPartTests",
+                new[] { syntaxTree },
+                GetMetadataReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            var model = compilation.GetSemanticModel(syntaxTree);
+            var root = syntaxTree.GetRoot();
+
+            var factoryInvocation = root.DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .Single(invocation =>
+                    invocation.Expression is IdentifierNameSyntax id
+                    && id.Identifier.ValueText == "CreateSeed");
+
+            Assert.True(TrainOP.Generators.Parts.FactoryCallMaterializer.TryMaterialize(
+                factoryInvocation,
+                model,
+                out var factoryCall));
+
+            Assert.True(TrainOP.Generators.Parts.LegacyRoutePartAdapter.TryToLegacyAnchor(
+                factoryCall,
+                out var anchor));
+
+            Assert.Equal(
+                CallerChainKeyBuilder.Build(anchor, compilation),
+                CallerChainKeyBuilder.Build(factoryCall, compilation));
+        }
+
         private static MetadataReference[] GetMetadataReferences()
         {
             var coreDir = Path.GetDirectoryName(typeof(object).Assembly.Location);

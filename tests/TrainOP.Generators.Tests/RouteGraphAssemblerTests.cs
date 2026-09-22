@@ -66,6 +66,266 @@ public static class LocalRoute
         }
 
         [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalChain_AssignsSequentialIndices()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class StatementLocalRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute();
+        route.Station(""Seed"", () => new { id = 1 });
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var graph = BuildGraph(source);
+            var chain = Assert.Single(graph.Chains);
+
+            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.Equal(2, chain.Stations.Length);
+            Assert.Equal("Seed", chain.Stations[0].StationName);
+            Assert.Equal("Next", chain.Stations[1].StationName);
+            Assert.Equal(0, graph.ChainIndex.Values.SelectMany(x => x).Single(b => b.StationName == "Seed").StationIndex);
+            Assert.Equal(1, graph.ChainIndex.Values.SelectMany(x => x).Single(b => b.StationName == "Next").StationIndex);
+            Assert.False(string.IsNullOrEmpty(CallerChainKeyBuilder.Build(chain.Anchor)));
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalMixedFluent_CollectsAllStations()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class MixedStatementLocalRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute();
+        route.Station(""A"", () => new { id = 1 }).Station(""B"", (int id) => new { id });
+        route.Station(""C"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var graph = BuildGraph(source);
+            var chain = Assert.Single(graph.Chains);
+
+            Assert.Equal(3, chain.Stations.Length);
+            Assert.Equal(new[] { "A", "B", "C" }, chain.Stations.Select(s => s.StationName).ToArray());
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalReassignment_ProducesTwoChains()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class ReassignedStatementLocalRoute
+{
+    public static void BuildBoth()
+    {
+        var route = new TrainRoute();
+        route.Station(""First"", () => new { id = 1 });
+
+        route = new TrainRoute();
+        route.Station(""Second"", () => new { id = 2 });
+    }
+}";
+
+            var graph = BuildGraph(source);
+
+            Assert.Equal(2, graph.Chains.Length);
+            Assert.Contains(graph.Chains, c => c.Stations.Any(s => s.StationName == "First"));
+            Assert.Contains(graph.Chains, c => c.Stations.Any(s => s.StationName == "Second"));
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_FluentRhsNewThenStatementLocal_CollectsSeedAndNext()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class FluentRhsNewRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute()
+            .Station(""Seed"", () => new { id = 1 });
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var graph = BuildGraph(source);
+            var chain = Assert.Single(graph.Chains);
+
+            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.Equal(2, chain.Stations.Length);
+            Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
+            Assert.Equal(0, graph.ChainIndex.Values.SelectMany(x => x).Single(b => b.StationName == "Seed").StationIndex);
+            Assert.Equal(1, graph.ChainIndex.Values.SelectMany(x => x).Single(b => b.StationName == "Next").StationIndex);
+        }
+
+        [Fact]
+        public void RouteChainWalker_EndingAt_FluentRhsNewThenStatementLocal_IncludesSeedAndNext()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class EndingAtFluentRhsRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute()
+            .Station(""Seed"", () => new { id = 1 });
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var syntaxTree = CSharpSyntaxTree.ParseText(source, path: @"C:\repo\EndingAtFluentRhs.cs");
+            var compilation = CSharpCompilation.Create(
+                "RouteGraphAssemblerEndingAtFluentRhsTests",
+                new[] { syntaxTree },
+                GetMetadataReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            var semanticModel = compilation.GetSemanticModel(syntaxTree);
+            var returnExpression = syntaxTree.GetRoot()
+                .DescendantNodes()
+                .OfType<ReturnStatementSyntax>()
+                .Single()
+                .Expression;
+
+            Assert.True(BuildChainsStage.EndingAt(returnExpression, semanticModel, out var chain));
+            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.Equal(2, chain.Stations.Length);
+            Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_FluentRhsFactoryThenStatementLocal_CollectsMidAndTail()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class FluentRhsFactoryRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = CreateSeed()
+            .Station(""Mid"", (int id) => new { id });
+        route.Station(""Tail"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static TrainRoute CreateSeed() => new TrainRoute()
+        .Station(""Seed"", () => new { id = 1 });
+}";
+
+            var graph = BuildGraph(source);
+            var consumerChain = graph.Chains.Single(chain =>
+                chain.Stations.Any(station => station.StationName == "Tail"));
+
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
+            Assert.NotNull(consumerChain.Anchor.FactoryMethod);
+            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod.Name);
+            Assert.Equal(2, consumerChain.Stations.Length);
+            Assert.Equal(new[] { "Mid", "Tail" }, consumerChain.Stations.Select(s => s.StationName).ToArray());
+
+            var midBinding = graph.ChainIndex.Values
+                .SelectMany(x => x)
+                .Single(b => b.StationName == "Mid");
+            var tailBinding = graph.ChainIndex.Values
+                .SelectMany(x => x)
+                .Single(b => b.StationName == "Tail");
+            Assert.Equal(1, midBinding.StationIndex);
+            Assert.Equal(2, tailBinding.StationIndex);
+        }
+
+        [Fact]
+        public void RouteChainWalker_EndingAt_FluentRhsFactoryThenStatementLocal_IncludesMidAndTail()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class EndingAtFluentRhsFactoryRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = CreateSeed()
+            .Station(""Mid"", (int id) => new { id });
+        route.Station(""Tail"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static TrainRoute CreateSeed() => new TrainRoute()
+        .Station(""Seed"", () => new { id = 1 });
+}";
+
+            var syntaxTree = CSharpSyntaxTree.ParseText(source, path: @"C:\repo\EndingAtFluentRhsFactory.cs");
+            var compilation = CSharpCompilation.Create(
+                "RouteGraphAssemblerEndingAtFluentRhsFactoryTests",
+                new[] { syntaxTree },
+                GetMetadataReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            var semanticModel = compilation.GetSemanticModel(syntaxTree);
+            var returnExpression = syntaxTree.GetRoot()
+                .DescendantNodes()
+                .OfType<ReturnStatementSyntax>()
+                .Single()
+                .Expression;
+
+            Assert.True(BuildChainsStage.EndingAt(returnExpression, semanticModel, out var chain));
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, chain.Anchor.Kind);
+            Assert.Equal("CreateSeed", chain.Anchor.FactoryMethod?.Name);
+            Assert.Equal(2, chain.Stations.Length);
+            Assert.Equal(new[] { "Mid", "Tail" }, chain.Stations.Select(s => s.StationName).ToArray());
+        }
+
+        [Fact]
+        public void RouteChainWalker_EndingAt_BareReturnLocal_IncludesStatementStations()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class EndingAtStatementLocalRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute();
+        route.Station(""Seed"", () => new { id = 1 });
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var syntaxTree = CSharpSyntaxTree.ParseText(source, path: @"C:\repo\EndingAtStatement.cs");
+            var compilation = CSharpCompilation.Create(
+                "RouteGraphAssemblerEndingAtTests",
+                new[] { syntaxTree },
+                GetMetadataReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            var semanticModel = compilation.GetSemanticModel(syntaxTree);
+            var returnExpression = syntaxTree.GetRoot()
+                .DescendantNodes()
+                .OfType<ReturnStatementSyntax>()
+                .Single()
+                .Expression;
+
+            Assert.True(BuildChainsStage.EndingAt(returnExpression, semanticModel, out var chain));
+            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.Equal(2, chain.Stations.Length);
+            Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
+        }
+
+        [Fact]
         public void RouteGraphAssembler_Build_FactoryExtension_RegistersFactoryAnchor()
         {
             const string source = @"
@@ -87,6 +347,583 @@ public static class FactoryRoute
             Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
             Assert.NotNull(consumerChain.Anchor.FactoryMethod);
             Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod.Name);
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterPrivateFactory_OffsetsConsumerIndex()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class StatementFactoryLocalRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = CreateSeed();
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static TrainRoute CreateSeed() => new TrainRoute()
+        .Station(""Seed"", () => new { id = 1 });
+}";
+
+            var graph = BuildGraph(source);
+            var consumerChain = graph.Chains.Single(chain =>
+                chain.Stations.Any(station => station.StationName == "Next"));
+
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
+            Assert.NotNull(consumerChain.Anchor.FactoryMethod);
+            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod.Name);
+            Assert.Equal(1, consumerChain.Stations.Length);
+            Assert.Equal("Next", consumerChain.Stations[0].StationName);
+
+            var nextBinding = graph.ChainIndex.Values
+                .SelectMany(x => x)
+                .Single(b => b.StationName == "Next");
+            Assert.Equal(1, nextBinding.StationIndex);
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_LocalFunctionFactoryExtension_RegistersFactoryAnchor()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class LocalFunctionFactoryRoute
+{
+    public static TrainRoute Build()
+    {
+        TrainRoute Local() => new TrainRoute()
+            .Station(""Seed"", () => new { id = 1 });
+
+        return Local()
+            .Station(""Next"", (int id) => new { id = id + 1 });
+    }
+}";
+
+            var graph = BuildGraph(source);
+            var consumerChain = graph.Chains.Single(chain =>
+                chain.Stations.Any(station => station.StationName == "Next"));
+
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
+            Assert.NotNull(consumerChain.Anchor.FactoryMethod);
+            Assert.Equal("Local", consumerChain.Anchor.FactoryMethod.Name);
+            Assert.Equal(MethodKind.LocalFunction, consumerChain.Anchor.FactoryMethod.MethodKind);
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterLocalFunctionFactory_OffsetsConsumerIndex()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class StatementLocalFunctionFactoryRoute
+{
+    public static TrainRoute Build()
+    {
+        TrainRoute Local() => new TrainRoute()
+            .Station(""Seed"", () => new { id = 1 });
+
+        var route = Local();
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var graph = BuildGraph(source);
+            var consumerChain = graph.Chains.Single(chain =>
+                chain.Stations.Any(station => station.StationName == "Next"));
+
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
+            Assert.Equal("Local", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.Equal(MethodKind.LocalFunction, consumerChain.Anchor.FactoryMethod.MethodKind);
+            Assert.Equal(1, consumerChain.Stations.Length);
+            Assert.Equal("Next", consumerChain.Stations[0].StationName);
+
+            var nextBinding = graph.ChainIndex.Values
+                .SelectMany(x => x)
+                .Single(b => b.StationName == "Next");
+            Assert.Equal(1, nextBinding.StationIndex);
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_AwaitAsyncFactoryExtension_RegistersFactoryAnchor()
+        {
+            const string source = @"
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class AwaitAsyncFactoryRoute
+{
+    public static async Task<TrainRoute> BuildAsync() =>
+        (await CreateAsync())
+            .Station(""Next"", (int id) => new { id = id + 1 });
+
+    private static async Task<TrainRoute> CreateAsync() =>
+        new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var graph = BuildGraph(source);
+            var consumerChain = graph.Chains.Single(chain =>
+                chain.Stations.Any(station => station.StationName == "Next"));
+
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
+            Assert.Equal("CreateAsync", consumerChain.Anchor.FactoryMethod?.Name);
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterAwaitAsyncFactory_OffsetsConsumerIndex()
+        {
+            const string source = @"
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class StatementAwaitAsyncFactoryRoute
+{
+    public static async Task<TrainRoute> BuildAsync()
+    {
+        var route = await CreateAsync();
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static async Task<TrainRoute> CreateAsync() =>
+        new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var graph = BuildGraph(source);
+            var consumerChain = graph.Chains.Single(chain =>
+                chain.Stations.Any(station => station.StationName == "Next"));
+
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
+            Assert.Equal("CreateAsync", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.Equal(1, consumerChain.Stations.Length);
+            Assert.Equal("Next", consumerChain.Stations[0].StationName);
+
+            var nextBinding = graph.ChainIndex.Values
+                .SelectMany(x => x)
+                .Single(b => b.StationName == "Next");
+            Assert.Equal(1, nextBinding.StationIndex);
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterOutFactory_OffsetsConsumerIndex()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class StatementOutFactoryRoute
+{
+    public static TrainRoute Build()
+    {
+        Get(out TrainRoute route);
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static void Get(out TrainRoute route) =>
+        route = new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var graph = BuildGraph(source);
+            var consumerChain = graph.Chains.Single(chain =>
+                chain.Stations.Any(station => station.StationName == "Next"));
+
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
+            Assert.Equal("Get", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.Equal(1, consumerChain.Stations.Length);
+            Assert.Equal("Next", consumerChain.Stations[0].StationName);
+
+            var nextBinding = graph.ChainIndex.Values
+                .SelectMany(x => x)
+                .Single(b => b.StationName == "Next");
+            Assert.Equal(1, nextBinding.StationIndex);
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterOutPredeclaredLocal_OffsetsConsumerIndex()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class StatementOutPredeclaredRoute
+{
+    public static TrainRoute Build()
+    {
+        TrainRoute route;
+        Get(out route);
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static void Get(out TrainRoute route) =>
+        route = new TrainRoute().Station(""Seed"", () => new { id = 1 });
+}";
+
+            var graph = BuildGraph(source);
+            var consumerChain = graph.Chains.Single(chain =>
+                chain.Stations.Any(station => station.StationName == "Next"));
+
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
+            Assert.Equal("Get", consumerChain.Anchor.FactoryMethod?.Name);
+
+            var nextBinding = graph.ChainIndex.Values
+                .SelectMany(x => x)
+                .Single(b => b.StationName == "Next");
+            Assert.Equal(1, nextBinding.StationIndex);
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterTupleDeconstruct_CollectsSeedAndNext()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class TupleDeconstructRoute
+{
+    public static TrainRoute Build()
+    {
+        (var route, _) = (new TrainRoute().Station(""Seed"", () => new { id = 1 }), 0);
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var graph = BuildGraph(source);
+            var chain = Assert.Single(graph.Chains);
+
+            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.Equal(2, chain.Stations.Length);
+            Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterVarTupleDeconstruct_CollectsNext()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class VarTupleDeconstructRoute
+{
+    public static TrainRoute Build()
+    {
+        var (route, _) = (new TrainRoute(), 0);
+        route.Station(""Seed"", () => new { id = 1 });
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var graph = BuildGraph(source);
+            var chain = Assert.Single(graph.Chains);
+
+            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.Equal(2, chain.Stations.Length);
+            Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterTupleDeconstructFactory_OffsetsConsumerIndex()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class TupleDeconstructFactoryRoute
+{
+    public static TrainRoute Build()
+    {
+        (var route, _) = (CreateSeed(), 0);
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static TrainRoute CreateSeed() => new TrainRoute()
+        .Station(""Seed"", () => new { id = 1 });
+}";
+
+            var graph = BuildGraph(source);
+            var consumerChain = graph.Chains.Single(chain =>
+                chain.Stations.Any(station => station.StationName == "Next"));
+
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
+            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.Equal(1, consumerChain.Stations.Length);
+
+            var nextBinding = graph.ChainIndex.Values
+                .SelectMany(x => x)
+                .Single(b => b.StationName == "Next");
+            Assert.Equal(1, nextBinding.StationIndex);
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterIsPattern_CollectsSeedAndNext()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class IsPatternRoute
+{
+    public static TrainRoute Build()
+    {
+        if (new TrainRoute().Station(""Seed"", () => new { id = 1 }) is TrainRoute route)
+        {
+            route.Station(""Next"", (int id) => new { id = id + 1 });
+            return route;
+        }
+
+        return new TrainRoute();
+    }
+}";
+
+            var graph = BuildGraph(source);
+            var chain = graph.Chains.Single(c => c.Stations.Any(s => s.StationName == "Next"));
+
+            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.Equal(2, chain.Stations.Length);
+            Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterSwitchCasePattern_CollectsNext()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class SwitchCasePatternRoute
+{
+    public static TrainRoute Build()
+    {
+        switch (CreateSeed())
+        {
+            case TrainRoute route:
+                route.Station(""Next"", (int id) => new { id = id + 1 });
+                return route;
+            default:
+                return new TrainRoute();
+        }
+    }
+
+    private static TrainRoute CreateSeed() => new TrainRoute()
+        .Station(""Seed"", () => new { id = 1 });
+}";
+
+            var graph = BuildGraph(source);
+            var consumerChain = graph.Chains.Single(chain =>
+                chain.Stations.Any(station => station.StationName == "Next"));
+
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
+            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.Equal(1, consumerChain.Stations.Length);
+
+            var nextBinding = graph.ChainIndex.Values
+                .SelectMany(x => x)
+                .Single(b => b.StationName == "Next");
+            Assert.Equal(1, nextBinding.StationIndex);
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterTernaryAssign_CollectsSeedAndNext()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class TernaryAssignRoute
+{
+    public static TrainRoute Build(bool flag)
+    {
+        var route = flag
+            ? new TrainRoute()
+            : new TrainRoute();
+        route.Station(""Seed"", () => new { id = 1 });
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var graph = BuildGraph(source);
+            var chain = Assert.Single(graph.Chains);
+
+            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.Equal(2, chain.Stations.Length);
+            Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterTernaryFactoryAssign_OffsetsConsumerIndex()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class TernaryFactoryAssignRoute
+{
+    public static TrainRoute Build(bool flag)
+    {
+        var route = flag ? CreateSeed() : CreateSeed();
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static TrainRoute CreateSeed() => new TrainRoute()
+        .Station(""Seed"", () => new { id = 1 });
+}";
+
+            var graph = BuildGraph(source);
+            var consumerChain = graph.Chains.Single(chain =>
+                chain.Stations.Any(station => station.StationName == "Next"));
+
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
+            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.Equal(1, consumerChain.Stations.Length);
+
+            var nextBinding = graph.ChainIndex.Values
+                .SelectMany(x => x)
+                .Single(b => b.StationName == "Next");
+            Assert.Equal(1, nextBinding.StationIndex);
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterSwitchAssign_CollectsSeedAndNext()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class SwitchAssignRoute
+{
+    public static TrainRoute Build(int kind)
+    {
+        var route = kind switch
+        {
+            0 => new TrainRoute(),
+            _ => new TrainRoute()
+        };
+        route.Station(""Seed"", () => new { id = 1 });
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+}";
+
+            var graph = BuildGraph(source);
+            var chain = Assert.Single(graph.Chains);
+
+            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.Equal(2, chain.Stations.Length);
+            Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterSwitchFactoryAssign_OffsetsConsumerIndex()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class SwitchFactoryAssignRoute
+{
+    public static TrainRoute Build(int kind)
+    {
+        var route = kind switch
+        {
+            0 => CreateSeed(),
+            _ => CreateSeed()
+        };
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static TrainRoute CreateSeed() => new TrainRoute()
+        .Station(""Seed"", () => new { id = 1 });
+}";
+
+            var graph = BuildGraph(source);
+            var consumerChain = graph.Chains.Single(chain =>
+                chain.Stations.Any(station => station.StationName == "Next"));
+
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
+            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.Equal(1, consumerChain.Stations.Length);
+
+            var nextBinding = graph.ChainIndex.Values
+                .SelectMany(x => x)
+                .Single(b => b.StationName == "Next");
+            Assert.Equal(1, nextBinding.StationIndex);
+        }
+
+        [Fact]
+        public void RouteGraphAssembler_Build_StatementLocalAfterPublicFactory_UsesFactorySchemaAnchor()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class StatementPublicFactoryLocalRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = CreateSeed();
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    public static TrainRoute CreateSeed() => new TrainRoute()
+        .Station(""Seed"", () => new { id = 1 });
+}";
+
+            var graph = BuildGraph(source);
+            var consumerChain = graph.Chains.Single(chain =>
+                chain.Stations.Any(station => station.StationName == "Next"));
+
+            Assert.Equal(RouteChainAnchorKind.FactorySchema, consumerChain.Anchor.Kind);
+            Assert.NotNull(consumerChain.Anchor.FactoryMethod);
+            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod.Name);
+            Assert.Equal(1, consumerChain.Stations.Length);
+
+            var nextBinding = graph.ChainIndex.Values
+                .SelectMany(x => x)
+                .Single(b => b.StationName == "Next");
+            Assert.Equal(1, nextBinding.StationIndex);
+        }
+
+        [Fact]
+        public void RouteChainWalker_EndingAt_StatementLocalAfterPrivateFactory_IncludesConsumerStations()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class EndingAtFactoryLocalRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = CreateSeed();
+        route.Station(""Next"", (int id) => new { id = id + 1 });
+        return route;
+    }
+
+    private static TrainRoute CreateSeed() => new TrainRoute()
+        .Station(""Seed"", () => new { id = 1 });
+}";
+
+            var syntaxTree = CSharpSyntaxTree.ParseText(source, path: @"C:\repo\EndingAtFactoryLocal.cs");
+            var compilation = CSharpCompilation.Create(
+                "RouteGraphAssemblerEndingAtFactoryLocalTests",
+                new[] { syntaxTree },
+                GetMetadataReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            var semanticModel = compilation.GetSemanticModel(syntaxTree);
+            var buildMethod = syntaxTree.GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(m => m.Identifier.ValueText == "Build");
+            var returnExpression = buildMethod
+                .DescendantNodes()
+                .OfType<ReturnStatementSyntax>()
+                .Single()
+                .Expression;
+
+            Assert.True(BuildChainsStage.EndingAt(returnExpression, semanticModel, out var chain));
+            Assert.Equal(RouteChainAnchorKind.MethodInvocation, chain.Anchor.Kind);
+            Assert.Equal("CreateSeed", chain.Anchor.FactoryMethod?.Name);
+            Assert.Equal(1, chain.Stations.Length);
+            Assert.Equal("Next", chain.Stations[0].StationName);
         }
 
         [Fact]

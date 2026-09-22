@@ -1,6 +1,6 @@
 # TrainOP: учебник
 
-Этот текст можно читать сверху вниз. Он — **исчерпывающее** руководство: зачем нужна библиотека, как писать маршруты, как текут данные и сигналы, как устроены генератор/анализатор/runtime, cross-assembly, диагностики, ограничения и карта репозитория. Соседние файлы в `docs/` остаются краткими выдержками и дорожными картами для агентов; для понимания продукта достаточно учебника.
+Этот текст можно читать сверху вниз. Он — **исчерпывающее** руководство: зачем нужна библиотека, как писать маршруты, как текут данные и сигналы, как устроены генератор/анализатор/runtime, cross-assembly, диагностики, ограничения и карта репозитория. Правила «как можно и нельзя собирать маршрут» собраны в **§10** (с сводкой в **§20**). Соседние файлы в `docs/` остаются краткими выдержками и дорожными картами для агентов; для понимания продукта достаточно учебника.
 
 ---
 
@@ -58,12 +58,12 @@ TrainOP воплощает эту идею для .NET (`netstandard2.0`). Вы 
 ```bash
 dotnet add package TrainOP
 # или явно:
-dotnet add package TrainOP --version 0.15.0
+dotnet add package TrainOP --version 0.16.0
 ```
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.15.0" />
+  <PackageReference Include="TrainOP" Version="0.16.0" />
 </ItemGroup>
 ```
 
@@ -692,11 +692,15 @@ Runnable-пример: `samples/TrainOP.Samples/Examples/NestedBranchingRouteExa
 
 ## 10. Какие формы кода «видит» библиотека
 
-Генератор и анализатор понимают не любой C#. Handler должен быть:
+Это центральный раздел про **можно / нельзя** при сборке маршрута. Генератор и анализатор понимают не любой C#: им нужен **статически привязанный origin** цепочки и **читаемая схема** каждого handler'а. Без этого — TOP005 (якорь) или TOP009 (handler).
+
+### 10.1. Форма handler'а
+
+Handler должен быть:
 
 - лямбдой `(string paymentId, decimal amount) => …`,
 - anonymous method `delegate(…) { … }`,
-- или method group / local function, **объявленными в текущей compilation** (есть исходник в проекте).
+- или method group / local function, **объявленными в текущей compilation** (есть исходник в проекте) и **однозначно** резолвящимися.
 
 **Правильно:**
 
@@ -717,11 +721,14 @@ Func<string, decimal, object> discount = (paymentId, amount) =>
     new { paymentId, amount = amount * 0.9m };
 
 .Station("Discount", discount); // переменная Func<> — нет
+
+// также TOP009: неоднозначная перегрузка method group;
+// метод только из referenced DLL без исходников в этой compilation
 ```
 
 **Почему.** Source generator читает схему станции (имена параметров-вагонов, `ref`, форму возврата) только из лямбды, anonymous method или однозначного method group / local function в текущей compilation. Ссылка на `Func<>` — непрозрачный делегат без этих метаданных; dataflow к инициализатору не выполняется. У `Func<T1,T2,TResult>` нет ваших имён вагонов, а значение можно переназначить — compile-time схема маршрута перестала бы быть детерминированной.
 
-**Валидные формы сборки цепочки** (analyzer / chain-dispatch):
+### 10.2. Валидные формы сборки цепочки
 
 ```csharp
 // 1) Прямая fluent-цепочка
@@ -729,11 +736,11 @@ var route = new TrainRoute()
     .Station("Seed", () => new { id = 1 })
     .Station("Next", (int id) => new { id = id + 1 });
 
-// 2) Локальная после new TrainRoute()
+// 2) Локальная после new + fluent-присваивание той же локали
 var route = new TrainRoute();
 route = route.Station("Seed", () => new { id = 1 });
 
-// 3) Private/internal factory extension
+// 3) Private/internal factory (в т.ч. local function) + extension
 var route = CreateSeed().Station("Next", (int id) => new { id = id + 1 });
 
 // 4) Public factory из referenced assembly (exported schema)
@@ -742,7 +749,84 @@ var route = PaymentModule.Build()
         new { paymentId, status = "done" });
 ```
 
-**Неправильно** (TOP005 / TOP014):
+`CreateSeed().Station(...)` для **private/internal** factory идёт через inter-procedural analysis (тот же контракт у **local function**). **Public** factory — через generated schema (`[RouteSchemaFor]`). Фабрика, которая собирает цепочку внутри и снаружи только вызывает `.Travel()`, тоже поддерживается.
+
+### 10.3. Statement-local: несколько `.Station` на одной локали
+
+Несколько statement-вызовов `.Station` / `.ServiceStation` на **одной** локали после **одного** known origin → одна `RouteChain`:
+
+```csharp
+var route = new TrainRoute();
+route.Station("Seed", () => new { id = 1 });
+route.Station("Next", (int id) => new { id = id + 1 });
+
+var route = CreateSeed();
+route.Station("Next", (int id) => new { id = id + 1 });
+
+var route = new TrainRoute().Station("Seed", () => new { id = 1 });
+route.Station("Next", (int id) => new { id = id + 1 });
+
+var route = CreateSeed().Station("Mid", (int id) => new { id });
+route.Station("Tail", (int id) => new { id = id + 1 });
+
+// смешение fluent на statement OK
+var route = new TrainRoute();
+route.Station("A", () => new { id = 1 }).Station("B", (int id) => new { id });
+route.Station("C", (int id) => new { id = id + 1 });
+```
+
+Правила окна:
+
+- порядок станций — по положению в исходнике (`SpanStart` в методе);
+- следующее присваивание локали с **новым** origin RHS (`route = new TrainRoute()` / другой factory) **сбрасывает** окно — начинается новая цепочка;
+- `route = route.Station(...)` — продолжение той же цепочки (не сброс);
+- алиас на другую локаль (`route1 = route.Station(...)`; затем `route1.Station`) — **не** окно, а TOP005.
+
+### 10.4. Допустимые якоря «прочий C#»
+
+Пока первая `.Station` / `.ServiceStation` не вызвана, origin можно установить узкими формами C#, если под ними **статически виден** `new` / user-defined factory / schema:
+
+```csharp
+// Условное / switch присваивание локали (ветки known; иначе TOP008)
+var route = flag ? new TrainRoute() : CreateSeed();
+route.Station("Next", (int id) => new { id = id + 1 });
+
+var route = kind switch { 0 => new TrainRoute(), _ => CreateSeed() };
+route.Station("Next", (int id) => new { id = id + 1 });
+
+// Init before Station: null/default — только заготовка
+TrainRoute route = null;
+route = new TrainRoute();
+route.Station("Seed", () => new { id = 1 });
+
+// await прозрачен (Task / ValueTask<TrainRoute>)
+var route = await CreateAsync();
+route.Station("Next", (int id) => new { id = id + 1 });
+(await CreateAsync()).Station("Seed", () => new { id = 1 });
+
+// out TrainRoute — как return/factory (private/internal)
+Get(out TrainRoute route);
+route.Station("Next", (int id) => new { id = id + 1 });
+
+// Узкий tuple literal / deconstruct — элемент с known origin
+(var route, _) = (new TrainRoute().Station("Seed", () => new { id = 1 }), 0);
+route.Station("Next", (int id) => new { id = id + 1 });
+
+// Pattern при known origin под is / case
+if (new TrainRoute().Station("Seed", () => new { id = 1 }) is TrainRoute r)
+    r.Station("Next", (int id) => new { id = id + 1 });
+```
+
+`?:` / `??` / `switch` на **fluent-receiver** call site тоже поддерживаются; при несовместимых terminal веток — TOP008.
+
+**Прозрачные обёртки** (peel; origin под ними должен быть допустимым): скобки `(expr)`, `expr!`, cast, `await`, `await Task.FromResult(...)`.
+
+```csharp
+((TrainRoute)(object)new TrainRoute()).Station("Seed", () => new { id = 1 }); // OK
+((TrainRoute)GetObject()).Station(...); // TOP005 — peel снимает cast, origin остаётся opaque
+```
+
+### 10.5. Что нельзя (TOP005 / TOP014 / вне модели)
 
 ```csharp
 void Extend(TrainRoute baseRoute) =>
@@ -750,12 +834,44 @@ void Extend(TrainRoute baseRoute) =>
 
 var a = new TrainRoute(); var b = new TrainRoute(); // два new на одной строке — TOP014
 
-// также TOP005: _route.Station(...), buildRoute().Station(...) где buildRoute — делегат
+TrainRoute unset = null;
+unset.Station("X", (int id) => new { id }); // Station без init — TOP005
+
+var route = new TrainRoute();
+var route1 = route.Station("A", () => new { id = 1 });
+route1.Station("B", (int id) => new { id }); // алиас — TOP005
+
+(var route, _) = GetPair();
+route.Station("Y", (int id) => new { id }); // opaque tuple — TOP005
+
+if (GetObject() is TrainRoute r)
+    r.Station("Z", (int id) => new { id }); // is не создаёт origin — TOP005
 ```
 
-`?:` / `??` / `switch` на receiver и parenthesized/cast вокруг factory — поддерживаются; при несовместимых terminal веток — TOP008.
+Полный перечень отвергнутых способов получить receiver / origin:
 
-Допустимый пользовательский API — fluent `.Station` / `.ServiceStation`, `RailwaySignals`, `Travel*`. Методы вроде `RegisterStation` существуют для генератора и скрыты из IntelliSense; руками их вызывать не нужно.
+| Способ | Пример | Диагностика |
+|--------|--------|-------------|
+| Параметр метода | `void F(TrainRoute r) => r.Station(...)` | TOP005 |
+| Поле / свойство | `_route.Station(...)` / `this.Route.Station(...)` | TOP005 |
+| Делегат / `Func<TrainRoute>` | `build().Station(...)` | TOP005 |
+| Алиас локали | `var r2 = r1;` / `r2 = r1.Station(A); r2.Station(B)` | TOP005 |
+| CFG `if`/`else` statement-регистраций | `if (c) route.Station(A); else route.Station(B);` без join | вне модели / TOP005 |
+| `null` / `default` без init | `TrainRoute r = null; r.Station(...)` | TOP005 |
+| `ref` / `in` параметр | `Mutate(ref r); r.Station(...)` (`out` — OK) | TOP005 |
+| Массив / список / indexer | `routes[i].Station(...)` | TOP005 |
+| Reflection / `Activator` | `Activator.CreateInstance<TrainRoute>()` | TOP005 |
+| `dynamic` | `((dynamic)x).Station(...)` | вне analyzer |
+| LINQ / проекции | `sources.Select(Create).First().Station(...)` | TOP005 |
+| Cast / `await` / paren над opaque | `((TrainRoute)GetObject()).Station(...)` | TOP005 |
+| Opaque tuple / `GetPair` | `(var r, _) = GetPair(); r.Station(...)` | TOP005 |
+| Opaque pattern | `GetObject() is TrainRoute r` | TOP005 |
+| Не user-defined «factory» | методы API TrainOP, не возвращающие анализируемую цепочку | TOP005 |
+| Два `new TrainRoute()` на одной строке | `var a = new(); var b = new();` | TOP014 |
+
+**Почему opaque запрещены.** У call site нет статически привязанного terminal seed: параметр / поле / делегат можно переназначить с другим составом вагонов. Без known origin генератор не может выбрать правильный chain-binding — silent wrong-dispatch хуже явного TOP005. Opt-in «объяви схему на параметре» снят: контракт не доказывает, что caller реально несёт заявленные вагоны.
+
+Допустимый пользовательский API — fluent `.Station` / `.ServiceStation`, `RailwaySignals`, `Travel*`. Методы вроде `RegisterStation` существуют для генератора и скрыты из IntelliSense; руками их вызывать не нужно (динамическая сборка в runtime — не-цель продукта).
 
 ---
 
@@ -1002,7 +1118,7 @@ public static class AppRoute
 
 Описания в коде: `src/TrainOP.Generators/Diagnostics/TrainRouteDiagnostics.cs` (и `AnalyzerReleases.Shipped.md`). TOP001–TOP013 shipped с 0.7.0; TOP014–TOP017 — с 0.13.0.
 
-TOP001–TOP003 учат загрузке вагонов и осторожному частичному возврату. TOP005/TOP009/TOP014 — форме кода. TOP010 — границе DSL и внутренних сигналов. TOP008/TOP012 — композиции. TOP015–TOP017 — составу манифеста на техобслуживании.
+TOP001–TOP003 учат загрузке вагонов и осторожному частичному возврату. TOP005/TOP009/TOP014 — форме кода и якорям (§10). TOP010 — границе DSL и внутренних сигналов. TOP008/TOP012/TOP013 — композиции и factory paths. TOP011 — public factory без schema. TOP015–TOP017 — составу манифеста на техобслуживании. Сводка «можно / нельзя» — §20.
 
 ---
 
@@ -1017,8 +1133,8 @@ TOP001–TOP003 учат загрузке вагонов и осторожном
 5. При асинхронных станциях — `TravelAsync`; без `ref` на вагонах.
 6. Ветвление — вложенные `Build` + родительская станция, читающая `RouteReport`; либо `?:`/`??`/`switch` на receiver с совместимыми terminal (TOP008).
 7. `ServiceStation` по роли: локальное восстановление перед хвостом или финальный лог/аудит в конце; на техобслуживании только обновление существующих вагонов.
-8. Держите цепочку «видимой»: fluent от `new` / локальная переменная / factory, без receiver-параметров / полей / делегатов.
-9. Читайте TOP* как контракт, а не как шум анализатора.
+8. Держите цепочку «видимой»: fluent / statement-local от `new` / factory / прочих known-якорей из §10; без opaque receiver'ов и алиасов.
+9. Читайте TOP* как контракт, а не как шум анализатора (карта ограничений — §10 и §20).
 10. Смотрите примеры в `samples/TrainOP.Samples/Examples/` и сквозной тест `DataOrientedPaymentRouteEndToEndTests`.
 
 ---
@@ -1147,39 +1263,73 @@ TrainOP.sln
 
 ## 20. Известные ограничения и roadmap
 
-### Не поддерживается (намеренно или отложено)
+Полный разбор «как можно и нельзя собирать маршрут» — в **§10**. Ниже — сводная карта ограничений продукта (сборка цепочки, handler, данные, API).
+
+### Сборка цепочки и якоря
 
 | Ограничение | Статус |
 |-------------|--------|
-| Receiver = параметр / поле / свойство / делегат (`baseRoute.Station`, `_route.Station`, `buildRoute().Station`) | **Не поддерживается** → TOP005 |
-| `Func<>` / переменная-делегат как handler | Не поддерживается → TOP009 |
-| Typed `var (a, b) = Travel()` | **Снято** (C# ≤15) |
+| Receiver = параметр / поле / свойство / делегат | **Не поддерживается** → TOP005 |
+| Алиас локали (`r2 = r1` / `r2 = r1.Station(...)` затем `r2.Station`) | **Не поддерживается** → TOP005 |
+| CFG statement-`if`/`else` регистрации станций на локали | **Не поддерживается** |
+| Массив / indexer / LINQ / reflection / `dynamic` как origin | **Не поддерживается** → TOP005 |
+| `ref` / `in` параметр как якорь (`out` — OK) | **Не поддерживается** → TOP005 |
+| `.Station` без init known origin после `null`/`default` | → TOP005 |
+| Cast / `await` / paren над opaque | peel не «создаёт» origin → TOP005 |
+| Два `new TrainRoute()` на одной строке | → TOP014 |
+| Conditional / switch / coalesce и peel на **known** origin | **Поддерживаются**; конфликт terminal → TOP008 |
+| Statement-local на одной локали после known origin | **Поддерживается** (см. §10.3) |
+| `out` / `await` / узкий tuple literal / pattern при known origin | **Поддерживаются** (см. §10.4) |
+
+### Handler и сигнатуры
+
+| Ограничение | Статус |
+|-------------|--------|
+| `Func<>` / переменная-делегат как handler | → TOP009 |
+| Неоднозначная перегрузка / method только из DLL без исходников | → TOP009 |
+| Разные имена вагонов при одной type-сигнатуре вне chain dispatch | → TOP007 |
+| Автоанализ произвольных тел lambda сверх сигнатуры и известных return shapes | Не-цель |
+
+### Данные, ServiceStation, запуск
+
+| Ограничение | Статус |
+|-------------|--------|
+| Читать вагон до появления / неверный тип / после снятия | TOP001 / TOP002 / TOP003 |
+| `return CargoManifest` на обычной станции | Warning TOP004 |
+| Unnamed tuple → новые `ItemN` | Warning TOP006 |
+| `return GreenSignal` / `RedSignal` | → TOP010 |
+| ServiceStation добавляет / снимает / заменяет манифест | TOP015 / TOP016 / TOP017 |
+| Публичный `Travel(CargoManifest)` | Нет; только seed / замыкание первой станции |
+| `async` + `ref` | Запрет языка CS1988 |
+| Sync `Travel()` при async-станции в маршруте | Runtime `InvalidOperationException` — нужен `TravelAsync` |
+
+### Снятые / вне цели продукта
+
+| Ограничение | Статус |
+|-------------|--------|
+| Typed `var (a, b) = Travel()` без уникального derived-типа маршрута | **Снято** (C# ≤15; прозрачная декомпозиция только при явном уникальном потомке `TrainRoute`) |
 | Динамическая сборка маршрута в runtime (`foreach` + `RegisterStation` руками) | Не-цель |
 | Plugin-станции из произвольных DLL без перекомпиляции | Не-цель |
-| Автоанализ произвольных тел lambda сверх сигнатуры и известных return shapes | Не-цель |
-| Публичный `Travel(CargoManifest)` | Нет; только seed / замыкание |
-| `async` + `ref` | Запрет языка CS1988 |
+| Interceptors / reflection chain-dispatch / opt-in `[RouteUpstream]` | **Снято** |
 | Nullable reference types в пакетах | Пока `Nullable` disable |
-
-Conditional / switch / coalesce и parenthesized/cast на factory receiver — **поддерживаются**.
 
 ### Data-oriented roadmap (сводка)
 
-- **Выполнено:** фазы 0–8 (адаптеры, analyzer TOP001+, якоря `new`/local/factory, branch merge, cross-assembly schema, caller dispatch).
-- **Не поддерживается:** opaque-якоря параметр / поле / свойство / делегат (TOP005; не отложено).
+- **Выполнено:** фазы 0–8 (адаптеры, analyzer TOP001+, якоря `new`/local/factory, branch merge, cross-assembly schema, caller dispatch); statement-local; misc-якоря (`out`, `await`, tuple/pattern, `?:`/`switch` assign, cast peel, init-before-Station).
+- **Не поддерживается:** opaque-якоря (параметр / поле / свойство / делегат и прочий C# без known origin); алиасы локалей; CFG statement-`if`/`else` (TOP005; не отложено).
 - **Снято:** typed Travel / deconstruct; interceptors; reflection chain-dispatch; opt-in `[RouteUpstream]`.
 
-Подробные планы для агентов: [plan-data-oriented-handlers.md](plan-data-oriented-handlers.md), [plan-performance.md](plan-performance.md).
+Подробные планы для агентов: [plan-data-oriented-handlers.md](plan-data-oriented-handlers.md), [plan-anchors-implementation.md](plan-anchors-implementation.md), [plan-statement-local-chains.md](plan-statement-local-chains.md), [plan-misc-csharp-anchors.md](plan-misc-csharp-anchors.md), [plan-performance.md](plan-performance.md).
 
 ### Готовность к релизу (срез)
 
-Пакет ориентирован на **NuGet Preview 0.x** (версия в csproj — см. `CHANGELOG.md`, на момент среза docs — **0.15.0**). Фундамент продукта сильный; до публичного preview главный разрыв — publish workflow on tag; до стабильного 1.0 — SourceLink/snupkg, nullable policy, API freeze advanced surface, samples smoke в CI. Живой чеклист: [release-readiness.md](release-readiness.md).
+Пакет ориентирован на **NuGet Preview 0.x** (версия в csproj — см. `CHANGELOG.md`, на момент среза docs — **0.16.0**). Фундамент продукта сильный; до публичного preview главный разрыв — publish workflow on tag; до стабильного 1.0 — SourceLink/snupkg, nullable policy, API freeze advanced surface, samples smoke в CI. Живой чеклист: [release-readiness.md](release-readiness.md).
 
 ---
 
 ## 21. Куда идти дальше
 
-Вы прошли круг: метафора → подключение → первый маршрут → поток данных и сигналы → техобслуживание → async → композиция → формы кода → compile-time / runtime → cross-assembly → диагностики → справочник типов → объём/perf → ограничения.
+Вы прошли круг: метафора → подключение → первый маршрут → поток данных и сигналы → техобслуживание → async → композиция → **формы кода и ограничения якорей (§10)** → compile-time / runtime → cross-assembly → диагностики → справочник типов → объём/perf → сводная карта ограничений (§20).
 
 Если читать только один документ — достаточно этого учебника. Краткие выдержки и планы:
 
@@ -1191,7 +1341,7 @@ Conditional / switch / coalesce и parenthesized/cast на factory receiver — 
 | [architecture-internals.md](architecture-internals.md) | Ещё более детальный Roslyn-разбор для контрибьюторов |
 | [cross-assembly-routes.md](cross-assembly-routes.md) | Короткая карточка library + consumer |
 | [code-volume-comparison.md](code-volume-comparison.md) | Только сравнение строк |
-| [plan-data-oriented-handlers.md](plan-data-oriented-handlers.md) / [plan-performance.md](plan-performance.md) | Roadmap для разработки библиотеки |
+| [plan-data-oriented-handlers.md](plan-data-oriented-handlers.md) / [plan-statement-local-chains.md](plan-statement-local-chains.md) / [plan-misc-csharp-anchors.md](plan-misc-csharp-anchors.md) / [plan-performance.md](plan-performance.md) | Roadmap и детальные контракты якорей для разработки библиотеки |
 | [release-readiness.md](release-readiness.md) | Чеклист публикации |
 | [`benchmarks/README.md`](../benchmarks/README.md) | Запуск бенчмарков |
 

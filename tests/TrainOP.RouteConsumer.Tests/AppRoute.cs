@@ -8,10 +8,21 @@ namespace TrainOP.RouteConsumer.Tests;
 public static class AppRoute
 {
     /// <summary>
-    /// Adds a finalize station to the shared payment route.
+    /// Adds a finalize station to the shared payment route (fluent).
     /// </summary>
     public static TrainRoute Build() =>
         PaymentModule.Build()
             .Station("Finalize", (decimal amount, string paymentId) =>
                 new { paymentId, amount, status = "completed" });
+
+    /// <summary>
+    /// Adds a finalize station via statement-local extension after the public factory.
+    /// </summary>
+    public static TrainRoute BuildStatementLocal()
+    {
+        var route = PaymentModule.Build();
+        route.Station("Finalize", (decimal amount, string paymentId) =>
+            new { paymentId, amount, status = "completed" });
+        return route;
+    }
 }

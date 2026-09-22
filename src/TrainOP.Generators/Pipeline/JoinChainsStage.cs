@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
+using TrainOP.Generators.Parts;
 using TrainOP.Generators.Route;
 using TrainOP.Generators.Wagons;
 
@@ -38,13 +39,37 @@ namespace TrainOP.Generators
 
         /// <summary>
         /// Finds and validates a join set into stage-7 IR.
+        /// Prefers <see cref="JoinChainConnector"/> (arms → JoinSeed + validator).
         /// </summary>
         public static JoinedChain Join(
             BranchRouteJoinSet joinSet,
             SemanticModel semanticModel = null)
         {
+            if (JoinChainConnector.TryConnect(joinSet, semanticModel, out _, out var joinSeed))
+            {
+                return new JoinedChain(joinSet, joinSeed.Validation);
+            }
+
             var validation = Validate(joinSet, semanticModel);
             return new JoinedChain(joinSet, validation);
+        }
+
+        /// <summary>
+        /// Connects fork arms into a <see cref="JoinSeed"/> via parts constructor.
+        /// </summary>
+        public static bool TryConnectParts(
+            ExpressionSyntax forkExpression,
+            InvocationExpressionSyntax downstreamStation,
+            SemanticModel semanticModel,
+            out ChainConstructor constructor,
+            out JoinSeed joinSeed)
+        {
+            return JoinChainConnector.TryConnect(
+                forkExpression,
+                downstreamStation,
+                semanticModel,
+                out constructor,
+                out joinSeed);
         }
 
         /// <summary>
@@ -81,6 +106,7 @@ namespace TrainOP.Generators
         /// </summary>
         public static bool IsForkingExpression(ExpressionSyntax expression)
         {
+            expression = ReceiverExpressionSyntaxPeel.UnwrapTransparent(expression);
             if (expression is ConditionalExpressionSyntax || expression is SwitchExpressionSyntax)
             {
                 return true;

@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using TrainOP.Generators.Parts;
 using TrainOP.Generators.Route;
 
 namespace TrainOP.Generators
@@ -18,24 +19,65 @@ namespace TrainOP.Generators
                 return string.Empty;
             }
 
-            if (anchor.Kind == RouteChainAnchorKind.MethodInvocation
-                || anchor.Kind == RouteChainAnchorKind.FactorySchema)
+            // Factory origins (invocation or identifier-rooted): ports on FactoryCall — no kind-switch,
+            // and never guess call-site location when dispatch metadata is missing.
+            if (FactoryCall.TryBuildCallerChainKeyFromAnchor(anchor, compilation, out var factoryKey))
             {
-                if (FactoryDispatchMetadata.TryResolve(
-                        anchor.FactoryMethod,
-                        compilation,
-                        out var factoryKey,
-                        out _)
-                    && !string.IsNullOrEmpty(factoryKey))
-                {
-                    return factoryKey;
-                }
+                return factoryKey;
+            }
 
-                // Old schema without CallerChainKey / unresolvable factory body: do not guess method location.
+            if (anchor.FactoryMethod != null)
+            {
+                // Factory stamp present but unresolvable (e.g. schema without CallerChainKey).
                 return string.Empty;
             }
 
-            // ObjectCreation & LocalVariable: RouteChainWalker provides the ctor call-site location.
+            // CreationSeed / LocalBinding (non-factory): ctor / origin stamp location.
+            var memberName = anchor.ContainingMethod?.Name;
+            if (string.IsNullOrEmpty(memberName))
+            {
+                memberName = "global";
+            }
+
+            return BuildFromLocation(anchor.Location, memberName);
+        }
+
+        /// <summary>
+        /// Builds a chain key from a materialized origin part (no legacy kind-switch).
+        /// </summary>
+        public static string Build(IRoutePart part, Compilation compilation = null)
+        {
+            if (part == null)
+            {
+                return string.Empty;
+            }
+
+            var factory = part as FactoryCall
+                ?? (part as LocalBinding)?.Origin as FactoryCall;
+            if (factory != null)
+            {
+                return factory.TryBuildCallerChainKey(compilation, out var factoryKey)
+                    ? factoryKey
+                    : string.Empty;
+            }
+
+            if (part is LocalBinding localBinding && localBinding.FactoryMethod != null)
+            {
+                return FactoryDispatchMetadata.TryResolve(
+                        localBinding.FactoryMethod,
+                        compilation,
+                        out var stampedKey,
+                        out _)
+                    && !string.IsNullOrEmpty(stampedKey)
+                        ? stampedKey
+                        : string.Empty;
+            }
+
+            if (!LegacyRoutePartAdapter.TryToLegacyAnchor(part, out var anchor))
+            {
+                return string.Empty;
+            }
+
             var memberName = anchor.ContainingMethod?.Name;
             if (string.IsNullOrEmpty(memberName))
             {

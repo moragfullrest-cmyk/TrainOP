@@ -19,7 +19,7 @@ namespace TrainOP.Generators
             IMethodSymbol factoryMethod,
             Compilation compilation)
         {
-            if (factoryMethod == null || !StationSyntaxHelper.IsTrainRoute(factoryMethod.ReturnType))
+            if (factoryMethod == null || !StationSyntaxHelper.IsTrainRouteFactoryReturnType(factoryMethod.ReturnType))
             {
                 return ImmutableArray<FactoryPathSimulation>.Empty;
             }
@@ -27,18 +27,19 @@ namespace TrainOP.Generators
             var paths = ImmutableArray.CreateBuilder<FactoryPathSimulation>();
             foreach (var reference in factoryMethod.DeclaringSyntaxReferences)
             {
-                if (reference.GetSyntax() is not MethodDeclarationSyntax methodDeclaration)
+                var syntax = reference.GetSyntax();
+                if (syntax is not MethodDeclarationSyntax and not LocalFunctionStatementSyntax)
                 {
                     continue;
                 }
 
-                if (!compilation.ContainsSyntaxTree(methodDeclaration.SyntaxTree))
+                if (!compilation.ContainsSyntaxTree(syntax.SyntaxTree))
                 {
                     continue;
                 }
 
-                var semanticModel = compilation.GetSemanticModel(methodDeclaration.SyntaxTree);
-                foreach (var expression in CollectReturnPathExpressions(methodDeclaration))
+                var semanticModel = compilation.GetSemanticModel(syntax.SyntaxTree);
+                foreach (var expression in CollectReturnPathExpressions(syntax))
                 {
                     foreach (var simulation in ExpandAndSimulateReturnPaths(
                         expression,
@@ -53,26 +54,185 @@ namespace TrainOP.Generators
             return paths.ToImmutable();
         }
 
-        private static IEnumerable<ExpressionSyntax> CollectReturnPathExpressions(MethodDeclarationSyntax methodDeclaration)
+        /// <summary>
+        /// Simulates all statically discoverable assignments to an <c>out TrainRoute</c> factory parameter.
+        /// </summary>
+        public static ImmutableArray<FactoryPathSimulation> SimulateAllOutParameterPaths(
+            IMethodSymbol factoryMethod,
+            IParameterSymbol outParameter,
+            Compilation compilation)
         {
-            if (methodDeclaration.ExpressionBody?.Expression != null)
+            if (factoryMethod == null
+                || outParameter == null
+                || outParameter.RefKind != RefKind.Out
+                || !StationSyntaxHelper.IsTrainRoute(outParameter.Type))
             {
-                yield return methodDeclaration.ExpressionBody.Expression;
+                return ImmutableArray<FactoryPathSimulation>.Empty;
+            }
+
+            var paths = ImmutableArray.CreateBuilder<FactoryPathSimulation>();
+            foreach (var reference in factoryMethod.DeclaringSyntaxReferences)
+            {
+                var syntax = reference.GetSyntax();
+                if (syntax is not MethodDeclarationSyntax and not LocalFunctionStatementSyntax)
+                {
+                    continue;
+                }
+
+                if (!compilation.ContainsSyntaxTree(syntax.SyntaxTree))
+                {
+                    continue;
+                }
+
+                var semanticModel = compilation.GetSemanticModel(syntax.SyntaxTree);
+                foreach (var expression in CollectOutParameterAssignments(syntax, outParameter, semanticModel))
+                {
+                    foreach (var simulation in ExpandAndSimulateReturnPaths(
+                        expression,
+                        semanticModel,
+                        compilation))
+                    {
+                        paths.Add(simulation);
+                    }
+                }
+            }
+
+            return paths.ToImmutable();
+        }
+
+        /// <summary>
+        /// Collects RHS expressions assigned to an <c>out TrainRoute</c> parameter.
+        /// </summary>
+        internal static IEnumerable<ExpressionSyntax> CollectOutParameterAssignments(
+            SyntaxNode declaration,
+            IParameterSymbol outParameter,
+            SemanticModel semanticModel)
+        {
+            if (outParameter == null
+                || semanticModel == null
+                || !TryGetFactoryBody(declaration, out var expressionBody, out var body))
+            {
                 yield break;
             }
 
-            if (methodDeclaration.Body == null)
+            if (expressionBody?.Expression != null)
+            {
+                if (TryGetOutParameterAssignmentRhs(
+                    expressionBody.Expression,
+                    outParameter,
+                    semanticModel,
+                    out var expressionRhs))
+                {
+                    yield return expressionRhs;
+                }
+
+                yield break;
+            }
+
+            if (body == null)
             {
                 yield break;
             }
 
-            foreach (var node in methodDeclaration.Body.DescendantNodes())
+            foreach (var node in body.DescendantNodes())
+            {
+                if (node is not AssignmentExpressionSyntax assignment
+                    || !assignment.IsKind(SyntaxKind.SimpleAssignmentExpression))
+                {
+                    continue;
+                }
+
+                if (TryGetOutParameterAssignmentRhs(
+                    assignment,
+                    outParameter,
+                    semanticModel,
+                    out var assignmentRhs))
+                {
+                    yield return assignmentRhs;
+                }
+            }
+        }
+
+        private static bool TryGetOutParameterAssignmentRhs(
+            ExpressionSyntax expression,
+            IParameterSymbol outParameter,
+            SemanticModel semanticModel,
+            out ExpressionSyntax rhs)
+        {
+            rhs = null;
+            expression = ReceiverExpressionSyntaxPeel.UnwrapTransparent(expression);
+            if (expression is not AssignmentExpressionSyntax assignment
+                || !assignment.IsKind(SyntaxKind.SimpleAssignmentExpression))
+            {
+                return false;
+            }
+
+            var left = ReceiverExpressionSyntaxPeel.UnwrapTransparent(assignment.Left);
+            if (left is not IdentifierNameSyntax identifier)
+            {
+                return false;
+            }
+
+            if (semanticModel.GetSymbolInfo(identifier).Symbol is not IParameterSymbol parameter
+                || !SymbolEqualityComparer.Default.Equals(parameter, outParameter))
+            {
+                return false;
+            }
+
+            rhs = assignment.Right;
+            return rhs != null;
+        }
+
+        /// <summary>
+        /// Collects return expressions from a method or local-function factory body.
+        /// </summary>
+        internal static IEnumerable<ExpressionSyntax> CollectReturnPathExpressions(SyntaxNode declaration)
+        {
+            if (!TryGetFactoryBody(declaration, out var expressionBody, out var body))
+            {
+                yield break;
+            }
+
+            if (expressionBody?.Expression != null)
+            {
+                yield return expressionBody.Expression;
+                yield break;
+            }
+
+            if (body == null)
+            {
+                yield break;
+            }
+
+            foreach (var node in body.DescendantNodes())
             {
                 if (node is ReturnStatementSyntax returnStatement
                     && returnStatement.Expression != null)
                 {
                     yield return returnStatement.Expression;
                 }
+            }
+        }
+
+        private static bool TryGetFactoryBody(
+            SyntaxNode declaration,
+            out ArrowExpressionClauseSyntax expressionBody,
+            out BlockSyntax body)
+        {
+            switch (declaration)
+            {
+                case MethodDeclarationSyntax method:
+                    expressionBody = method.ExpressionBody;
+                    body = method.Body;
+                    return true;
+                case LocalFunctionStatementSyntax localFunction:
+                    expressionBody = localFunction.ExpressionBody;
+                    body = localFunction.Body;
+                    return true;
+                default:
+                    expressionBody = null;
+                    body = null;
+                    return false;
             }
         }
 
@@ -226,7 +386,7 @@ namespace TrainOP.Generators
             }
 
             if (semanticModel.GetSymbolInfo(invocation).Symbol is not IMethodSymbol factoryMethod
-                || !StationSyntaxHelper.IsTrainRoute(factoryMethod.ReturnType))
+                || !StationSyntaxHelper.IsTrainRouteFactoryReturnType(factoryMethod.ReturnType))
             {
                 return false;
             }

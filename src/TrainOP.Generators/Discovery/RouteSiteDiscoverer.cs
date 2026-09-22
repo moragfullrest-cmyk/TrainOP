@@ -172,12 +172,12 @@ namespace TrainOP.Generators
                 return null;
             }
 
-            if (!AnchorStage.TryResolve(node, semanticModel, out var anchor))
+            if (!AnchorStage.TryResolveSite(node, semanticModel, out var site))
             {
                 return null;
             }
 
-            return RouteSite.CreateAnchor(anchor);
+            return site;
         }
 
         private static bool IsObjectCreationChainReceiver(ObjectCreationExpressionSyntax objectCreation)

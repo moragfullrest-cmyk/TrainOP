@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using System.Collections.Immutable;
 using System.Linq;
+using TrainOP.Generators.Route;
 using TrainOP.Generators.Wagons;
 namespace TrainOP.Generators
 {
@@ -36,11 +37,46 @@ namespace TrainOP.Generators
         /// </summary>
         public static ValidationResult Validate(IMethodSymbol factoryMethod, Compilation compilation)
         {
+            if (factoryMethod != null
+                && StationSyntaxHelper.IsTrainRouteFactoryReturnType(factoryMethod.ReturnType))
+            {
+                return ValidatePaths(
+                    RouteFactoryPathSimulator.SimulateAllReturnPaths(factoryMethod, compilation),
+                    factoryMethod);
+            }
+
+            if (StationSyntaxHelper.TryGetSingleOutTrainRouteParameter(factoryMethod, out var outParameter))
+            {
+                return ValidateOut(factoryMethod, outParameter, compilation);
+            }
+
+            return ValidatePaths(ImmutableArray<FactoryPathSimulation>.Empty, factoryMethod);
+        }
+
+        /// <summary>
+        /// Validates all assignments to an <c>out TrainRoute</c> factory parameter.
+        /// </summary>
+        public static ValidationResult ValidateOut(
+            IMethodSymbol factoryMethod,
+            IParameterSymbol outParameter,
+            Compilation compilation)
+        {
+            return ValidatePaths(
+                RouteFactoryPathSimulator.SimulateAllOutParameterPaths(
+                    factoryMethod,
+                    outParameter,
+                    compilation),
+                factoryMethod);
+        }
+
+        private static ValidationResult ValidatePaths(
+            ImmutableArray<FactoryPathSimulation> paths,
+            IMethodSymbol factoryMethod)
+        {
             var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
             var location = factoryMethod?.Locations.FirstOrDefault() ?? Location.None;
             var displayName = factoryMethod?.ToDisplayString() ?? "?";
 
-            var paths = RouteFactoryPathSimulator.SimulateAllReturnPaths(factoryMethod, compilation);
             if (paths.IsDefaultOrEmpty)
             {
                 diagnostics.Add(Diagnostic.Create(

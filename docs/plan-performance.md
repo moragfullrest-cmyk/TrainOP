@@ -1,6 +1,6 @@
 # План: производительность Travel / hot path
 
-> **Статус:** **P0–P3 + P4a + P4 выполнены**; **P5 снято** (typed bags — регрессия CPU); **P6 / P7 не начаты**.  
+> **Статус:** **P0–P3 + P4a + P4 выполнены**; **P5 снято** (typed bags — регрессия CPU); **P6 снято** (Freeze — низкий ROI по бенчу); **P7 не начато**.  
 > **Цель:** снизить стоимость инфраструктуры hop в `Travel()` / `TravelAsync` без изменения data-oriented UX handler'ов.  
 > **Метрика успеха:** снижение Ratio и Alloc в `LibraryVsManualBenchmarks` (TravelOnly; отдельно — TravelLight). **Не** цель догнать manual ns.  
 > **Аудитория:** разработчики и AI-агенты, продолжающие работу над TrainOP.  
@@ -106,14 +106,13 @@ flowchart LR
   P3[P3 Binding cache at register]
   P4a[P4a Slim StationVisit]
   P4[P4 TravelLight]
-  P6[P6 Freeze route]
   P7[P7 Slim ExecuteStation]
   P5[P5 Reduce boxing]
-  P0 --> P1 --> P2 --> P3 --> P4a --> P4 --> P6 --> P7
+  P0 --> P1 --> P2 --> P3 --> P4a --> P4 --> P7
   P4a -.-> P5
 ```
 
-P5 снято (не на основном курсе). Курс вперёд: **P6 → P7** (P4 сделано).
+P5 и P6 сняты. Курс вперёд: **P7** опционально (после замера; иначе снять).
 
 ### P0 — Mutable CargoManifest
 
@@ -210,18 +209,9 @@ P5 снято (не на основном курсе). Курс вперёд: **
 
 ### P6 — Freeze маршрута (только явный API)
 
-**Статус:** не начато.
+**Статус:** **снято** (2026-09-22) — после бенча `LibraryVsManual*` эффект −4…18% Mean / −112…160 B Alloc; Ratio к Manual почти не двигается. API и бенч-пары Frozen удалены. **Не возобновлять.**
 
-Сейчас каждый прогон копирует список:
-
-```csharp
-var route = new List<StationPlan>(_route);
-```
-
-- Публичный `Freeze()` только (без lazy freeze-on-first-Travel): после freeze `RegisterStation` / `.Station` бросают; executor читает `StationPlan[]` без копии.
-- Без `Freeze` — snapshot как сейчас; достраивание маршрута между `Travel` разрешено.
-
-**Ожидание:** −1 `List` + копирование N ссылок на каждый повторный TravelOnly у тех, кто явно вызвал `Freeze()`.
+**Суть (попытка):** публичный `Freeze()` → `StationPlan[]` без snapshot на каждый Travel; без Freeze — `List` snapshot и достраивание.
 
 ### P7 — Slim диспетчер hop
 
@@ -239,14 +229,15 @@ var route = new List<StationPlan>(_route);
 ### Не делать (отвергнуто / высокий риск)
 
 - **P5 typed bags** — не возобновлять (регрессия на Payment/Checkout).
-- Полная генерация unrolled `Travel` под цепочку — отдельный spike только после профилирования post-P4/P6; в этот курс не входит.
-- Смена `Dictionary<string,object>` на слоты по индексу — только как отдельный эксперимент после замеров; не смешивать с P4/P6/P7.
+- **P6 Freeze** — не возобновлять (низкий ROI vs Manual; API удалён).
+- Полная генерация unrolled `Travel` под цепочку — отдельный spike только после профилирования post-P4; в этот курс не входит.
+- Смена `Dictionary<string,object>` на слоты по индексу — только как отдельный эксперимент после замеров; не смешивать с P4/P7.
 
 ---
 
 ## 5. Критерии готовности фазы
 
-Для каждой фазы P0–P3, P4a, P4, P6, P7 (и исторически P5):
+Для каждой фазы P0–P3, P4a, P4, P7 (и исторически P5, P6):
 
 - [ ] Поведение публичного API и семантика сигналов / отмены без регрессий (оператор гоняет тесты)
 - [ ] `LibraryVsManualBenchmarks` TravelOnly (и TravelLight для P4): Ratio и/или Alloc ниже baseline §2 (артефакт в `BenchmarkDotNet.Artifacts` или обновление цифр в этом плане)
@@ -259,7 +250,7 @@ var route = new List<StationPlan>(_route);
 
 | Файл | Назначение |
 |------|------------|
-| `src/TrainOP/TrainRouteRuntime.cs` | `Travel` / freeze / executor |
+| `src/TrainOP/TrainRouteRuntime.cs` | `Travel` / executor |
 | `src/TrainOP/StationPlan.cs` | kind + делегаты hop |
 | `src/TrainOP/StationMerge.cs` | Runtime merge / `ToSignal` |
 | `src/TrainOP/WagonStationReturn.cs` | Reflection return members |
@@ -293,3 +284,4 @@ var route = new List<StationPlan>(_route);
 | 2026-09-16 | Продолжение курса (бывший `plan-acceleration.md`): P4 → freeze → slim dispatch |
 | 2026-09-16 | **Объединение** с `plan-acceleration.md`: P4 уточнён (`TravelLight`); добавлены **P6** freeze и **P7** slim `ExecuteStation`; файл `plan-acceleration.md` удалён |
 | 2026-09-16 | **P4 сделано:** `TravelLight` / `TravelLightAsync` (+ CT); empty `Visits`; бенч `TravelLightOnly_*` |
+| 2026-09-22 | **P6 снято:** `Freeze` удалён после бенча (Alloc −112…160 B, Mean −4…18%; Ratio к Manual почти без сдвига) |

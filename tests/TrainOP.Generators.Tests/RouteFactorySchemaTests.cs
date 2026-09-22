@@ -124,6 +124,71 @@ public static class AppRoute
         }
 
         /// <summary>
+        /// Verifies statement-local cross-assembly extension after a public factory uses exported schema.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_CrossAssemblyStatementLocalExtension_UsesExportedSchema()
+        {
+            const string routeLibSource = @"
+using TrainOP;
+
+public static class PaymentModule
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m });
+}";
+
+            const string consumerSource = @"
+using TrainOP;
+
+public static class AppRoute
+{
+    public static TrainRoute Build()
+    {
+        var route = PaymentModule.Build();
+        route.Station(""Finalize"", (decimal amount, string paymentId) =>
+            new { paymentId, status = ""completed"" });
+        return route;
+    }
+}";
+
+            var diagnostics = await RunCrossAssemblyAnalyzerAsync(routeLibSource, consumerSource);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP005");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+        }
+
+        /// <summary>
+        /// Verifies statement-style public factory still exports StationCount for consumers.
+        /// </summary>
+        [Fact]
+        public void Generator_StatementStylePublicFactory_EmitsStationCount()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class PaymentModule
+{
+    public static TrainRoute Build()
+    {
+        var route = new TrainRoute();
+        route.Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m });
+        route.Station(""Discount"", (string paymentId, decimal amount) =>
+            new { paymentId, amount = amount * 0.9m });
+        return route;
+    }
+}";
+
+            var generated = TrainRouteStationGeneratorTestsHelper.RunAllGeneratedSources(source);
+
+            Assert.Contains("StationCount = 2", generated);
+            Assert.Contains("[RouteSchemaWagon(\"amount\"", generated);
+            Assert.Contains("[RouteSchemaWagon(\"paymentId\"", generated);
+        }
+
+        /// <summary>
         /// Verifies cross-assembly extension after a default ItemN factory terminal uses ItemN keys.
         /// </summary>
         [Fact]

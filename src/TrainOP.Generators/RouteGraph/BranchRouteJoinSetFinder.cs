@@ -6,7 +6,8 @@ namespace TrainOP.Generators
 {
     /// <summary>
     /// Finds join sets in a syntax tree: forking receivers that are used as
-    /// <c>MemberAccess.Expression</c> of Station / ServiceStation.
+    /// <c>MemberAccess.Expression</c> of Station / ServiceStation, including locals
+    /// assigned from a forking RHS (<c>?:</c> / <c>??</c> / <c>switch</c>).
     /// </summary>
     internal static class BranchRouteJoinSetFinder
     {
@@ -37,16 +38,29 @@ namespace TrainOP.Generators
                 }
 
                 var peeled = ReceiverExpressionSyntaxPeel.UnwrapTransparent(memberAccess.Expression);
-                if (!JoinChainsStage.IsForkingExpression(peeled))
+                if (JoinChainsStage.IsForkingExpression(peeled))
                 {
+                    var branches = JoinChainsStage.DiscoverBranches(memberAccess.Expression, model);
+                    builder.Add(new BranchRouteJoinSet(
+                        joinReceiver: memberAccess.Expression,
+                        downstreamStation: invocation,
+                        branches: branches));
                     continue;
                 }
 
-                var branches = JoinChainsStage.DiscoverBranches(memberAccess.Expression, model);
-                builder.Add(new BranchRouteJoinSet(
-                    joinReceiver: memberAccess.Expression,
-                    downstreamStation: invocation,
-                    branches: branches));
+                // C-10/C-11: local assigned from forking RHS, then statement/fluent Station.
+                if (peeled is IdentifierNameSyntax localIdentifier
+                    && RouteOriginWindow.TryGetPrecedingForkingAssignment(
+                        localIdentifier,
+                        model,
+                        out var forkExpression))
+                {
+                    var branches = JoinChainsStage.DiscoverBranches(forkExpression, model);
+                    builder.Add(new BranchRouteJoinSet(
+                        joinReceiver: forkExpression,
+                        downstreamStation: invocation,
+                        branches: branches));
+                }
             }
 
             return builder.ToImmutable();

@@ -66,7 +66,6 @@ namespace TrainOP.Generators
             stationCount = 0;
             if (factoryMethod == null
                 || compilation == null
-                || !StationSyntaxHelper.IsTrainRoute(factoryMethod.ReturnType)
                 || !visiting.Add(factoryMethod))
             {
                 return false;
@@ -74,16 +73,42 @@ namespace TrainOP.Generators
 
             try
             {
+                if (!StationSyntaxHelper.IsTrainRouteFactoryReturnType(factoryMethod.ReturnType)
+                    && !StationSyntaxHelper.TryGetSingleOutTrainRouteParameter(factoryMethod, out _))
+                {
+                    return false;
+                }
+
                 foreach (var reference in factoryMethod.DeclaringSyntaxReferences)
                 {
-                    if (reference.GetSyntax() is not MethodDeclarationSyntax methodDeclaration
-                        || !compilation.ContainsSyntaxTree(methodDeclaration.SyntaxTree))
+                    var syntax = reference.GetSyntax();
+                    if (syntax is not MethodDeclarationSyntax and not LocalFunctionStatementSyntax
+                        || !compilation.ContainsSyntaxTree(syntax.SyntaxTree))
                     {
                         continue;
                     }
 
-                    var semanticModel = compilation.GetSemanticModel(methodDeclaration.SyntaxTree);
-                    foreach (var expression in CollectReturnPathExpressions(methodDeclaration))
+                    var semanticModel = compilation.GetSemanticModel(syntax.SyntaxTree);
+                    IEnumerable<ExpressionSyntax> pathExpressions;
+                    if (StationSyntaxHelper.IsTrainRouteFactoryReturnType(factoryMethod.ReturnType))
+                    {
+                        pathExpressions = RouteFactoryPathSimulator.CollectReturnPathExpressions(syntax);
+                    }
+                    else if (StationSyntaxHelper.TryGetSingleOutTrainRouteParameter(
+                        factoryMethod,
+                        out var outParameter))
+                    {
+                        pathExpressions = RouteFactoryPathSimulator.CollectOutParameterAssignments(
+                            syntax,
+                            outParameter,
+                            semanticModel);
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    foreach (var expression in pathExpressions)
                     {
                         foreach (var leaf in ExpandReturnPathLeaves(expression))
                         {
@@ -158,20 +183,9 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (anchor.Kind == RouteChainAnchorKind.ObjectCreation
-                || anchor.Kind == RouteChainAnchorKind.LocalVariable)
-            {
-                var memberName = string.IsNullOrEmpty(factoryMemberName)
-                    ? anchor.ContainingMethod?.Name
-                    : factoryMemberName;
-                callerChainKey = CallerChainKeyBuilder.BuildFromLocation(anchor.Location, memberName);
-                stationCount = chain.Stations.Length;
-                return !string.IsNullOrEmpty(callerChainKey);
-            }
-
-            if ((anchor.Kind == RouteChainAnchorKind.MethodInvocation
-                    || anchor.Kind == RouteChainAnchorKind.FactorySchema)
-                && anchor.FactoryMethod != null)
+            // Nested factory: FactoryMethod stamp / FactoryCall port — no RouteChainAnchorKind switch.
+            // Visiting set stays here so cycles across nested factories are detected.
+            if (anchor.FactoryMethod != null)
             {
                 if (!TryResolveNested(
                     anchor.FactoryMethod,
@@ -184,6 +198,19 @@ namespace TrainOP.Generators
                 }
 
                 stationCount = upstreamCount + chain.Stations.Length;
+                return !string.IsNullOrEmpty(callerChainKey);
+            }
+
+            // CreationSeed / LocalBinding (non-factory): ctor / origin stamp location.
+            // Shape-gated so BranchJoin and other residuals do not invent a key.
+            if (anchor.Root is ObjectCreationExpressionSyntax
+                || anchor.Root is IdentifierNameSyntax)
+            {
+                var memberName = string.IsNullOrEmpty(factoryMemberName)
+                    ? anchor.ContainingMethod?.Name
+                    : factoryMemberName;
+                callerChainKey = CallerChainKeyBuilder.BuildFromLocation(anchor.Location, memberName);
+                stationCount = chain.Stations.Length;
                 return !string.IsNullOrEmpty(callerChainKey);
             }
 
@@ -209,30 +236,6 @@ namespace TrainOP.Generators
             }
 
             return TryResolveFromBody(factoryMethod, compilation, visiting, out callerChainKey, out stationCount);
-        }
-
-        private static IEnumerable<ExpressionSyntax> CollectReturnPathExpressions(
-            MethodDeclarationSyntax methodDeclaration)
-        {
-            if (methodDeclaration.ExpressionBody?.Expression != null)
-            {
-                yield return methodDeclaration.ExpressionBody.Expression;
-                yield break;
-            }
-
-            if (methodDeclaration.Body == null)
-            {
-                yield break;
-            }
-
-            foreach (var node in methodDeclaration.Body.DescendantNodes())
-            {
-                if (node is ReturnStatementSyntax returnStatement
-                    && returnStatement.Expression != null)
-                {
-                    yield return returnStatement.Expression;
-                }
-            }
         }
 
         private static IEnumerable<ExpressionSyntax> ExpandReturnPathLeaves(ExpressionSyntax expression)

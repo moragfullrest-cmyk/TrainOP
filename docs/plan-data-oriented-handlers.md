@@ -3,7 +3,7 @@
 > **Статус:** **выполнено** фазы 0–8 (включая factory anchors + schema export/import, merge ветвлений §3.8.5, caller dispatch §4.3); **не поддерживаются** opaque-якоря параметр / поле / свойство / делегат; **снято** typed Travel (фазы 9–12), interceptors и reflection chain-dispatch.  
 > **Терминалы:** `RouteReport` indexer / `Get<T>` (C# ≤15 — конфликты декомпозиции кортежей нерешаемы).  
 > **Цель:** handler станции = чистая функция над данными; `CargoManifest`, `LoadWagon`, `PullWagon`, `RailwaySignals` скрыты в сгенерированном адаптере.  
-> **Производительность Travel:** см. [`plan-performance.md`](plan-performance.md) (P0–P4a + P4; P5 снято; дальше P6 → P7).  
+> **Производительность Travel:** см. [`plan-performance.md`](plan-performance.md) (P0–P4a + P4; P5 снято; P6 снято; дальше P7 опционально).  
 > **Аудитория:** разработчики и AI-агенты, продолжающие работу над TrainOP.
 
 ---
