@@ -15,7 +15,7 @@ namespace TrainOP.Generators
     internal static class SignatureGroupingStage
     {
         /// <summary>
-        /// Accumulates <see cref="DelegateSignatureGroup"/>s from station sites and chain-index
+        /// Accumulates <see cref="DelegateSignatureGroup"/>s from station links and chain-index
         /// schemas. Chain attachment is deferred to <see cref="AttachChainContextStage"/>.
         /// </summary>
         public static Dictionary<string, DelegateSignatureGroup> Group(RouteGraph graph)
@@ -28,15 +28,15 @@ namespace TrainOP.Generators
 
             var processedInvocationKeys = new HashSet<string>(StringComparer.Ordinal);
 
-            foreach (var site in graph.StationSites
-                .OrderBy(site => site.IdentityLocation.SourceSpan.Start))
+            foreach (var link in graph.StationLinks
+                .OrderBy(link => link.Location.SourceSpan.Start))
             {
                 AddDiscoveredCall(
                     groups,
                     processedInvocationKeys,
-                    site.HandlerBinding,
-                    site.HandlerLocation,
-                    site.Invocation);
+                    link.Handler,
+                    link.HandlerLocation,
+                    link.Invocation);
             }
 
             foreach (var chainBinding in graph.ChainIndex.Values

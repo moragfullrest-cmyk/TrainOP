@@ -1,7 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
-using System.Linq;
 using TrainOP.Generators.Wagons;
 
 namespace TrainOP.Generators.Parts
@@ -60,7 +59,7 @@ namespace TrainOP.Generators.Parts
                 return false;
             }
 
-            var containingMethod = GetContainingMethod(identifier, semanticModel);
+            var containingMethod = StationSyntaxHelper.GetEnclosingMethod(identifier, semanticModel);
 
             if (originExpression is ObjectCreationExpressionSyntax
                 && CreationSeedMaterializer.TryMaterialize(originExpression, semanticModel, out var seed))
@@ -250,17 +249,6 @@ namespace TrainOP.Generators.Parts
 
             factoryCall = factory;
             return true;
-        }
-
-        private static IMethodSymbol GetContainingMethod(SyntaxNode node, SemanticModel semanticModel)
-        {
-            var methodDeclaration = node.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault();
-            if (methodDeclaration == null)
-            {
-                return null;
-            }
-
-            return semanticModel.GetDeclaredSymbol(methodDeclaration) as IMethodSymbol;
         }
     }
 }

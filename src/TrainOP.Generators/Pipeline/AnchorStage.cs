@@ -1,12 +1,11 @@
 using Microsoft.CodeAnalysis;
 using TrainOP.Generators.Parts;
-using TrainOP.Generators.Route;
 
 namespace TrainOP.Generators
 {
     /// <summary>
     /// Resolves chain origins (<c>new</c> / local / factory /
-    /// join-assign / external schema import) into parts and <see cref="RouteSite"/>.
+    /// join-assign / external schema import) into route parts.
     /// </summary>
     internal static class AnchorStage
     {
@@ -25,24 +24,6 @@ namespace TrainOP.Generators
             }
 
             return RouteAnchorDetector.TryDetect(node, semanticModel, out part);
-        }
-
-        /// <summary>
-        /// Resolves an origin <see cref="RouteSite"/> via parts → <see cref="RouteSite.CreateAnchor"/>.
-        /// </summary>
-        internal static bool TryResolveSite(
-            SyntaxNode node,
-            SemanticModel semanticModel,
-            out RouteSite site)
-        {
-            site = null;
-            if (!TryResolvePart(node, semanticModel, out var part))
-            {
-                return false;
-            }
-
-            site = RouteSite.CreateAnchor(part);
-            return site != null;
         }
     }
 }

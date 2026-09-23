@@ -18,17 +18,13 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            switch (factoryMethod.DeclaredAccessibility)
+            return factoryMethod.DeclaredAccessibility switch
             {
-                case Accessibility.Public:
-                case Accessibility.Protected:
-                case Accessibility.ProtectedOrInternal:
-                    return IsExportedFactoryContract(factoryMethod);
-                case Accessibility.Internal:
-                    return HasInternalsVisibleTo(compilation, factoryMethod.ContainingAssembly);
-                default:
-                    return false;
-            }
+                Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal =>
+                    IsExportedFactoryContract(factoryMethod),
+                Accessibility.Internal => HasInternalsVisibleTo(compilation, factoryMethod.ContainingAssembly),
+                _ => false
+            };
         }
 
         /// <summary>

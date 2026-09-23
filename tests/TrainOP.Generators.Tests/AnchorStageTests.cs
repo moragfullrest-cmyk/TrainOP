@@ -6,13 +6,12 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using TrainOP.Generators.Parts;
-using TrainOP.Generators.Route;
 using Xunit;
 
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests <see cref="AnchorStage"/> part → <see cref="RouteSite"/> resolution.
+    /// Tests <see cref="AnchorStage"/> origin-part resolution.
     /// </summary>
     public sealed class AnchorStageTests
     {
@@ -32,10 +31,6 @@ public static class Route
 
             Assert.True(AnchorStage.TryResolvePart(node, model, out var part));
             Assert.IsType<CreationSeed>(part);
-
-            Assert.True(AnchorStage.TryResolveSite(node, model, out var site));
-            Assert.Equal(RouteSiteKind.Anchor, site.Kind);
-            Assert.IsType<CreationSeed>(site.OriginPart);
         }
 
         [Fact]
@@ -57,11 +52,8 @@ public static class Route
             GetLocalReceiver(source, "route", out var identifier, out var model);
 
             Assert.True(AnchorStage.TryResolvePart(identifier, model, out var part));
-            Assert.IsType<LocalBinding>(part);
-
-            Assert.True(AnchorStage.TryResolveSite(identifier, model, out var site));
-            Assert.IsType<LocalBinding>(site.OriginPart);
-            Assert.Same(identifier, site.Expression);
+            var binding = Assert.IsType<LocalBinding>(part);
+            Assert.Same(identifier, binding.Identifier);
         }
 
         [Fact]
@@ -82,12 +74,9 @@ public static class Route
             GetFactoryInvocation(source, "CreateSeed", out var invocation, out var model);
 
             Assert.True(AnchorStage.TryResolvePart(invocation, model, out var part));
-            Assert.IsType<FactoryCall>(part);
-            Assert.Equal(FactoryCallKind.Inline, ((FactoryCall)part).Kind);
-
-            Assert.True(AnchorStage.TryResolveSite(invocation, model, out var site));
-            Assert.IsType<FactoryCall>(site.OriginPart);
-            Assert.Equal("CreateSeed", site.FactoryMethod.Name);
+            var factoryCall = Assert.IsType<FactoryCall>(part);
+            Assert.Equal(FactoryCallKind.Inline, factoryCall.Kind);
+            Assert.Equal("CreateSeed", factoryCall.FactoryMethod.Name);
         }
 
         [Fact]
@@ -111,12 +100,8 @@ public static class Route
             GetLocalReceiver(source, "route", out var identifier, out var model);
 
             Assert.True(AnchorStage.TryResolvePart(identifier, model, out var part));
-            Assert.IsType<LocalBinding>(part);
-            Assert.Null(((LocalBinding)part).Origin);
-
-            Assert.True(AnchorStage.TryResolveSite(identifier, model, out var site));
-            Assert.Equal(RouteSiteKind.Anchor, site.Kind);
-            Assert.IsType<LocalBinding>(site.OriginPart);
+            var binding = Assert.IsType<LocalBinding>(part);
+            Assert.Null(binding.Origin);
         }
 
         private static void GetNode<T>(

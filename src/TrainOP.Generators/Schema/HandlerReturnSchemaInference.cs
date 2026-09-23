@@ -183,7 +183,7 @@ namespace TrainOP.Generators
             foreach (var expression in CollectReturnPathExpressions(body))
             {
                 representative ??= expression;
-                if (UnwrapToTupleExpression(expression) != null)
+                if (HandlerReturnTypeShape.UnwrapToTupleExpression(expression) != null)
                 {
                     return expression;
                 }
@@ -214,7 +214,7 @@ namespace TrainOP.Generators
         /// <summary>
         /// Collects leaf return expressions from a handler body, expanding conditionals and coalesce forks.
         /// </summary>
-        private static IEnumerable<ExpressionSyntax> CollectReturnPathExpressions(CSharpSyntaxNode body)
+        internal static IEnumerable<ExpressionSyntax> CollectReturnPathExpressions(CSharpSyntaxNode body)
         {
             if (body == null)
             {

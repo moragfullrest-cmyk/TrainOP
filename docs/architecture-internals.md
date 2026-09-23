@@ -215,24 +215,24 @@ RegisterSourceOutput(model, EmitAll);
 
 ### Discovery и RegisterSourceOutput (как устроено сейчас)
 
-Точка входа — `TrainRouteStationGenerator.Initialize` → `RegisterSourceOutput`. Callback срабатывает, когда меняются compilation или collected station/anchor sites.
+Точка входа — `TrainRouteStationGenerator.Initialize` → `RegisterSourceOutput`. Callback срабатывает, когда меняются compilation или collected station links / origin parts.
 
 Два `SyntaxProvider` (station ∥ anchor) + `Collect` + `Combine` + `CompilationProvider` — уже соответствует параллели 1a ∥ 1b на уровне discovery:
 
 ```csharp
-var stationSites = context.SyntaxProvider.CreateSyntaxProvider(
-    RouteSiteDiscoverer.IsCandidateStationSite,
-    RouteSiteDiscoverer.TryDiscoverStation);
+var stationParts = context.SyntaxProvider.CreateSyntaxProvider(
+    RoutePartDiscoverer.IsCandidateStationSite,
+    RoutePartDiscoverer.TryDiscoverStation);
 
-var anchorSites = context.SyntaxProvider.CreateSyntaxProvider(
-    RouteSiteDiscoverer.IsCandidateAnchorSite,
-    RouteSiteDiscoverer.TryDiscoverAnchor);
+var anchorParts = context.SyntaxProvider.CreateSyntaxProvider(
+    RoutePartDiscoverer.IsCandidateAnchorSite,
+    RoutePartDiscoverer.TryDiscoverAnchor);
 
-var allSites = stationSites.Collect()
-    .Combine(anchorSites.Collect())
-    .Select(RouteSiteDiscoverer.MergeSites);
+var allParts = stationParts.Collect()
+    .Combine(anchorParts.Collect())
+    .Select(RoutePartDiscoverer.MergeParts);
 
-var combined = context.CompilationProvider.Combine(allSites);
+var combined = context.CompilationProvider.Combine(allParts);
 
 context.RegisterSourceOutput(combined, (productionContext, source) => { ... });
 ```
@@ -240,22 +240,22 @@ context.RegisterSourceOutput(combined, (productionContext, source) => { ... });
 | Компонент | Тип | Роль |
 |-----------|-----|------|
 | `CompilationProvider` | `Compilation` | Текущая compilation |
-| `SyntaxProvider` (station + anchor) + `Collect()` | `ImmutableArray<RouteSite>` | Call site'ы и якоря |
+| `SyntaxProvider` (station + anchor) + `Collect()` | `ImmutableArray<IRoutePart>` | `StationLink` и origin-части |
 | `RouteGraphAssembler.Build` | `RouteGraph` | Цепочки, `ChainIndex`, chained-set |
 
 SyntaxProvider: дешёвый predicate → semantic transform только для прошедших узлов.
 
-#### RouteSiteDiscoverer
+#### RoutePartDiscoverer
 
-`TryDiscoverStation` — semantic resolve handler'а (`HandlerSchemaResolver`) → `RouteSite` с `HandlerBinding` / `Receiver` / `StationName` или `null`.
+`TryDiscoverStation` — `StationLinkMaterializer` (semantic path, `HandlerSchemaResolver`) → `StationLink` или `null`. `TryDiscoverAnchor` — `AnchorStage.TryResolvePart` → origin-часть (`CreationSeed` / `FactoryCall` / `LocalBinding`) или `null`.
 
 ```mermaid
 flowchart TB
   Node["SyntaxNode"] --> Pred{"station | anchor<br/>predicate"}
   Pred -->|false| Skip["узел игнорируется"]
-  Pred -->|true| RSD["RouteSiteDiscoverer"]
-  RSD -->|ok| Out["RouteSite"]
-  RSD -->|fail| Null["null"]
+  Pred -->|true| RPD["RoutePartDiscoverer"]
+  RPD -->|ok| Out["IRoutePart"]
+  RPD -->|fail| Null["null"]
 ```
 
 | Не входит в transform | Где |
@@ -264,9 +264,9 @@ flowchart TB
 | TOP005 | Analyzer → `RouteGraph.IsChainedInvocation` |
 | TOP001–TOP003 | Analyzer → `ChainGraphSimulator` |
 | TOP007 | grouping / BranchPlan (`ToMerged` сегодня) |
-| Chain id / station index | `RouteGraphAssembler` из collected `RouteSite` |
+| Chain id / station index | `RouteGraphAssembler` из collected `IRoutePart` |
 
-Handler schema строится **один раз** в discovery; walk цепочки использует pre-built binding.
+Handler schema строится **один раз** в discovery (`StationLink`); walk цепочки берёт кэш по локации invocation.
 
 ##### TryGetDataRouteHandlerInvocation
 
@@ -303,9 +303,9 @@ Handler schema строится **один раз** в discovery; walk цепо�
 
 Невалидная схема → discovery `null`.
 
-##### RouteSite
+##### Части discovery
 
-Объединяет station и anchor: `HandlerBinding`, `Receiver`, `StationName`, `IdentityLocation`; у якоря — `AnchorKind`, `FactoryMethod`, `InitialWagons`.
+Общий выход — `IRoutePart`. Станция — `StationLink` (kind, имя, handler, invocation, локации). Якорь — уже материализованная origin-часть; порты (`FactoryMethod`, вагоны, containing method) читаются через `RouteOriginPorts`. `JoinSeed` / `JoinArm` / `ExtensionTail` в SyntaxProvider не рождаются.
 
 #### Что делает callback сегодня
 
@@ -319,15 +319,14 @@ Handler schema строится **один раз** в discovery; walk цепо�
 
 `RouteGraphAssembler.Build` (этап **4 BuildChains**):
 
-1. Station sites + якоря (`RouteSiteKind.Anchor`).
-2. **Materialize** origin parts (`CreationSeed` / `FactoryCall` / `LocalBinding`) и station links.
-3. **Construct** — `ChainConstructor` / `LinearChainConnector` (Bind·Append; Extend / Join — отдельные connectors).
-4. **Validate** на каждом ребре (`PartEdgeValidator` + существующие TOP* / soft reject).
-5. Сборка `RouteChain` (`Origin` + `StationLink[]`) / `RouteGraph` (`Chains`, `ChainIndex`, chained-set). Peel одного шага — `RouteChainPeel.TryAdvanceChain`; origin window — `RouteOriginWindow`; root walk — `RouteChainRootResolver`.
+1. `StationLink` в кэш графа; origin-части (`RouteOriginPorts.IsOriginPart`) — в origins.
+2. **Connect** — `ChainConstructor` / `LinearChainConnector` (Bind·Append; Extend / Join — отдельные connectors). Кэш станции — готовый `StationLink`; промах (обход мимо discovery) снова идёт в `StationLinkMaterializer`.
+3. **Validate** на каждом ребре (`PartEdgeValidator` + существующие TOP* / soft reject).
+4. Сборка `RouteChain` (`Origin` + `StationLink[]`) / `RouteGraph` (`Chains`, `ChainIndex`, `StationLinks`, chained-set). Peel одного шага — `RouteChainPeel.TryAdvanceChain`; origin window — `RouteOriginWindow`; root walk — `RouteChainRootResolver`.
 
 Внутренний IR частей: [`plan-route-parts-constructor.md`](plan-route-parts-constructor.md). Origin identity — type ports (`CreationSeed` / `FactoryCall` / `LocalBinding` / `JoinSeed`), не kind-enum.
 
-Analyzer: `RouteSiteDiscoverer.CollectAll` + `RouteGraphAssembler.Build` раз на compilation; per-tree — `GetChainsInTree` / `IsChainedInvocation`.
+Analyzer: `RoutePartDiscoverer.CollectAll` + `RouteGraphAssembler.Build` раз на compilation; per-tree — `GetChainsInTree` / `IsChainedInvocation`.
 
 Если `BranchPlans` пуст — Extensions не эмитятся; schema output всё равно может появиться из descriptors в том же `EmitAll`.
 
@@ -404,7 +403,7 @@ private static ChainStationBinding_Abc ResolveChainBinding_Abc(string chainKey, 
 |----------|-----|-------|
 | `AddSource` | `GenerationEmit.EmitAll` → Extensions + RouteSchemas | Новый/обновлённый `.g.cs` |
 | `ReportDiagnostic(TOP007)` | BranchPlan / `ChainDispatchPolicy` | Конфликт имён без chain dispatch |
-| Rebuild graph | `BuildChainsStage` / `RouteGraphAssembler.Build` | Каждый callback из collected sites |
+| Rebuild graph | `BuildChainsStage` / `RouteGraphAssembler.Build` | Каждый callback из collected parts |
 
 Инкрементальность SyntaxProvider — на transform узлов; граф пересчитывается в callback целиком.
 
@@ -412,7 +411,7 @@ private static ChainStationBinding_Abc ResolveChainBinding_Abc(string chainKey, 
 
 ```mermaid
 flowchart LR
-  SP["SyntaxProvider<br/>RouteSite[]"] --> CB["RegisterSourceOutput / model"]
+  SP["SyntaxProvider<br/>IRoutePart[]"] --> CB["RegisterSourceOutput / model"]
   CP["CompilationProvider"] --> CB
   CB --> RGA["BuildChains / RouteGraph"]
   CB --> TSG["GroupSignatures"]
@@ -424,7 +423,7 @@ flowchart LR
   SAB --> RS["runtime RegisterStation"]
 ```
 
-Analyzer: те же discovery / graph / walk-primitives (`RouteSiteDiscoverer`, `RouteGraphAssembler`, `ChainDetector`, `StationSyntaxHelper`).
+Analyzer: те же discovery / graph / walk-primitives (`RoutePartDiscoverer`, `RouteGraphAssembler`, `ChainDetector`, `StationSyntaxHelper`).
 
 ### Что эмитится (оба файла — финальный Emit)
 

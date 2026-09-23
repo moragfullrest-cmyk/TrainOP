@@ -178,8 +178,7 @@ namespace TrainOP.Generators
         {
             callerChainKey = string.Empty;
             stationCount = 0;
-            var origin = chain?.Origin;
-            if (origin == null || !RouteOriginPorts.TryGetRoot(origin, out var root))
+            if (!RouteOriginPorts.TryGetRoot(chain?.Origin, out var root))
             {
                 return false;
             }

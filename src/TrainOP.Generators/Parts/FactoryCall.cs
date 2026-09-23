@@ -78,35 +78,20 @@ namespace TrainOP.Generators.Parts
             out string callerChainKey)
         {
             callerChainKey = string.Empty;
-            if (origin == null)
+            return origin switch
             {
-                return false;
-            }
-
-            if (origin is FactoryCall factoryCall)
-            {
-                return factoryCall.TryBuildCallerChainKey(compilation, out callerChainKey);
-            }
-
-            if (origin is LocalBinding localBinding)
-            {
-                if (localBinding.Origin is FactoryCall nested)
-                {
-                    return nested.TryBuildCallerChainKey(compilation, out callerChainKey);
-                }
-
-                if (localBinding.FactoryMethod != null)
-                {
-                    return FactoryDispatchMetadata.TryResolve(
-                            localBinding.FactoryMethod,
-                            compilation,
-                            out callerChainKey,
-                            out _)
-                        && !string.IsNullOrEmpty(callerChainKey);
-                }
-            }
-
-            return false;
+                FactoryCall factoryCall => factoryCall.TryBuildCallerChainKey(compilation, out callerChainKey),
+                LocalBinding { Origin: FactoryCall nested } =>
+                    nested.TryBuildCallerChainKey(compilation, out callerChainKey),
+                LocalBinding { FactoryMethod: { } factoryMethod } =>
+                    FactoryDispatchMetadata.TryResolve(
+                        factoryMethod,
+                        compilation,
+                        out callerChainKey,
+                        out _)
+                    && !string.IsNullOrEmpty(callerChainKey),
+                _ => false
+            };
         }
 
         /// <summary>

@@ -13,11 +13,6 @@ namespace TrainOP.Generators
         /// </summary>
         public static string Build(IRoutePart part, Compilation compilation = null)
         {
-            if (part == null)
-            {
-                return string.Empty;
-            }
-
             if (FactoryCall.TryBuildCallerChainKeyFromOrigin(part, compilation, out var factoryKey))
             {
                 return factoryKey;

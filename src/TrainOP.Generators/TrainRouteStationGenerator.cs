@@ -22,34 +22,35 @@ namespace TrainOP.Generators
         /// </summary>
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            var stationSites = context.SyntaxProvider.CreateSyntaxProvider(
-                static (node, _) => RouteSiteDiscoverer.IsCandidateStationSite(node),
-                static (generatorContext, _) => RouteSiteDiscoverer.TryDiscoverStation(generatorContext)).Collect();
+            var stationParts = context.SyntaxProvider.CreateSyntaxProvider(
+                static (node, _) => RoutePartDiscoverer.IsCandidateStationSite(node),
+                static (generatorContext, _) => RoutePartDiscoverer.TryDiscoverStation(generatorContext)).Collect();
 
-            var anchorSites = context.SyntaxProvider.CreateSyntaxProvider(
-                static (node, _) => RouteSiteDiscoverer.IsCandidateAnchorSite(node),
-                static (generatorContext, _) => RouteSiteDiscoverer.TryDiscoverAnchor(generatorContext)).Collect();
+            var anchorParts = context.SyntaxProvider.CreateSyntaxProvider(
+                static (node, _) => RoutePartDiscoverer.IsCandidateAnchorSite(node),
+                static (generatorContext, _) => RoutePartDiscoverer.TryDiscoverAnchor(generatorContext)).Collect();
 
-            var allSites = stationSites
-                .Combine(anchorSites)
-                .Select(static (pair, _) => RouteSiteDiscoverer.MergeSites(pair.Left, pair.Right));
+            var allParts = stationParts
+                .Combine(anchorParts)
+                .Select(static (pair, _) => RoutePartDiscoverer.MergeParts(pair.Left, pair.Right));
 
-            var combined = context.CompilationProvider.Combine(allSites);
+            var combined = context.CompilationProvider.Combine(allParts);
 
             context.RegisterSourceOutput(combined, (productionContext, source) =>
             {
                 var compilation = source.Left;
-                var sites = source.Right;
+                var parts = source.Right;
 
                 // Build IR first; AddSource only in EmitAll.
+                // TOP012/013 stay on SchemaDescriptorsStage; the analyzer reports them.
                 var schemaCollect = SchemaDescriptorsStage.Collect(compilation);
-                var graph = BuildChainsStage.Build(sites, compilation);
+                var graph = BuildChainsStage.Build(parts, compilation);
                 var generationModel = GenerationModel.Build(
-                    sites,
+                    parts,
                     graph,
                     compilation,
                     schemaCollect.Descriptors,
-                    schemaCollect.Diagnostics);
+                    ImmutableArray<Diagnostic>.Empty);
 
                 // Signature groups need the assembled graph; chain bindings attach before branch plans.
                 var groups = SignatureGroupingStage.Group(generationModel.RouteGraph);

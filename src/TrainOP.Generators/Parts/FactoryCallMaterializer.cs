@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.Collections.Immutable;
-using System.Linq;
 using TrainOP.Generators.Wagons;
 
 namespace TrainOP.Generators.Parts
@@ -83,7 +82,7 @@ namespace TrainOP.Generators.Parts
                 kind,
                 methodSymbol,
                 initialWagons,
-                GetContainingMethod(factoryInvocation, semanticModel));
+                StationSyntaxHelper.GetEnclosingMethod(factoryInvocation, semanticModel));
             return true;
         }
 
@@ -141,17 +140,6 @@ namespace TrainOP.Generators.Parts
             }
 
             return !string.Equals(containingType.Name, "TrainRouteStationExtensions", StringComparison.Ordinal);
-        }
-
-        private static IMethodSymbol GetContainingMethod(SyntaxNode node, SemanticModel semanticModel)
-        {
-            var methodDeclaration = node.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault();
-            if (methodDeclaration == null)
-            {
-                return null;
-            }
-
-            return semanticModel.GetDeclaredSymbol(methodDeclaration) as IMethodSymbol;
         }
     }
 }

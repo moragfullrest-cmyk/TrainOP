@@ -30,7 +30,7 @@ namespace TrainOP.Generators
             }
 
             if (node is IdentifierNameSyntax identifier
-                && IsLocalVariableChainReceiver(identifier)
+                && StationSyntaxHelper.IsRouteHandlerReceiver(identifier)
                 && LocalBindingMaterializer.TryMaterialize(identifier, semanticModel, out var binding))
             {
                 origin = binding;
@@ -38,7 +38,7 @@ namespace TrainOP.Generators
             }
 
             if (node is InvocationExpressionSyntax factoryInvocation
-                && IsFactoryChainReceiver(factoryInvocation)
+                && StationSyntaxHelper.IsRouteHandlerReceiver(factoryInvocation)
                 && FactoryCallMaterializer.TryMaterialize(factoryInvocation, semanticModel, out var factoryCall))
             {
                 origin = factoryCall;
@@ -46,46 +46,6 @@ namespace TrainOP.Generators
             }
 
             return false;
-        }
-
-        /// <summary>
-        /// Determines whether the invocation is the receiver of a route handler member access.
-        /// </summary>
-        public static bool IsFactoryChainReceiver(InvocationExpressionSyntax factoryInvocation)
-        {
-            var receiver = ReceiverExpressionSyntaxPeel.WrapTransparentOutermost(factoryInvocation);
-            if (receiver.Parent is not MemberAccessExpressionSyntax memberAccess)
-            {
-                return false;
-            }
-
-            if (!ReferenceEquals(memberAccess.Expression, receiver))
-            {
-                return false;
-            }
-
-            var methodName = memberAccess.Name.Identifier.ValueText;
-            return StationSyntaxHelper.IsStationOrServiceStationMethodName(methodName);
-        }
-
-        /// <summary>
-        /// Determines whether the identifier is the receiver of a route handler member access.
-        /// </summary>
-        public static bool IsLocalVariableChainReceiver(IdentifierNameSyntax identifier)
-        {
-            var receiver = ReceiverExpressionSyntaxPeel.WrapTransparentOutermost(identifier);
-            if (receiver.Parent is not MemberAccessExpressionSyntax memberAccess)
-            {
-                return false;
-            }
-
-            if (!ReferenceEquals(memberAccess.Expression, receiver))
-            {
-                return false;
-            }
-
-            var methodName = memberAccess.Name.Identifier.ValueText;
-            return StationSyntaxHelper.IsStationOrServiceStationMethodName(methodName);
         }
 
         /// <summary>

@@ -30,15 +30,9 @@ namespace TrainOP.Generators.Parts
         /// <summary>
         /// Registers an origin part without an edge (fluent head before first Append).
         /// </summary>
-        public bool TryAdd(IRoutePart part)
+        public void Add(IRoutePart part)
         {
-            if (part == null)
-            {
-                return false;
-            }
-
             Track(part);
-            return true;
         }
 
         /// <summary>
@@ -91,12 +85,6 @@ namespace TrainOP.Generators.Parts
             PartEdgeKind kind,
             out ImmutableArray<Diagnostic> diagnostics)
         {
-            if (from == null || to == null)
-            {
-                diagnostics = ImmutableArray<Diagnostic>.Empty;
-                return false;
-            }
-
             var edge = new PartEdge(from, to, kind);
             if (!PartEdgeValidator.TryValidate(edge, out diagnostics))
             {

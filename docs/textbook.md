@@ -884,7 +884,7 @@ if (GetObject() is TrainRoute r)
 - `TrainRouteStation.Extensions.g.cs` — типизированные расширения и адаптеры;
 - `RouteSchemas.g.cs` — schema attributes для public factory (cross-assembly).
 
-Параллельно **анализатор** (`ChainValidationAnalyzer`) **не** генерирует код: симулирует поток вагонов и репортит TOP*.
+Параллельно **анализатор** (`TrainRouteValidationAnalyzer`) **не** генерирует код: симулирует поток вагонов и репортит TOP*.
 
 ```mermaid
 flowchart LR
@@ -895,32 +895,72 @@ flowchart LR
   E --> F["RouteReport"]
 ```
 
-### Пайплайн генератора
+### Стадии данных
+
+Генератор не пишет `.g.cs` по ходу разбора. Работа с данными разделена на стадии: каждая читает уже собранные структуры и кладёт следующую. Общий снимок — `GenerationModel` (сигнатуры, якоря, граф, группы, планы веток, терминалы, дескрипторы схем, join'ы, диагностики). Строки исходника и `AddSource` появляются только на последней стадии, в `GenerationEmit.EmitAll`.
+
+Номера **1a–7** — контракт стадий, а не порядок вызовов. Часть стадий независима и стартует раньше «предыдущего» номера. Переход — передача конкретного поля следующему потребителю.
 
 ```mermaid
-flowchart LR
-  S["SyntaxProvider<br/>RouteSiteDiscoverer"] --> R["RouteSite"]
-  R --> A["RouteGraphAssembler"]
-  A --> G["RouteGraph"]
-  G --> TSG["TypeSignatureGroup"]
-  TSG --> RSO["RegisterSourceOutput"]
-  RSO --> E["Extensions.g.cs"]
+flowchart TB
+  Src["исходник"] --> S1a["1a StationSignatures"]
+  Src --> S1b["1b Anchors"]
+  S1a --> Parts["IRoutePart[]"]
+  S1b --> Parts
+  Comp["Compilation"] --> S6["6 SchemaDescriptors"]
+  Parts --> S4["4 BuildChains"]
+  Comp --> S4
+  S4 --> Graph["RouteGraph"]
+  Comp --> S7["7 JoinChains"]
+  S7 --> Joins["JoinedChain[]"]
+  S1b --> S5["5 Terminals"]
+  Joins --> S5
+  Graph --> S2["2 GroupSignatures"]
+  S2 --> Groups["группы сигнатур"]
+  Graph --> Att["Attach"]
+  Groups --> Att
+  Att --> S3["3 BranchPlans"]
+  S6 --> Model["GenerationModel"]
+  S5 --> Model
+  Joins --> Model
+  Graph --> Model
+  S3 --> Model
+  Model --> Emit["Emit"]
+  Emit --> Files["Extensions.g.cs<br/>RouteSchemas.g.cs"]
 ```
 
-| Шаг | Компонент | Что делает |
-|-----|-----------|------------|
-| 1 | `RouteSiteDiscoverer` + `HandlerSchemaResolver` | Predicate → semantic parse → `RouteSite` (Station / ServiceStation / Anchor) |
-| 2 | `TryResolveHandler` | Лямбда / anonymous / method group из **текущей** compilation (иначе `null` → TOP009 в analyzer) |
-| 3 | `HandlerInputSchemaBuilder` | Wagon vs framework (`CargoManifest`, `RedSignal`, `SignalIssue`, `CancellationToken`), `ref` |
-| 4 | `HandlerReturnInference` | Anonymous/record, tuple, Green/Red/White, `Task<T>`, void, `CargoManifest` |
-| 5 | `RouteGraphAssembler` | Fluent-граф, `CallerChainKey`, `stationIndex`, bindings |
-| 6 | `TypeSignatureGroup` / `MergedStationSchema` | Группировка по CLR-сигнатуре; решение canonical vs chain-aware |
-| 7 | Emit | Адаптеры: Pull → invoke → `StationMerge` / typed merge |
-| 8 | `RouteSchemaExporter` | Schema для public factory |
+| Стадия | Откуда берёт | Что отдаёт дальше |
+|--------|--------------|-------------------|
+| **1a StationSignatures** | call site `.Station` / `.ServiceStation` | `StationLink` со `StationHandlerBinding` → поле `StationSignatures` |
+| **1b Anchors** | `new` / local / factory / импорт внешней schema | origin-часть (`IRoutePart`) → поле `Anchors` |
+| **4 BuildChains** | слитый `IRoutePart[]` + compilation | `RouteGraph`: цепочки и `ChainIndex` |
+| **7 JoinChains** | compilation: развилки `?:` / `??` / `switch` | `JoinedChains` |
+| **5 Terminals** | терминалы join с `CanMerge` + `InitialWagons` якорей | `Terminals` (`TerminalSet` и его `Origin`) |
+| **6 SchemaDescriptors** | public factory в compilation | `SchemaDescriptors` и диагностики TOP012 / TOP013 |
+| **2 GroupSignatures** | `StationLinks` и схемы внутри `RouteGraph` | группы по CLR-сигнатуре, ещё **без** цепочки |
+| **Attach** | группы + `RouteGraph.ChainIndex` | те же группы, уже с chain-binding |
+| **3 BranchPlans** | группы после Attach | `BranchPlans`: canonical или chain-aware; здесь же TOP007 |
+| **Emit** | заполненная `GenerationModel` | `TrainRouteStation.Extensions.g.cs` и `RouteSchemas.g.cs` |
 
-Инкрементальность: три источника (`stationSites`, `anchorSites`, `CompilationProvider`) склеиваются через `Combine`; SyntaxProvider отсеивает узлы дешёвым predicate, semantic transform — только для кандидатов. `RouteGraphAssembler` пересчитывается целиком из актуального массива `RouteSite` на каждый callback.
+Внутри **1a** схема handler'а собирается один раз: лямбда / anonymous method / method group из текущей compilation (`TryResolveHandler`; иначе `null` и позже TOP009), затем входы (`HandlerInputSchemaBuilder`: вагон против `CargoManifest` / `RedSignal` / `SignalIssue` / `CancellationToken`, флаг `ref`) и форма возврата (`HandlerReturnInference`). Это варианты одной стадии, не отдельные стадии. Внутри **4** шаги одного контракта `RouteGraph`: разбор уже материализованных частей → Connect → Validate (ребро).
 
-Handler schema строится **один раз** в discovery. Analyzer и generator делят `RouteSiteDiscoverer`, `RouteGraphAssembler`, `ChainDetector`.
+### Как данные переходят между стадиями
+
+1. **Синтаксис → части (1a параллельно 1b).** Два `SyntaxProvider`: станционный transform вызывает `StationLinkMaterializer`, якорный — `AnchorStage.TryResolvePart`. Предикаты остаются синтаксическими: узлы, не прошедшие predicate, в transform не попадают. `MergeParts` склеивает оба массива в один `ImmutableArray<IRoutePart>` и вместе с `CompilationProvider` отдаёт его в callback. Пока частей нет, граф и группы не стартуют.
+
+2. **Части → граф (4).** Единственный вход цепочек — `BuildChainsStage.Build(parts, compilation)`. Группировка сигнатур граф не строит: ей нужен уже готовый `RouteGraph`. Граф пересчитывается целиком на каждый callback из актуального массива частей.
+
+3. **Compilation → экспорт схем и join (6 и 7).** Эти стадии не читают `RouteGraph`. `SchemaDescriptorsStage.Collect` обходит public factory и возвращает дескрипторы экспорта. `JoinChainsStage.Collect` находит развилки receiver и возвращает `JoinedChain`. Оба результата приходят в `GenerationModel.Build` аргументами.
+
+4. **Join и якоря → терминалы (5).** `GenerationModel.Build` забирает merged terminals тех join, у которых `CanMerge`, и seed-вагоны якорей (`TerminalSet.Origin`: `Join` и `AnchorSeed`) и кладёт их в поле `Terminals`. Emit это поле не печатает: расширения берутся из `BranchPlans`, а `RouteSchemas.g.cs` — из `SchemaDescriptors`. У дескриптора свой `TerminalSet`: его считает симуляция путей factory внутри стадии 6, а не поле `Terminals` модели.
+
+5. **Граф → группы → план (2, затем Attach, затем 3).** `SignatureGroupingStage.Group(RouteGraph)` складывает handler'ы по CLR-сигнатуре и не смотрит, какой цепочке принадлежит вызов. Переход Attach — `AttachChainContextStage.Attach(groups, ChainIndex)`: к группе приклеиваются `ChainSiteBinding` по месту вызова. Без этого шага следующая стадия не отличает один набор имён вагонов от нескольких. `BranchPlanStage.Build` читает уже прикреплённые группы и пишет `BranchPlan[]`. `WithSignaturePipeline` кладёт группы и планы в ту же модель и discovery заново не собирает.
+
+6. **Модель → файлы (Emit).** `GenerationEmit.EmitAll` — единственный писатель. Сначала диагностики модели, затем `RouteSchemas.g.cs` из `SchemaDescriptors`, затем `TrainRouteStation.Extensions.g.cs` из `BranchPlans` (Pull → вызов handler'а → `StationMerge`). Пустые планы — файл расширений не эмитится; schema при живых дескрипторах всё равно выходит.
+
+Анализатор стадии 2, 3 и Emit не проходит. Он заново собирает сайты, вызывает `BuildChainsStage.Build` и `JoinChainsStage`, затем симулирует вагоны. Общий вход с генератором — discovery и граф; выход анализатора — диагностики TOP*, не файлы.
+
+Инкрементальность Roslyn: SyntaxProvider отсекает узлы дешёвым predicate; semantic transform — только у кандидатов. Склейка `stationSites` ∥ `anchorSites` ∥ `CompilationProvider` идёт через `Combine`.
 
 ### Canonical vs chain-aware эмиссия
 
@@ -949,12 +989,12 @@ flowchart TB
 |--|-----------|----------|
 | Цель | эмитить `.g.cs` | волны в IDE / build |
 | Нужен для data-oriented API | да | нет (но без него ошибки уедут в runtime) |
-| TOP007 | да (`TypeSignatureGroup`) | нет |
+| TOP007 | да (`BranchPlanStage`) | нет |
 | Симуляция вагонов | косвенно (bindings / schema) | полный walk |
 
 Практический смысл: без генератора API над данными не соберётся; без анализатора «едет», но `KeyNotFoundException` / неверный merge всплывут при запуске.
 
-Ключевые файлы: `TrainRouteStationGenerator.cs`, `TypeSignatureGroup.cs`, `MergedStationSchema.cs`, `StationAdapterBodyEmitter.cs`, `ChainValidationAnalyzer.cs`, `ChainGraphSimulator.cs`, `BranchRouteJoinValidator.cs`, `RouteFactoryPathAnalyzer.cs`, `RouteSchemaExporter.cs`.
+Ключевые файлы: `TrainRouteStationGenerator.cs`, `Discovery/RoutePartDiscoverer.cs`, `Pipeline/GenerationModel.cs`, `Pipeline/GenerationEmit.cs`, стадии `AnchorStage` / `BuildChainsStage` / `JoinChainsStage` / `SignatureGroupingStage` / `AttachChainContextStage` / `BranchPlanStage` / `SchemaDescriptorsStage`, `TrainRouteValidationAnalyzer.cs`, `ChainGraphSimulator.cs`.
 
 ---
 

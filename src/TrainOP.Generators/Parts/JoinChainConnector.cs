@@ -97,10 +97,7 @@ namespace TrainOP.Generators.Parts
 
             joinSeed = new JoinSeed(forkExpression, downstreamStation, arms, validation);
             constructor = new ChainConstructor();
-            if (!constructor.TryAdd(joinSeed))
-            {
-                return false;
-            }
+            constructor.Add(joinSeed);
 
             foreach (var arm in arms)
             {

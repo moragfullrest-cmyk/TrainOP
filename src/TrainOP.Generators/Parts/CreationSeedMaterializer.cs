@@ -1,6 +1,5 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System.Linq;
 
 namespace TrainOP.Generators.Parts
 {
@@ -31,7 +30,7 @@ namespace TrainOP.Generators.Parts
             seed = new CreationSeed(
                 objectCreation,
                 objectCreation.GetLocation(),
-                GetContainingMethod(objectCreation, semanticModel));
+                StationSyntaxHelper.GetEnclosingMethod(objectCreation, semanticModel));
             return true;
         }
 
@@ -46,17 +45,6 @@ namespace TrainOP.Generators.Parts
             seed = null;
             return node is ObjectCreationExpressionSyntax objectCreation
                 && TryMaterialize(objectCreation, semanticModel, out seed);
-        }
-
-        private static IMethodSymbol GetContainingMethod(SyntaxNode node, SemanticModel semanticModel)
-        {
-            var methodDeclaration = node.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault();
-            if (methodDeclaration == null)
-            {
-                return null;
-            }
-
-            return semanticModel.GetDeclaredSymbol(methodDeclaration) as IMethodSymbol;
         }
     }
 }

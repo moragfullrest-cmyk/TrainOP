@@ -79,7 +79,7 @@ internal sealed class ChainConstructor
 2. **Существующие валидаторы** — statement-window / alias TOP005, join TOP008, factory path TOP012/013, wagon sim через Terminals; не дублировать логику.
 3. Новые TOP* **не** вводить без отдельного решения оператора.
 
-На миграции (закрыто): legacy `RouteChainAnchor` / `StationChainLink` / `LegacyRoutePartAdapter` **удалены**. `RouteChain` = `IRoutePart Origin` + `StationLink[]`; `RouteSite.CreateAnchor(IRoutePart)`.
+На миграции (закрыто): legacy `RouteChainAnchor` / `StationChainLink` / `LegacyRoutePartAdapter` **удалены**. `RouteChain` = `IRoutePart Origin` + `StationLink[]`. Конверт `RouteSite` снят: discovery (`RoutePartDiscoverer`) сразу отдаёт `IRoutePart` (`StationLink` и origin-части).
 
 ## Граф зависимостей этапов
 

@@ -5,6 +5,7 @@ using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using TrainOP.Generators.Parts;
 using TrainOP.Generators.Route;
 using Xunit;
 
@@ -111,8 +112,8 @@ public static class LinearRoute
         .Station(""Next"", (int id) => new { id = id + 1 });
 }";
 
-            var (sites, graph, compilation) = BuildSitesGraph(source);
-            var model = GenerationModel.Build(sites, graph, compilation);
+            var (parts, graph, compilation) = BuildPartsGraph(source);
+            var model = GenerationModel.Build(parts, graph, compilation);
             var groups = SignatureGroupingStage.Group(model.RouteGraph);
             AttachChainContextStage.Attach(groups.Values, model.RouteGraph.ChainIndex);
             var plans = BranchPlanStage.Build(groups.Values);
@@ -129,11 +130,11 @@ public static class LinearRoute
 
         private static RouteGraph BuildGraph(string source)
         {
-            return BuildSitesGraph(source).Graph;
+            return BuildPartsGraph(source).Graph;
         }
 
-        private static (ImmutableArray<RouteSite> Sites, RouteGraph Graph, Compilation Compilation)
-            BuildSitesGraph(string source)
+        private static (ImmutableArray<IRoutePart> Parts, RouteGraph Graph, Compilation Compilation)
+            BuildPartsGraph(string source)
         {
             var syntaxTree = CSharpSyntaxTree.ParseText(source, path: @"C:\repo\SignaturePipeline.cs");
             var compilation = CSharpCompilation.Create(
@@ -142,9 +143,9 @@ public static class LinearRoute
                 GetMetadataReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            var sites = RouteSiteDiscoverer.CollectAll(compilation);
-            var graph = BuildChainsStage.Build(sites, compilation);
-            return (sites, graph, compilation);
+            var parts = RoutePartDiscoverer.CollectAll(compilation);
+            var graph = BuildChainsStage.Build(parts, compilation);
+            return (parts, graph, compilation);
         }
 
         private static MetadataReference[] GetMetadataReferences()

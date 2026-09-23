@@ -2,7 +2,9 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
+using System.Linq;
 using TrainOP.Generators.Handlers;
+
 namespace TrainOP.Generators
 {
     /// <summary>
@@ -94,6 +96,51 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
+        /// True when <paramref name="expression"/> is the receiver of a Station / ServiceStation member access.
+        /// </summary>
+        internal static bool IsRouteHandlerReceiver(ExpressionSyntax expression)
+        {
+            return TryGetRouteHandlerMemberAccess(expression, out _);
+        }
+
+        /// <summary>
+        /// When <paramref name="receiverExpression"/> is the receiver of a Station / ServiceStation call,
+        /// returns that invocation.
+        /// </summary>
+        internal static bool TryGetRouteHandlerInvocation(
+            ExpressionSyntax receiverExpression,
+            out InvocationExpressionSyntax invocation)
+        {
+            invocation = null;
+            if (!TryGetRouteHandlerMemberAccess(receiverExpression, out var memberAccess)
+                || memberAccess.Parent is not InvocationExpressionSyntax parentInvocation
+                || !ReferenceEquals(parentInvocation.Expression, memberAccess))
+            {
+                return false;
+            }
+
+            invocation = parentInvocation;
+            return true;
+        }
+
+        private static bool TryGetRouteHandlerMemberAccess(
+            ExpressionSyntax expression,
+            out MemberAccessExpressionSyntax memberAccess)
+        {
+            memberAccess = null;
+            var receiver = ReceiverExpressionSyntaxPeel.WrapTransparentOutermost(expression);
+            if (receiver.Parent is not MemberAccessExpressionSyntax access
+                || !ReferenceEquals(access.Expression, receiver)
+                || !IsStationOrServiceStationMethodName(access.Name.Identifier.ValueText))
+            {
+                return false;
+            }
+
+            memberAccess = access;
+            return true;
+        }
+
+        /// <summary>
         /// Determines whether an invocation has the syntactic shape of Station or ServiceStation.
         /// </summary>
         public static bool MatchesStationOrServiceStationShape(
@@ -126,6 +173,14 @@ namespace TrainOP.Generators
             return ReturnTypeDisplayHelper.EqualsTypeName(
                 typeSymbol.ToDisplayString(),
                 ReturnTypeDisplayHelper.TrainRouteTypeName);
+        }
+
+        /// <summary>
+        /// True when <paramref name="typeSymbol"/> is TrainRoute or an unresolved error type.
+        /// </summary>
+        internal static bool IsTrainRouteOrError(ITypeSymbol typeSymbol)
+        {
+            return IsTrainRoute(typeSymbol) || typeSymbol?.TypeKind == TypeKind.Error;
         }
 
         /// <summary>
@@ -557,24 +612,15 @@ namespace TrainOP.Generators
                 semanticModel,
                 stationKind,
                 memberAccess);
-            switch (result.Failure)
+            if (result.Failure is not (
+                HandlerSchemaFailure.UnresolvedHandler or HandlerSchemaFailure.InvalidSchema))
             {
-                case HandlerSchemaFailure.None:
-                case HandlerSchemaFailure.InvalidShape:
-                case HandlerSchemaFailure.NotTrainRouteReceiver:
-                case HandlerSchemaFailure.BuiltinHandler:
-                case HandlerSchemaFailure.BuiltinServiceHandler:
-                    return false;
-
-                case HandlerSchemaFailure.UnresolvedHandler:
-                case HandlerSchemaFailure.InvalidSchema:
-                    handlerLocation = result.HandlerLocation
-                        ?? invocation.ArgumentList.Arguments[1].Expression.GetLocation();
-                    return true;
-
-                default:
-                    return false;
+                return false;
             }
+
+            handlerLocation = result.HandlerLocation
+                ?? invocation.ArgumentList.Arguments[1].Expression.GetLocation();
+            return true;
         }
 
         /// <summary>
@@ -633,6 +679,28 @@ namespace TrainOP.Generators
             out ResolvedHandler resolved)
         {
             return StationHandlerResolver.TryResolveHandler(expression, semanticModel, out resolved);
+        }
+
+        /// <summary>
+        /// Enclosing method declaration, when <paramref name="node"/> sits inside one.
+        /// </summary>
+        internal static MethodDeclarationSyntax GetEnclosingMethodDeclaration(SyntaxNode node)
+        {
+            return node.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault();
+        }
+
+        /// <summary>
+        /// Symbol of the method that encloses <paramref name="node"/>.
+        /// </summary>
+        internal static IMethodSymbol GetEnclosingMethod(SyntaxNode node, SemanticModel semanticModel)
+        {
+            var methodDeclaration = GetEnclosingMethodDeclaration(node);
+            if (methodDeclaration == null)
+            {
+                return null;
+            }
+
+            return semanticModel.GetDeclaredSymbol(methodDeclaration) as IMethodSymbol;
         }
     }
 }

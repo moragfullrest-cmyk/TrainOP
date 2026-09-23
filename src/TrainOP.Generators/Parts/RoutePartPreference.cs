@@ -13,22 +13,15 @@ namespace TrainOP.Generators.Parts
         /// <summary>
         /// Preference score for a materialized origin part (higher wins on merge / select).
         /// </summary>
-        public static int Score(IRoutePart part)
-        {
-            switch (part)
+        public static int Score(IRoutePart part) =>
+            part switch
             {
-                case LocalBinding _:
-                    return 5;
-                case FactoryCall _:
-                    return 3;
-                case CreationSeed _:
-                    return 2;
-                case JoinSeed _:
-                    return 1;
-                default:
-                    return 0;
-            }
-        }
+                LocalBinding => 5,
+                FactoryCall => 3,
+                CreationSeed => 2,
+                JoinSeed => 1,
+                _ => 0
+            };
 
         /// <summary>
         /// Whether the chain key should stamp on <see cref="IRoutePart.Location"/>
@@ -36,27 +29,17 @@ namespace TrainOP.Generators.Parts
         /// </summary>
         public static bool IsOriginKeyed(IRoutePart part)
         {
-            if (part == null || !RouteOriginPorts.TryGetRoot(part, out var root))
+            if (!RouteOriginPorts.TryGetRoot(part, out var root))
             {
                 return false;
             }
 
-            if (root is ObjectCreationExpressionSyntax)
+            return root switch
             {
-                return false;
-            }
-
-            if (root is IdentifierNameSyntax)
-            {
-                return true;
-            }
-
-            if (part is FactoryCall || (part as LocalBinding)?.Origin is FactoryCall)
-            {
-                return true;
-            }
-
-            return false;
+                ObjectCreationExpressionSyntax => false,
+                IdentifierNameSyntax => true,
+                _ => part is FactoryCall or LocalBinding { Origin: FactoryCall }
+            };
         }
     }
 }

@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using TrainOP.Generators.Route;
 
 namespace TrainOP.Generators.Parts
 {
@@ -18,7 +17,7 @@ namespace TrainOP.Generators.Parts
         public static bool TryMaterialize(
             FactoryCall factoryCall,
             SemanticModel semanticModel,
-            IReadOnlyDictionary<string, RouteSite> stationByKey,
+            IReadOnlyDictionary<string, StationLink> stationByKey,
             ExpressionSyntax endpoint,
             bool allowEmpty,
             out ExtensionTail tail)
@@ -78,7 +77,7 @@ namespace TrainOP.Generators.Parts
         public static bool TryMaterialize(
             FactoryCall factoryCall,
             SemanticModel semanticModel,
-            IReadOnlyDictionary<string, RouteSite> stationByKey,
+            IReadOnlyDictionary<string, StationLink> stationByKey,
             out ExtensionTail tail)
         {
             return TryMaterialize(

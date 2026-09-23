@@ -80,23 +80,17 @@ namespace TrainOP.Generators.Parts
         /// Effective factory method: from <see cref="FactoryCall"/> origin or join stamp.
         /// </summary>
         public IMethodSymbol FactoryMethod =>
-            (Origin as FactoryCall)?.FactoryMethod ?? _stampedFactoryMethod;
+            Origin is FactoryCall { FactoryMethod: { } method }
+                ? method
+                : _stampedFactoryMethod;
 
         /// <summary>
         /// Effective factory kind when a factory stamp is present.
         /// </summary>
-        public FactoryCallKind? FactoryKind
-        {
-            get
-            {
-                if (Origin is FactoryCall factoryOrigin)
-                {
-                    return factoryOrigin.Kind;
-                }
-
-                return _stampedFactoryKind;
-            }
-        }
+        public FactoryCallKind? FactoryKind =>
+            Origin is FactoryCall factoryOrigin
+                ? factoryOrigin.Kind
+                : _stampedFactoryKind;
 
         /// <summary>
         /// Effective initial wagons: from <see cref="FactoryCall"/> origin when present,

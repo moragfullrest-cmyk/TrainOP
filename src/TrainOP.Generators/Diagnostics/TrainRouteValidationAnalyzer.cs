@@ -47,13 +47,23 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Analyzes each syntax tree for route chains, wagon-flow issues, and orphan handlers.
+        /// Builds the shared route graph, reports factory-path diagnostics from schema collect, then per-tree chain checks.
         /// </summary>
         private static void AnalyzeCompilation(CompilationStartAnalysisContext context)
         {
+            var compilation = context.Compilation;
+            var schemaDiagnostics = SchemaDescriptorsStage.Collect(compilation).Diagnostics;
             var graph = BuildChainsStage.Build(
-                RouteSiteDiscoverer.CollectAll(context.Compilation),
-                context.Compilation);
+                RoutePartDiscoverer.CollectAll(compilation),
+                compilation);
+
+            context.RegisterCompilationEndAction(endContext =>
+            {
+                foreach (var diagnostic in schemaDiagnostics)
+                {
+                    endContext.ReportDiagnostic(diagnostic);
+                }
+            });
 
             context.RegisterSemanticModelAction(modelContext =>
             {
@@ -66,13 +76,12 @@ namespace TrainOP.Generators
 
                 var tree = modelContext.SemanticModel.SyntaxTree;
                 var semanticModel = modelContext.SemanticModel;
-                var compilation = semanticModel.Compilation;
+                var joinSets = JoinChainsStage.Find(tree, semanticModel);
 
                 ReportMultipleTrainRouteCreationsOnSameLine(modelContext, tree, semanticModel);
-                ReportChainValidationDiagnostics(modelContext, graph, tree, compilation);
-                ReportFactoryValidationDiagnostics(modelContext, compilation);
-                ReportBranchJoinDiagnostics(modelContext, graph, tree, semanticModel);
-                ReportOrphanHandlers(modelContext, graph, tree, semanticModel);
+                ReportChainValidationDiagnostics(modelContext, graph, tree, semanticModel.Compilation);
+                ReportBranchJoinDiagnostics(modelContext, graph, joinSets, semanticModel);
+                ReportOrphanHandlers(modelContext, graph, tree, semanticModel, joinSets);
                 ReportUnsupportedHandlers(modelContext, tree, semanticModel);
             });
         }
@@ -155,10 +164,10 @@ namespace TrainOP.Generators
         private static void ReportBranchJoinDiagnostics(
             SemanticModelAnalysisContext modelContext,
             RouteGraph graph,
-            SyntaxTree tree,
+            ImmutableArray<BranchRouteJoinSet> joinSets,
             SemanticModel semanticModel)
         {
-            foreach (var joinSet in JoinChainsStage.Find(tree, semanticModel))
+            foreach (var joinSet in joinSets)
             {
                 var joined = JoinChainsStage.Join(joinSet, semanticModel);
                 foreach (var diagnostic in joined.Validation.Diagnostics)
@@ -189,10 +198,11 @@ namespace TrainOP.Generators
             SemanticModelAnalysisContext modelContext,
             RouteGraph graph,
             SyntaxTree tree,
-            SemanticModel semanticModel)
+            SemanticModel semanticModel,
+            ImmutableArray<BranchRouteJoinSet> joinSets)
         {
             var joinDownstream = new HashSet<InvocationExpressionSyntax>();
-            foreach (var joinSet in JoinChainsStage.Find(tree, semanticModel))
+            foreach (var joinSet in joinSets)
             {
                 if (joinSet.DownstreamStation != null)
                 {
@@ -267,38 +277,5 @@ namespace TrainOP.Generators
             }
         }
 
-        private static void ReportFactoryValidationDiagnostics(
-            SemanticModelAnalysisContext modelContext,
-            Compilation compilation)
-        {
-            var tree = modelContext.SemanticModel.SyntaxTree;
-            if (tree.FilePath.EndsWith(".g.cs", System.StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            var processed = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
-            foreach (var node in tree.GetRoot().DescendantNodes())
-            {
-                if (node is not MethodDeclarationSyntax methodDeclaration)
-                {
-                    continue;
-                }
-
-                var methodSymbol = modelContext.SemanticModel.GetDeclaredSymbol(methodDeclaration) as IMethodSymbol;
-                if (methodSymbol == null
-                    || !FactoryAccessibilityHelper.IsExportedFactoryContract(methodSymbol)
-                    || !StationSyntaxHelper.IsTrainRoute(methodSymbol.ReturnType)
-                    || !processed.Add(methodSymbol))
-                {
-                    continue;
-                }
-
-                foreach (var diagnostic in RouteFactoryPathValidator.Validate(methodSymbol, compilation).Diagnostics)
-                {
-                    modelContext.ReportDiagnostic(diagnostic);
-                }
-            }
-        }
     }
 }

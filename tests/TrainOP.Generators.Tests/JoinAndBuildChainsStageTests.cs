@@ -80,7 +80,7 @@ public static class Route
 }";
 
             var (_, _, compilation) = Compile(source);
-            var sites = RouteSiteDiscoverer.CollectAll(compilation);
+            var sites = RoutePartDiscoverer.CollectAll(compilation);
             var graph = BuildChainsStage.Build(sites, compilation);
             var model = GenerationModel.Build(sites, graph, compilation);
 
@@ -125,12 +125,12 @@ public static class LinearRoute
 }";
 
             var (_, _, compilation) = Compile(source);
-            var sites = RouteSiteDiscoverer.CollectAll(compilation);
+            var sites = RoutePartDiscoverer.CollectAll(compilation);
             var viaFacade = BuildChainsStage.Build(sites, compilation);
             var viaAssembler = RouteGraphAssembler.Build(sites, compilation);
 
             Assert.Equal(viaAssembler.Chains.Length, viaFacade.Chains.Length);
-            Assert.Equal(viaAssembler.StationSites.Length, viaFacade.StationSites.Length);
+            Assert.Equal(viaAssembler.StationLinks.Length, viaFacade.StationLinks.Length);
             Assert.Single(viaFacade.Chains);
             Assert.Equal(2, viaFacade.Chains[0].Stations.Length);
         }

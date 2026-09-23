@@ -246,7 +246,7 @@ namespace TrainOP.Generators
             Location fallbackLocation)
         {
             var locations = ImmutableArray.CreateBuilder<Location>();
-            foreach (var expression in CollectReturnPathExpressions(body))
+            foreach (var expression in HandlerReturnSchemaInference.CollectReturnPathExpressions(body))
             {
                 CollectTupleExpressionLocations(expression, locations);
             }

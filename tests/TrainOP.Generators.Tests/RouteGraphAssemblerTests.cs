@@ -950,7 +950,7 @@ public static class FactoryOffsetRoute
                 GetMetadataReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            var sites = RouteSiteDiscoverer.CollectAll(compilation);
+            var sites = RoutePartDiscoverer.CollectAll(compilation);
             var graph = BuildChainsStage.Build(sites, compilation);
 
             var consumerBinding = graph.ChainIndex.Values
@@ -1021,13 +1021,13 @@ public static class OrphanRoute
 }";
 
             var graph = BuildGraph(source);
-            var orphanInvocation = graph.StationSites
+            var orphanInvocation = graph.StationLinks
                 .Single(site => site.StationName == "Orphan")
                 .Invocation;
 
             Assert.True(graph.IsChainedInvocation(orphanInvocation.GetLocation()));
             Assert.True(graph.IsChainedInvocation(
-                graph.StationSites.Single(site => site.StationName == "Seed").Invocation.GetLocation()));
+                graph.StationLinks.Single(site => site.StationName == "Seed").Invocation.GetLocation()));
         }
 
         [Fact]
@@ -1044,7 +1044,7 @@ public static class DownstreamRoute
 }";
 
             var graph = BuildGraph(source);
-            var downstream = graph.StationSites.Single(site => site.StationName == "Next").Invocation;
+            var downstream = graph.StationLinks.Single(site => site.StationName == "Next").Invocation;
 
             Assert.True(graph.TryGetChainForInvocation(downstream, out var chain));
             Assert.Equal(2, chain.Stations.Length);
@@ -1059,7 +1059,7 @@ public static class DownstreamRoute
                 GetMetadataReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            var sites = RouteSiteDiscoverer.CollectAll(compilation);
+            var sites = RoutePartDiscoverer.CollectAll(compilation);
             return BuildChainsStage.Build(sites, compilation);
         }
 

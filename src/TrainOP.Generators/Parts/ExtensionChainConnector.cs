@@ -18,7 +18,7 @@ namespace TrainOP.Generators.Parts
         public static bool TryConnect(
             FactoryCall factoryCall,
             SemanticModel semanticModel,
-            IReadOnlyDictionary<string, RouteSite> stationByKey,
+            IReadOnlyDictionary<string, StationLink> stationByKey,
             out ChainConstructor constructor,
             out RouteChain chain)
         {
@@ -70,8 +70,12 @@ namespace TrainOP.Generators.Parts
                 return false;
             }
 
-            var factoryCall = origin as FactoryCall
-                ?? (origin as LocalBinding)?.Origin as FactoryCall;
+            var factoryCall = origin switch
+            {
+                FactoryCall direct => direct,
+                LocalBinding { Origin: FactoryCall nested } => nested,
+                _ => null
+            };
             if (factoryCall == null
                 && RouteOriginPorts.TryGetRoot(origin, out var root)
                 && !FactoryCallMaterializer.TryMaterialize(root, semanticModel, out factoryCall))

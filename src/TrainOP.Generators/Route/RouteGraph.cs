@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using TrainOP.Generators.Chain;
+using TrainOP.Generators.Parts;
 
 namespace TrainOP.Generators.Route
 {
@@ -16,12 +17,12 @@ namespace TrainOP.Generators.Route
         public RouteGraph(
             ImmutableArray<RouteChain> chains,
             IReadOnlyDictionary<string, ImmutableArray<ChainSiteBinding>> chainIndex,
-            ImmutableArray<RouteSite> stationSites,
+            ImmutableArray<StationLink> stationLinks,
             IReadOnlyDictionary<string, RouteChain> chainsByInvocationKey)
         {
             Chains = chains;
             ChainIndex = chainIndex;
-            StationSites = stationSites;
+            StationLinks = stationLinks;
             _chainsByInvocationKey = chainsByInvocationKey;
             _chainsByTree = BuildChainsByTree(chains);
             _chainedInvocationKeys = BuildChainedInvocationKeys(chainIndex);
@@ -35,12 +36,12 @@ namespace TrainOP.Generators.Route
 
         public IReadOnlyDictionary<string, ImmutableArray<ChainSiteBinding>> ChainIndex { get; }
 
-        public ImmutableArray<RouteSite> StationSites { get; }
+        public ImmutableArray<StationLink> StationLinks { get; }
 
         public static RouteGraph Empty { get; } = new RouteGraph(
             ImmutableArray<RouteChain>.Empty,
             new Dictionary<string, ImmutableArray<ChainSiteBinding>>(StringComparer.Ordinal),
-            ImmutableArray<RouteSite>.Empty,
+            ImmutableArray<StationLink>.Empty,
             new Dictionary<string, RouteChain>(StringComparer.Ordinal));
 
         /// <summary>
@@ -133,16 +134,7 @@ namespace TrainOP.Generators.Route
                     continue;
                 }
 
-                if (!result.TryGetValue(treePath, out var list))
-                {
-                    list = new List<RouteChain>();
-                    result[treePath] = list;
-                }
-
-                if (!list.Contains(chain))
-                {
-                    list.Add(chain);
-                }
+                AddUniqueChain(result, treePath, chain);
 
                 for (var stationIndex = 0; stationIndex < chain.Stations.Length; stationIndex++)
                 {
@@ -154,16 +146,7 @@ namespace TrainOP.Generators.Route
                         continue;
                     }
 
-                    if (!result.TryGetValue(stationPath, out var stationList))
-                    {
-                        stationList = new List<RouteChain>();
-                        result[stationPath] = stationList;
-                    }
-
-                    if (!stationList.Contains(chain))
-                    {
-                        stationList.Add(chain);
-                    }
+                    AddUniqueChain(result, stationPath, chain);
                 }
             }
 
@@ -171,6 +154,23 @@ namespace TrainOP.Generators.Route
                 kvp => kvp.Key,
                 kvp => kvp.Value.ToImmutableArray(),
                 StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static void AddUniqueChain(
+            IDictionary<string, List<RouteChain>> chainsByPath,
+            string path,
+            RouteChain chain)
+        {
+            if (!chainsByPath.TryGetValue(path, out var list))
+            {
+                list = new List<RouteChain>();
+                chainsByPath[path] = list;
+            }
+
+            if (!list.Contains(chain))
+            {
+                list.Add(chain);
+            }
         }
 
         private static HashSet<string> BuildChainedInvocationKeys(

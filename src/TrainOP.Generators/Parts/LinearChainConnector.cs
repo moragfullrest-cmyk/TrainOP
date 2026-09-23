@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using TrainOP.Generators.Route;
@@ -23,40 +22,35 @@ namespace TrainOP.Generators.Parts
         public static bool TryConnect(
             IRoutePart origin,
             SemanticModel semanticModel,
-            IReadOnlyDictionary<string, RouteSite> stationByKey,
+            IReadOnlyDictionary<string, StationLink> stationByKey,
             out ChainConstructor constructor,
             out RouteChain chain)
         {
             constructor = null;
             chain = null;
-            if (origin == null || semanticModel == null)
+            if (semanticModel == null)
             {
                 return false;
             }
 
             constructor = new ChainConstructor();
 
-            if (origin is LocalBinding localBinding)
+            return origin switch
             {
-                return TryConnectLocalBinding(
+                LocalBinding localBinding => TryConnectLocalBinding(
                     localBinding,
                     semanticModel,
                     stationByKey,
                     constructor,
-                    out chain);
-            }
-
-            if (origin is CreationSeed || origin is FactoryCall)
-            {
-                return TryConnectFluentOrigin(
+                    out chain),
+                CreationSeed or FactoryCall => TryConnectFluentOrigin(
                     origin,
                     semanticModel,
                     stationByKey,
                     constructor,
-                    out chain);
-            }
-
-            return false;
+                    out chain),
+                _ => false
+            };
         }
 
         /// <summary>
@@ -74,7 +68,7 @@ namespace TrainOP.Generators.Parts
         private static bool TryConnectLocalBinding(
             LocalBinding localBinding,
             SemanticModel semanticModel,
-            IReadOnlyDictionary<string, RouteSite> stationByKey,
+            IReadOnlyDictionary<string, StationLink> stationByKey,
             ChainConstructor constructor,
             out RouteChain chain)
         {
@@ -87,9 +81,9 @@ namespace TrainOP.Generators.Parts
                     return false;
                 }
             }
-            else if (!constructor.TryAdd(localBinding))
+            else
             {
-                return false;
+                constructor.Add(localBinding);
             }
 
             var stations = RouteOriginWindow.CollectLocalStatementStationLinks(
@@ -97,26 +91,18 @@ namespace TrainOP.Generators.Parts
                 semanticModel,
                 stationByKey);
 
-            if (stations.Length == 0
-                || !TryAppendStations(constructor, localBinding, stations))
-            {
-                return false;
-            }
-
-            return RouteOriginPorts.TryToRouteChain(constructor, out chain)
-                && chain.Stations.Length > 0;
+            return TryFinishChain(constructor, localBinding, stations, out chain);
         }
 
         private static bool TryConnectFluentOrigin(
             IRoutePart origin,
             SemanticModel semanticModel,
-            IReadOnlyDictionary<string, RouteSite> stationByKey,
+            IReadOnlyDictionary<string, StationLink> stationByKey,
             ChainConstructor constructor,
             out RouteChain chain)
         {
             chain = null;
-            var root = GetFluentRoot(origin);
-            if (root == null)
+            if (!RouteOriginPorts.TryGetRoot(origin, out var root))
             {
                 return false;
             }
@@ -131,7 +117,7 @@ namespace TrainOP.Generators.Parts
                     assignedLocal,
                     origin.Location,
                     origin,
-                    GetContainingMethod(origin));
+                    RouteOriginPorts.GetContainingMethod(origin));
 
                 if (!constructor.TryBind(origin, binding, out _))
                 {
@@ -143,21 +129,11 @@ namespace TrainOP.Generators.Parts
                     semanticModel,
                     stationByKey);
 
-                if (collected.Length == 0
-                    || !TryAppendStations(constructor, binding, collected))
-                {
-                    return false;
-                }
-
-                return RouteOriginPorts.TryToRouteChain(constructor, out chain)
-                    && chain.Stations.Length > 0;
+                return TryFinishChain(constructor, binding, collected, out chain);
             }
 
             // Pure fluent walk from origin root.
-            if (!constructor.TryAdd(origin))
-            {
-                return false;
-            }
+            constructor.Add(origin);
 
             var stations = ImmutableArray.CreateBuilder<StationLink>();
             var current = root;
@@ -171,9 +147,19 @@ namespace TrainOP.Generators.Parts
             {
             }
 
-            if (stations.Count == 0
-                || !TryAppendStations(constructor, origin, stations.ToImmutable()))
+            return TryFinishChain(constructor, origin, stations.ToImmutable(), out chain);
+        }
+
+        private static bool TryFinishChain(
+            ChainConstructor constructor,
+            IRoutePart upstream,
+            ImmutableArray<StationLink> stations,
+            out RouteChain chain)
+        {
+            if (stations.Length == 0
+                || !TryAppendStations(constructor, upstream, stations))
             {
+                chain = null;
                 return false;
             }
 
@@ -189,11 +175,6 @@ namespace TrainOP.Generators.Parts
             var currentUpstream = upstream;
             foreach (var link in stations)
             {
-                if (link == null)
-                {
-                    continue;
-                }
-
                 if (!constructor.TryAppend(currentUpstream, link, out _))
                 {
                     return false;
@@ -203,32 +184,6 @@ namespace TrainOP.Generators.Parts
             }
 
             return true;
-        }
-
-        private static ExpressionSyntax GetFluentRoot(IRoutePart origin)
-        {
-            switch (origin)
-            {
-                case CreationSeed seed:
-                    return seed.Root;
-                case FactoryCall factoryCall:
-                    return factoryCall.Root;
-                default:
-                    return null;
-            }
-        }
-
-        private static IMethodSymbol GetContainingMethod(IRoutePart origin)
-        {
-            switch (origin)
-            {
-                case CreationSeed seed:
-                    return seed.ContainingMethod;
-                case FactoryCall factoryCall:
-                    return factoryCall.ContainingMethod;
-                default:
-                    return null;
-            }
         }
     }
 }

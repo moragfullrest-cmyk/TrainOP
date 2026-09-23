@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -10,7 +9,7 @@ using TrainOP.Generators.Route;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Assembles <see cref="RouteGraph"/> instances from discovered <see cref="RouteSite"/> nodes.
+    /// Assembles <see cref="RouteGraph"/> instances from discovered route parts.
     /// Prefer <see cref="BuildChainsStage"/> at call sites that only need the graph.
     /// </summary>
     internal static class RouteGraphAssembler
@@ -18,42 +17,31 @@ namespace TrainOP.Generators
         /// <summary>
         /// Builds route chains from discovered origins via <see cref="LinearChainConnector"/>
         /// (parts → Bind/Append), including join-assign locals.
-        /// Station sites supply pre-resolved handler bindings for station materialize.
+        /// Station links supply pre-resolved handlers for station materialize.
         /// </summary>
-        public static RouteGraph Build(ImmutableArray<RouteSite> sites, Compilation compilation)
+        public static RouteGraph Build(ImmutableArray<IRoutePart> parts, Compilation compilation)
         {
-            if (compilation == null || sites.IsDefaultOrEmpty)
+            if (compilation == null || parts.IsDefaultOrEmpty)
             {
                 return RouteGraph.Empty;
             }
 
-            var stationSites = ImmutableArray.CreateBuilder<RouteSite>();
+            var stationLinks = ImmutableArray.CreateBuilder<StationLink>();
             var originByKey = new Dictionary<string, IRoutePart>(StringComparer.Ordinal);
-            var stationByKey = new Dictionary<string, RouteSite>(StringComparer.Ordinal);
+            var stationByKey = new Dictionary<string, StationLink>(StringComparer.Ordinal);
 
-            for (var i = 0; i < sites.Length; i++)
+            for (var i = 0; i < parts.Length; i++)
             {
-                var site = sites[i];
-                if (site == null)
+                var part = parts[i];
+                if (part is StationLink stationLink)
                 {
+                    RegisterStation(stationLinks, stationByKey, stationLink);
                     continue;
                 }
 
-                if (site.IsStation)
+                if (RouteOriginPorts.IsOriginPart(part))
                 {
-                    stationSites.Add(site);
-                    var key = ChainSiteBindingLookup.BuildLocationKey(site.Invocation.GetLocation());
-                    if (key.Length > 0)
-                    {
-                        stationByKey[key] = site;
-                    }
-
-                    continue;
-                }
-
-                if (site.Kind == RouteSiteKind.Anchor && site.OriginPart != null)
-                {
-                    RegisterOrigin(originByKey, site.OriginPart, compilation);
+                    RegisterOrigin(originByKey, part, compilation);
                 }
             }
 
@@ -91,20 +79,8 @@ namespace TrainOP.Generators
                         station.Invocation,
                         station.Handler);
 
-                    var locationKey = ChainSiteBindingLookup.BuildLocationKey(station.InvocationLocation);
-                    if (!chainIndex.TryGetValue(locationKey, out var list))
-                    {
-                        list = new List<ChainSiteBinding>();
-                        chainIndex[locationKey] = list;
-                    }
-
-                    list.Add(binding);
-
-                    var invocationKey = ChainSiteBindingLookup.BuildLocationKey(station.Invocation.GetLocation());
-                    if (invocationKey.Length > 0)
-                    {
-                        chainsByInvocationKey[invocationKey] = chain;
-                    }
+                    RegisterBinding(chainIndex, station.InvocationLocation, binding);
+                    RegisterByLocation(chainsByInvocationKey, station.Invocation.GetLocation(), chain);
                 }
             }
 
@@ -117,7 +93,7 @@ namespace TrainOP.Generators
             return new RouteGraph(
                 chains.ToImmutable(),
                 immutableIndex,
-                stationSites.ToImmutable(),
+                stationLinks.ToImmutable(),
                 chainsByInvocationKey);
         }
 
@@ -178,9 +154,9 @@ namespace TrainOP.Generators
         private static RouteChain BuildChain(
             IRoutePart origin,
             Compilation compilation,
-            IReadOnlyDictionary<string, RouteSite> stationByKey)
+            IReadOnlyDictionary<string, StationLink> stationByKey)
         {
-            if (origin == null || !RouteOriginPorts.TryGetRoot(origin, out var root))
+            if (!RouteOriginPorts.TryGetRoot(origin, out var root))
             {
                 return null;
             }
@@ -196,16 +172,47 @@ namespace TrainOP.Generators
                 : null;
         }
 
+        private static void RegisterStation(
+            ImmutableArray<StationLink>.Builder stationLinks,
+            IDictionary<string, StationLink> stationByKey,
+            StationLink stationLink)
+        {
+            stationLinks.Add(stationLink);
+            RegisterByLocation(stationByKey, stationLink.Invocation.GetLocation(), stationLink);
+        }
+
+        private static void RegisterBinding(
+            IDictionary<string, List<ChainSiteBinding>> chainIndex,
+            Location location,
+            ChainSiteBinding binding)
+        {
+            var key = ChainSiteBindingLookup.BuildLocationKey(location);
+            if (!chainIndex.TryGetValue(key, out var list))
+            {
+                list = new List<ChainSiteBinding>();
+                chainIndex[key] = list;
+            }
+
+            list.Add(binding);
+        }
+
+        private static void RegisterByLocation<TValue>(
+            IDictionary<string, TValue> index,
+            Location location,
+            TValue value)
+        {
+            var key = ChainSiteBindingLookup.BuildLocationKey(location);
+            if (key.Length > 0)
+            {
+                index[key] = value;
+            }
+        }
+
         private static void RegisterOrigin(
             IDictionary<string, IRoutePart> originByKey,
             IRoutePart origin,
             Compilation compilation)
         {
-            if (origin == null)
-            {
-                return;
-            }
-
             var originKey = BuildOriginKey(origin, compilation);
             if (string.IsNullOrEmpty(originKey))
             {

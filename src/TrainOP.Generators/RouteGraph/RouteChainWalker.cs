@@ -1,7 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
-using System.Linq;
 using TrainOP.Generators.Chain;
 using TrainOP.Generators.Parts;
 using TrainOP.Generators.Route;
@@ -42,42 +41,12 @@ namespace TrainOP.Generators
             }
 
             var stations = ImmutableArray.CreateBuilder<StationLink>();
-
-            if (StationSyntaxHelper.IsCandidateServiceStationInvocation(startStation)
-                && StationSyntaxHelper.TryGetDataServiceStationInvocation(
-                    startStation,
-                    semanticModel,
-                    out var serviceStationName,
-                    out var serviceHandlerLocation,
-                    out var serviceHandlerBinding))
-            {
-                stations.Add(new StationLink(
-                    StationLinkKind.ServiceStation,
-                    serviceStationName,
-                    serviceHandlerLocation,
-                    serviceHandlerLocation,
-                    serviceHandlerBinding,
-                    startStation));
-            }
-            else if (StationSyntaxHelper.TryGetDataStationInvocation(
-                startStation,
-                semanticModel,
-                out var stationName,
-                out var handlerLocation,
-                out var handlerBinding))
-            {
-                stations.Add(new StationLink(
-                    StationLinkKind.Station,
-                    stationName,
-                    startStation.ArgumentList.Arguments[0].GetLocation(),
-                    handlerLocation,
-                    handlerBinding,
-                    startStation));
-            }
-            else
+            if (!StationLinkMaterializer.TryMaterialize(startStation, semanticModel, out var startLink))
             {
                 return false;
             }
+
+            stations.Add(startLink);
 
             var joinSeed = new JoinSeed(
                 startStation,
@@ -134,7 +103,7 @@ namespace TrainOP.Generators
                 factoryCall.Kind,
                 factoryCall.FactoryMethod,
                 wagons,
-                GetContainingMethod(factoryCall.Root, semanticModel));
+                StationSyntaxHelper.GetEnclosingMethod(factoryCall.Root, semanticModel));
             chain = new RouteChain(origin, ImmutableArray<StationLink>.Empty);
             simulation = new ChainSimulationResult(
                 wagons,
@@ -212,17 +181,6 @@ namespace TrainOP.Generators
                     stations.Add(link);
                 }
             }
-        }
-
-        private static IMethodSymbol GetContainingMethod(SyntaxNode node, SemanticModel semanticModel)
-        {
-            var methodDeclaration = node.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault();
-            if (methodDeclaration == null)
-            {
-                return null;
-            }
-
-            return semanticModel.GetDeclaredSymbol(methodDeclaration) as IMethodSymbol;
         }
     }
 }

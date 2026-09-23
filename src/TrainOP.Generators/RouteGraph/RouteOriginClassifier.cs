@@ -151,8 +151,7 @@ namespace TrainOP.Generators
             if (pattern is DeclarationPatternSyntax declaration
                 && declaration.Designation is SingleVariableDesignationSyntax designation
                 && semanticModel.GetDeclaredSymbol(designation) is ILocalSymbol declaredLocal
-                && (StationSyntaxHelper.IsTrainRoute(declaredLocal.Type)
-                    || declaredLocal.Type?.TypeKind == TypeKind.Error))
+                && StationSyntaxHelper.IsTrainRouteOrError(declaredLocal.Type))
             {
                 localSymbol = declaredLocal;
                 return true;
@@ -161,8 +160,7 @@ namespace TrainOP.Generators
             if (pattern is VarPatternSyntax varPattern
                 && varPattern.Designation is SingleVariableDesignationSyntax varDesignation
                 && semanticModel.GetDeclaredSymbol(varDesignation) is ILocalSymbol varLocal
-                && (StationSyntaxHelper.IsTrainRoute(varLocal.Type)
-                    || varLocal.Type?.TypeKind == TypeKind.Error))
+                && StationSyntaxHelper.IsTrainRouteOrError(varLocal.Type))
             {
                 localSymbol = varLocal;
                 return true;
@@ -281,29 +279,9 @@ namespace TrainOP.Generators
             SemanticModel semanticModel)
         {
             slot = ReceiverExpressionSyntaxPeel.UnwrapTransparent(slot);
-            if (slot == null)
-            {
-                return false;
-            }
-
-            if (slot is DeclarationExpressionSyntax declaration
-                && declaration.Designation is SingleVariableDesignationSyntax designation
-                && semanticModel.GetDeclaredSymbol(designation) is ILocalSymbol declaredLocal
-                && SymbolEqualityComparer.Default.Equals(declaredLocal, localSymbol))
-            {
-                return StationSyntaxHelper.IsTrainRoute(declaredLocal.Type)
-                    || declaredLocal.Type?.TypeKind == TypeKind.Error;
-            }
-
-            if (slot is IdentifierNameSyntax identifier
-                && semanticModel.GetSymbolInfo(identifier).Symbol is ILocalSymbol existingLocal
-                && SymbolEqualityComparer.Default.Equals(existingLocal, localSymbol))
-            {
-                return StationSyntaxHelper.IsTrainRoute(existingLocal.Type)
-                    || existingLocal.Type?.TypeKind == TypeKind.Error;
-            }
-
-            return false;
+            return TryReadLocal(slot, semanticModel, out var slotLocal)
+                && SymbolEqualityComparer.Default.Equals(slotLocal, localSymbol)
+                && StationSyntaxHelper.IsTrainRouteOrError(slotLocal.Type);
         }
 
         internal static bool TryGetOutArgumentLocal(
@@ -319,21 +297,29 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (argument.Expression is DeclarationExpressionSyntax declaration
+            return TryReadLocal(argument.Expression, semanticModel, out localSymbol)
+                && StationSyntaxHelper.IsTrainRouteOrError(localSymbol.Type);
+        }
+
+        private static bool TryReadLocal(
+            ExpressionSyntax expression,
+            SemanticModel semanticModel,
+            out ILocalSymbol localSymbol)
+        {
+            localSymbol = null;
+            if (expression is DeclarationExpressionSyntax declaration
                 && declaration.Designation is SingleVariableDesignationSyntax designation
                 && semanticModel.GetDeclaredSymbol(designation) is ILocalSymbol declaredLocal)
             {
                 localSymbol = declaredLocal;
-                return StationSyntaxHelper.IsTrainRoute(declaredLocal.Type)
-                    || declaredLocal.Type?.TypeKind == TypeKind.Error;
+                return true;
             }
 
-            if (argument.Expression is IdentifierNameSyntax identifier
+            if (expression is IdentifierNameSyntax identifier
                 && semanticModel.GetSymbolInfo(identifier).Symbol is ILocalSymbol existingLocal)
             {
                 localSymbol = existingLocal;
-                return StationSyntaxHelper.IsTrainRoute(existingLocal.Type)
-                    || existingLocal.Type?.TypeKind == TypeKind.Error;
+                return true;
             }
 
             return false;
@@ -348,15 +334,13 @@ namespace TrainOP.Generators
             if (!RouteChainRootResolver.TryResolveFactoryRoot(
                     invocation,
                     semanticModel,
-                    out var factoryRoot,
-                    out _,
-                    out _,
-                    out _))
+                    out var factoryCall)
+                || factoryCall.Root == null)
             {
                 return false;
             }
 
-            originExpression = factoryRoot;
+            originExpression = factoryCall.Root;
             return true;
         }
 
@@ -387,12 +371,10 @@ namespace TrainOP.Generators
             if (RouteChainRootResolver.TryResolveFactoryRoot(
                     expression,
                     semanticModel,
-                    out var factoryRoot,
-                    out _,
-                    out _,
-                    out _))
+                    out var factoryCall)
+                && factoryCall.Root != null)
             {
-                originExpression = factoryRoot;
+                originExpression = factoryCall.Root;
                 return true;
             }
 

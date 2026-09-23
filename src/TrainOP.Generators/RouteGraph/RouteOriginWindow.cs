@@ -3,10 +3,8 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using TrainOP.Generators.Chain;
 using TrainOP.Generators.Parts;
-using TrainOP.Generators.Route;
 
 namespace TrainOP.Generators
 {
@@ -41,7 +39,7 @@ namespace TrainOP.Generators
                     return false;
                 }
 
-                methodDeclaration = identifier.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault();
+                methodDeclaration = StationSyntaxHelper.GetEnclosingMethodDeclaration(identifier);
                 if (methodDeclaration == null)
                 {
                     return false;
@@ -186,14 +184,14 @@ namespace TrainOP.Generators
         /// fluent stations on the assignment RHS (if any), then statement roots on the local
         /// until the next origin assignment. Fluent tails on each statement via peel.
         /// </summary>
-        public static ImmutableArray<StationChainLink> CollectLocalStatementStationLinks(
+        public static ImmutableArray<StationLink> CollectLocalStatementStationLinks(
             IdentifierNameSyntax localIdentifier,
             SemanticModel semanticModel,
-            IReadOnlyDictionary<string, RouteSite> stationSitesByKey = null)
+            IReadOnlyDictionary<string, StationLink> stationSitesByKey = null)
         {
             if (localIdentifier == null || semanticModel == null)
             {
-                return ImmutableArray<StationChainLink>.Empty;
+                return ImmutableArray<StationLink>.Empty;
             }
 
             if (!TryGetLocalTrainRouteInMethod(
@@ -202,7 +200,7 @@ namespace TrainOP.Generators
                     out var localSymbol,
                     out var methodDeclaration))
             {
-                return ImmutableArray<StationChainLink>.Empty;
+                return ImmutableArray<StationLink>.Empty;
             }
 
             if (!TryFindLatestOriginAssignmentBefore(
@@ -214,7 +212,7 @@ namespace TrainOP.Generators
                     out var originAssignmentSpanStart,
                     out var assignmentRhs))
             {
-                return ImmutableArray<StationChainLink>.Empty;
+                return ImmutableArray<StationLink>.Empty;
             }
 
             var windowEnd = int.MaxValue;
@@ -228,7 +226,7 @@ namespace TrainOP.Generators
                 windowEnd = nextOriginSpanStart;
             }
 
-            var stations = ImmutableArray.CreateBuilder<StationChainLink>();
+            var stations = ImmutableArray.CreateBuilder<StationLink>();
 
             // SL-3a: stations on fluent assignment RHS come first (do NOT call EndingAt —
             // that re-enters Collect for locals and can fail factory-path simulation).
@@ -348,8 +346,8 @@ namespace TrainOP.Generators
         private static void AppendFluentStationsFromRootToEndpoint(
             ExpressionSyntax endpoint,
             SemanticModel semanticModel,
-            ImmutableArray<StationChainLink>.Builder stations,
-            IReadOnlyDictionary<string, RouteSite> stationSitesByKey)
+            ImmutableArray<StationLink>.Builder stations,
+            IReadOnlyDictionary<string, StationLink> stationSitesByKey)
         {
             var target = ReceiverExpressionSyntaxPeel.UnwrapTransparent(endpoint);
             if (target == null || stations == null)
@@ -384,8 +382,8 @@ namespace TrainOP.Generators
         private static void AppendStatementRootAndFluentTail(
             InvocationExpressionSyntax rootInvocation,
             SemanticModel semanticModel,
-            ImmutableArray<StationChainLink>.Builder stations,
-            IReadOnlyDictionary<string, RouteSite> stationSitesByKey)
+            ImmutableArray<StationLink>.Builder stations,
+            IReadOnlyDictionary<string, StationLink> stationSitesByKey)
         {
             if (StationLinkMaterializer.TryMaterialize(
                     rootInvocation,
@@ -393,7 +391,7 @@ namespace TrainOP.Generators
                     stationSitesByKey,
                     out var link))
             {
-                stations.Add(link.ToStationChainLink());
+                stations.Add(link);
             }
 
             var current = (ExpressionSyntax)rootInvocation;
@@ -422,7 +420,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            methodDeclaration = identifier.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault();
+            methodDeclaration = StationSyntaxHelper.GetEnclosingMethodDeclaration(identifier);
             if (methodDeclaration == null)
             {
                 return false;
@@ -590,7 +588,10 @@ namespace TrainOP.Generators
                 && SymbolEqualityComparer.Default.Equals(outLocal, localSymbol)
                 && argument.Parent is ArgumentListSyntax argumentList
                 && argumentList.Parent is InvocationExpressionSyntax outInvocation
-                && TryClassifyOutFactoryInvocation(outInvocation, semanticModel, out var outOrigin))
+                && RouteOriginClassifier.TryClassifyOutFactoryInvocation(
+                    outInvocation,
+                    semanticModel,
+                    out var outOrigin))
             {
                 originExpression = outOrigin;
                 assignmentSpanStart = outInvocation.SpanStart;
@@ -693,21 +694,9 @@ namespace TrainOP.Generators
             methodDeclaration = null;
 
             var outermost = chainRoot;
-            while (true)
+            while (StationSyntaxHelper.TryGetRouteHandlerInvocation(outermost, out var invocation))
             {
-                var wrapped = ReceiverExpressionSyntaxPeel.WrapTransparentOutermost(outermost);
-                if (wrapped.Parent is MemberAccessExpressionSyntax memberAccess
-                    && ReferenceEquals(memberAccess.Expression, wrapped)
-                    && StationSyntaxHelper.IsStationOrServiceStationMethodName(
-                        memberAccess.Name.Identifier.ValueText)
-                    && memberAccess.Parent is InvocationExpressionSyntax invocation
-                    && ReferenceEquals(invocation.Expression, memberAccess))
-                {
-                    outermost = invocation;
-                    continue;
-                }
-
-                break;
+                outermost = invocation;
             }
 
             if (ReferenceEquals(outermost, chainRoot))
@@ -716,7 +705,7 @@ namespace TrainOP.Generators
             }
 
             var rhs = ReceiverExpressionSyntaxPeel.WrapTransparentOutermost(outermost);
-            methodDeclaration = chainRoot.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault();
+            methodDeclaration = StationSyntaxHelper.GetEnclosingMethodDeclaration(chainRoot);
             if (methodDeclaration == null)
             {
                 return false;
@@ -725,8 +714,7 @@ namespace TrainOP.Generators
             if (rhs.Parent is EqualsValueClauseSyntax equals
                 && equals.Parent is VariableDeclaratorSyntax declarator
                 && semanticModel.GetDeclaredSymbol(declarator) is ILocalSymbol declaredLocal
-                && (StationSyntaxHelper.IsTrainRoute(declaredLocal.Type)
-                    || declaredLocal.Type?.TypeKind == TypeKind.Error))
+                && StationSyntaxHelper.IsTrainRouteOrError(declaredLocal.Type))
             {
                 localSymbol = declaredLocal;
                 return true;
@@ -738,8 +726,7 @@ namespace TrainOP.Generators
                     ReceiverExpressionSyntaxPeel.WrapTransparentOutermost(assignment.Right),
                     rhs)
                 && semanticModel.GetSymbolInfo(assignment.Left).Symbol is ILocalSymbol assignedLocal
-                && (StationSyntaxHelper.IsTrainRoute(assignedLocal.Type)
-                    || assignedLocal.Type?.TypeKind == TypeKind.Error))
+                && StationSyntaxHelper.IsTrainRouteOrError(assignedLocal.Type))
             {
                 localSymbol = assignedLocal;
                 return true;

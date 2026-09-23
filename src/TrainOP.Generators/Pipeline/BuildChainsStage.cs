@@ -18,11 +18,11 @@ namespace TrainOP.Generators
     internal static class BuildChainsStage
     {
         /// <summary>
-        /// Assembles <see cref="RouteGraph"/> from discovered sites.
+        /// Assembles <see cref="RouteGraph"/> from discovered parts.
         /// </summary>
-        public static RouteGraph Build(ImmutableArray<RouteSite> sites, Compilation compilation)
+        public static RouteGraph Build(ImmutableArray<IRoutePart> parts, Compilation compilation)
         {
-            return RouteGraphAssembler.Build(sites, compilation);
+            return RouteGraphAssembler.Build(parts, compilation);
         }
 
         /// <summary>

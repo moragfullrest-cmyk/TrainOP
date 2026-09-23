@@ -68,34 +68,23 @@ namespace TrainOP.Generators
         {
             while (expression != null)
             {
-                var parent = expression.Parent;
-
-                if (parent is ParenthesizedExpressionSyntax parenthesized
-                    && ReferenceEquals(parenthesized.Expression, expression))
+                ExpressionSyntax climbed = expression.Parent switch
                 {
-                    expression = parenthesized;
-                    continue;
-                }
+                    ParenthesizedExpressionSyntax parenthesized
+                        when ReferenceEquals(parenthesized.Expression, expression) => parenthesized,
+                    PostfixUnaryExpressionSyntax postfix
+                        when postfix.IsKind(SyntaxKind.SuppressNullableWarningExpression)
+                            && ReferenceEquals(postfix.Operand, expression) => postfix,
+                    CastExpressionSyntax cast
+                        when ReferenceEquals(cast.Expression, expression) => cast,
+                    AwaitExpressionSyntax awaitExpression
+                        when ReferenceEquals(awaitExpression.Expression, expression) => awaitExpression,
+                    _ => null
+                };
 
-                if (parent is PostfixUnaryExpressionSyntax postfix
-                    && postfix.IsKind(SyntaxKind.SuppressNullableWarningExpression)
-                    && ReferenceEquals(postfix.Operand, expression))
+                if (climbed != null)
                 {
-                    expression = postfix;
-                    continue;
-                }
-
-                if (parent is CastExpressionSyntax cast
-                    && ReferenceEquals(cast.Expression, expression))
-                {
-                    expression = cast;
-                    continue;
-                }
-
-                if (parent is AwaitExpressionSyntax awaitExpression
-                    && ReferenceEquals(awaitExpression.Expression, expression))
-                {
-                    expression = awaitExpression;
+                    expression = climbed;
                     continue;
                 }
 

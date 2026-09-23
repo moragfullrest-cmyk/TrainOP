@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
 using TrainOP.Generators.Chain;
-using TrainOP.Generators.Route;
 
 namespace TrainOP.Generators.Parts
 {
@@ -17,26 +16,26 @@ namespace TrainOP.Generators.Parts
         public static bool TryMaterialize(
             InvocationExpressionSyntax invocation,
             SemanticModel semanticModel,
-            IReadOnlyDictionary<string, RouteSite> stationSitesByKey,
+            IReadOnlyDictionary<string, StationLink> stationLinksByKey,
             out StationLink link)
         {
-            if (TryMaterializeServiceStation(invocation, semanticModel, stationSitesByKey, out link))
+            if (TryMaterializeServiceStation(invocation, semanticModel, stationLinksByKey, out link))
             {
                 return true;
             }
 
-            return TryMaterializeStation(invocation, semanticModel, stationSitesByKey, out link);
+            return TryMaterializeStation(invocation, semanticModel, stationLinksByKey, out link);
         }
 
         /// <summary>
-        /// Attempts to materialize without prebuilt sites (semantic parse only).
+        /// Attempts to materialize without a prebuilt link cache (semantic parse only).
         /// </summary>
         public static bool TryMaterialize(
             InvocationExpressionSyntax invocation,
             SemanticModel semanticModel,
             out StationLink link)
         {
-            return TryMaterialize(invocation, semanticModel, stationSitesByKey: null, out link);
+            return TryMaterialize(invocation, semanticModel, stationLinksByKey: null, out link);
         }
 
         /// <summary>
@@ -45,7 +44,7 @@ namespace TrainOP.Generators.Parts
         public static bool TryMaterializeStation(
             InvocationExpressionSyntax stationInvocation,
             SemanticModel semanticModel,
-            IReadOnlyDictionary<string, RouteSite> stationSitesByKey,
+            IReadOnlyDictionary<string, StationLink> stationLinksByKey,
             out StationLink link)
         {
             link = null;
@@ -54,19 +53,12 @@ namespace TrainOP.Generators.Parts
                 return false;
             }
 
-            if (TryGetPrebuiltStationSite(
+            if (TryGetCachedStationLink(
                     stationInvocation,
-                    stationSitesByKey,
-                    RouteSiteKind.Station,
-                    out var site))
-            {
-                link = new StationLink(
+                    stationLinksByKey,
                     StationLinkKind.Station,
-                    site.StationName,
-                    stationInvocation.ArgumentList.Arguments[0].GetLocation(),
-                    site.HandlerLocation,
-                    site.HandlerBinding,
-                    stationInvocation);
+                    out link))
+            {
                 return true;
             }
 
@@ -96,7 +88,7 @@ namespace TrainOP.Generators.Parts
         public static bool TryMaterializeServiceStation(
             InvocationExpressionSyntax serviceInvocation,
             SemanticModel semanticModel,
-            IReadOnlyDictionary<string, RouteSite> stationSitesByKey,
+            IReadOnlyDictionary<string, StationLink> stationLinksByKey,
             out StationLink link)
         {
             link = null;
@@ -105,19 +97,12 @@ namespace TrainOP.Generators.Parts
                 return false;
             }
 
-            if (TryGetPrebuiltStationSite(
+            if (TryGetCachedStationLink(
                     serviceInvocation,
-                    stationSitesByKey,
-                    RouteSiteKind.ServiceStation,
-                    out var site))
-            {
-                link = new StationLink(
+                    stationLinksByKey,
                     StationLinkKind.ServiceStation,
-                    site.StationName,
-                    site.HandlerLocation,
-                    site.HandlerLocation,
-                    site.HandlerBinding,
-                    serviceInvocation);
+                    out link))
+            {
                 return true;
             }
 
@@ -141,25 +126,25 @@ namespace TrainOP.Generators.Parts
             return false;
         }
 
-        private static bool TryGetPrebuiltStationSite(
+        private static bool TryGetCachedStationLink(
             InvocationExpressionSyntax invocation,
-            IReadOnlyDictionary<string, RouteSite> stationSitesByKey,
-            RouteSiteKind expectedKind,
-            out RouteSite site)
+            IReadOnlyDictionary<string, StationLink> stationLinksByKey,
+            StationLinkKind expectedKind,
+            out StationLink link)
         {
-            site = null;
-            if (stationSitesByKey == null || invocation == null)
+            link = null;
+            if (stationLinksByKey == null || invocation == null)
             {
                 return false;
             }
 
             var key = ChainSiteBindingLookup.BuildLocationKey(invocation.GetLocation());
             if (key.Length == 0
-                || !stationSitesByKey.TryGetValue(key, out site)
-                || site.Kind != expectedKind
-                || site.HandlerBinding == null)
+                || !stationLinksByKey.TryGetValue(key, out link)
+                || link.Kind != expectedKind
+                || link.Handler == null)
             {
-                site = null;
+                link = null;
                 return false;
             }
 

@@ -82,14 +82,14 @@ namespace TrainOP.Generators
         public ImmutableArray<Diagnostic> Diagnostics { get; }
 
         /// <summary>
-        /// Builds IR from discovery sites and an assembled <see cref="RouteGraph"/>.
+        /// Builds IR from discovered parts and an assembled <see cref="RouteGraph"/>.
         /// When <paramref name="compilation"/> is provided also fills JoinChains / join-origin terminals.
         /// When <paramref name="schemaDescriptors"/> is default, descriptors (and schema diagnostics
         /// when <paramref name="diagnostics"/> is default) are collected from
         /// <paramref name="compilation"/> via <see cref="SchemaDescriptorsStage"/>.
         /// </summary>
         public static GenerationModel Build(
-            ImmutableArray<RouteSite> sites,
+            ImmutableArray<IRoutePart> parts,
             RouteGraph graph,
             Compilation compilation = null,
             ImmutableArray<SchemaDescriptor> schemaDescriptors = default,
@@ -130,7 +130,7 @@ namespace TrainOP.Generators
                 }
             }
 
-            if (sites.IsDefaultOrEmpty)
+            if (parts.IsDefaultOrEmpty)
             {
                 return new GenerationModel(
                     ImmutableArray<StationHandlerBinding>.Empty,
@@ -147,27 +147,22 @@ namespace TrainOP.Generators
             var signatures = ImmutableArray.CreateBuilder<StationHandlerBinding>();
             var anchors = ImmutableArray.CreateBuilder<IRoutePart>();
 
-            for (var i = 0; i < sites.Length; i++)
+            for (var i = 0; i < parts.Length; i++)
             {
-                var site = sites[i];
-                if (site == null)
+                var part = parts[i];
+                if (part is StationLink stationLink)
                 {
-                    continue;
-                }
-
-                if (site.IsStation)
-                {
-                    if (site.HandlerBinding != null)
+                    if (stationLink.Handler != null)
                     {
-                        signatures.Add(site.HandlerBinding);
+                        signatures.Add(stationLink.Handler);
                     }
 
                     continue;
                 }
 
-                if (site.Kind == RouteSiteKind.Anchor && site.OriginPart != null)
+                if (RouteOriginPorts.IsOriginPart(part))
                 {
-                    anchors.Add(site.OriginPart);
+                    anchors.Add(part);
                 }
             }
 

@@ -9,40 +9,19 @@ namespace TrainOP.Generators
         /// </summary>
         internal static void EmitArgument(this HandlerCallSlot slot, CodegenWriter writer, CallArgumentContext context)
         {
-            switch (slot.Kind)
+            writer.Append(slot.Kind switch
             {
-                case HandlerInputKind.Wagon:
-                    if (slot.Wagon.IsByReference)
-                    {
-                        writer.Append("ref ");
-                    }
-
-                    if (context.UseNeutralWagonNames)
-                    {
-                        writer.Append("wagon").Append(slot.WagonIndex);
-                    }
-                    else
-                    {
-                        writer.Append(slot.Wagon.Name);
-                    }
-
-                    break;
-                case HandlerInputKind.RedSignal:
-                    writer.Append(context.RedVariable ?? "red");
-                    break;
-                case HandlerInputKind.SignalIssue:
-                    writer.Append(context.SignalIssueExpression);
-                    break;
-                case HandlerInputKind.SignalIssues:
-                    writer.Append(context.SignalIssuesExpression);
-                    break;
-                case HandlerInputKind.CargoManifest:
-                    writer.Append("manifest");
-                    break;
-                case HandlerInputKind.CancellationToken:
-                    writer.Append(context.TokenVariable ?? "default");
-                    break;
-            }
+                HandlerInputKind.Wagon => (slot.Wagon.IsByReference ? "ref " : string.Empty)
+                    + (context.UseNeutralWagonNames
+                        ? "wagon" + slot.WagonIndex.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        : slot.Wagon.Name),
+                HandlerInputKind.RedSignal => context.RedVariable ?? "red",
+                HandlerInputKind.SignalIssue => context.SignalIssueExpression,
+                HandlerInputKind.SignalIssues => context.SignalIssuesExpression,
+                HandlerInputKind.CargoManifest => "manifest",
+                HandlerInputKind.CancellationToken => context.TokenVariable ?? "default",
+                _ => string.Empty
+            });
         }
     }
 }

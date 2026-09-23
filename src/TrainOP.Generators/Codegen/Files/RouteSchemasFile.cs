@@ -15,7 +15,7 @@ namespace TrainOP.Generators
 
         /// <summary>
         /// Emits route schema source from already-built descriptors (no discovery / no diagnostics).
-        /// Sole emit path — diagnostics are reported by <see cref="GenerationEmit.EmitAll"/> from the model.
+        /// Factory-path diagnostics stay on <see cref="SchemaDescriptorsStage"/> for the analyzer.
         /// </summary>
         internal static void AddSource(
             SourceProductionContext context,

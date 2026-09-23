@@ -8,7 +8,8 @@ namespace TrainOP.Generators
 {
     /// <summary>
     /// Discovers exported route factories and builds <see cref="SchemaDescriptor"/> IR.
-    /// Diagnostics mirror the historical <c>RouteSchemasFile</c> validation path (TOP012/013).
+    /// TOP012/013 are produced here once; <see cref="TrainRouteValidationAnalyzer"/> reports them.
+    /// The generator keeps descriptors and does not report the same diagnostics.
     /// </summary>
     internal static class SchemaDescriptorsStage
     {

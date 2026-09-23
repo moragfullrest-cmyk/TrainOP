@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using TrainOP.Generators.Handlers;
 using TrainOP.Generators.Parts;
-using TrainOP.Generators.Route;
 
 namespace TrainOP.Generators
 {
@@ -26,25 +25,24 @@ namespace TrainOP.Generators
             ImmutableArray<StationLink>.Builder stations,
             out ExpressionSyntax next,
             ImmutableArray<InvocationExpressionSyntax>.Builder chainedInvocations,
-            IReadOnlyDictionary<string, RouteSite> stationSitesByKey = null)
+            IReadOnlyDictionary<string, StationLink> stationSitesByKey = null)
         {
             next = current;
 
             // Builtin RedSignal-only ServiceStation is not a data-oriented overlay
             // (no RegisterStation ordinal). Still advance so factory-path simulation
             // can reach the fluent endpoint instead of reporting TOP013.
-            if (TryGetDirectServiceStationInvocation(current, out var serviceInvocation))
+            if (TryGetDirectRouteHandlerInvocation(
+                    current,
+                    HandlerStationKind.ServiceStation,
+                    out var serviceInvocation))
             {
-                if (TryCreateServiceStationLink(
+                StationLinkMaterializer.TryMaterializeServiceStation(
                     serviceInvocation,
                     semanticModel,
                     stationSitesByKey,
-                    out var serviceLink))
-                {
-                    stations?.Add(serviceLink);
-                }
-
-                chainedInvocations?.Add(serviceInvocation);
+                    out var serviceLink);
+                RecordStep(stations, chainedInvocations, serviceInvocation, serviceLink);
                 next = serviceInvocation;
                 return true;
             }
@@ -54,104 +52,49 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            if (TryCreateStationLink(stationInvocation, semanticModel, stationSitesByKey, out var stationLink))
-            {
-                stations?.Add(stationLink);
-            }
-
-            chainedInvocations?.Add(stationInvocation);
+            StationLinkMaterializer.TryMaterializeStation(
+                stationInvocation,
+                semanticModel,
+                stationSitesByKey,
+                out var stationLink);
+            RecordStep(stations, chainedInvocations, stationInvocation, stationLink);
             next = stationInvocation;
             return true;
         }
 
-        private static bool TryCreateServiceStationLink(
-            InvocationExpressionSyntax serviceInvocation,
-            SemanticModel semanticModel,
-            IReadOnlyDictionary<string, RouteSite> stationSitesByKey,
-            out StationLink link)
+        private static void RecordStep(
+            ImmutableArray<StationLink>.Builder stations,
+            ImmutableArray<InvocationExpressionSyntax>.Builder chainedInvocations,
+            InvocationExpressionSyntax invocation,
+            StationLink link)
         {
-            return StationLinkMaterializer.TryMaterializeServiceStation(
-                serviceInvocation,
-                semanticModel,
-                stationSitesByKey,
-                out link);
-        }
+            if (link != null)
+            {
+                stations?.Add(link);
+            }
 
-        private static bool TryCreateStationLink(
-            InvocationExpressionSyntax stationInvocation,
-            SemanticModel semanticModel,
-            IReadOnlyDictionary<string, RouteSite> stationSitesByKey,
-            out StationLink link)
-        {
-            return StationLinkMaterializer.TryMaterializeStation(
-                stationInvocation,
-                semanticModel,
-                stationSitesByKey,
-                out link);
-        }
-
-        private static bool TryGetDirectServiceStationInvocation(
-            ExpressionSyntax current,
-            out InvocationExpressionSyntax serviceStationInvocation)
-        {
-            return TryGetDirectRouteHandlerInvocation(
-                current,
-                HandlerStationKind.ServiceStation,
-                out serviceStationInvocation);
+            chainedInvocations?.Add(invocation);
         }
 
         private static bool TryGetNextStationInvocation(
             ExpressionSyntax current,
             out InvocationExpressionSyntax stationInvocation)
         {
-            return TryGetNextStationInvocationCore(current, out stationInvocation);
-        }
-
-        private static bool TryGetNextStationInvocationCore(
-            ExpressionSyntax current,
-            out InvocationExpressionSyntax stationInvocation)
-        {
             stationInvocation = null;
 
-            if (TryGetDirectStationInvocation(current, out stationInvocation))
+            if (TryGetDirectRouteHandlerInvocation(current, HandlerStationKind.Station, out stationInvocation))
             {
                 return true;
             }
 
-            var receiver = ReceiverExpressionSyntaxPeel.WrapTransparentOutermost(current);
-            if (receiver.Parent is not MemberAccessExpressionSyntax memberAccess)
+            if (StationSyntaxHelper.TryGetRouteHandlerInvocation(current, out var transparentInvocation)
+                && transparentInvocation.Expression is MemberAccessExpressionSyntax memberAccess
+                && IsTransparentRouteMethod(memberAccess.Name.Identifier.ValueText))
             {
-                return false;
+                return TryGetNextStationInvocation(transparentInvocation, out stationInvocation);
             }
 
-            if (!IsTransparentRouteMethod(memberAccess.Name.Identifier.ValueText))
-            {
-                return false;
-            }
-
-            if (!ReferenceEquals(memberAccess.Expression, receiver))
-            {
-                return false;
-            }
-
-            if (memberAccess.Parent is not InvocationExpressionSyntax transparentInvocation)
-            {
-                return false;
-            }
-
-            if (!ReferenceEquals(transparentInvocation.Expression, memberAccess))
-            {
-                return false;
-            }
-
-            return TryGetNextStationInvocationCore(transparentInvocation, out stationInvocation);
-        }
-
-        private static bool TryGetDirectStationInvocation(
-            ExpressionSyntax current,
-            out InvocationExpressionSyntax stationInvocation)
-        {
-            return TryGetDirectRouteHandlerInvocation(current, HandlerStationKind.Station, out stationInvocation);
+            return false;
         }
 
         private static bool TryGetDirectRouteHandlerInvocation(
@@ -160,29 +103,8 @@ namespace TrainOP.Generators
             out InvocationExpressionSyntax routeHandlerInvocation)
         {
             routeHandlerInvocation = null;
-
-            var receiver = ReceiverExpressionSyntaxPeel.WrapTransparentOutermost(current);
-            if (receiver.Parent is not MemberAccessExpressionSyntax memberAccess)
-            {
-                return false;
-            }
-
-            if (!ReferenceEquals(memberAccess.Expression, receiver))
-            {
-                return false;
-            }
-
-            if (memberAccess.Parent is not InvocationExpressionSyntax invocation)
-            {
-                return false;
-            }
-
-            if (!ReferenceEquals(invocation.Expression, memberAccess))
-            {
-                return false;
-            }
-
-            if (!StationSyntaxHelper.TryParseRouteHandlerInvocation(invocation, out var parsedKind, out _)
+            if (!StationSyntaxHelper.TryGetRouteHandlerInvocation(current, out var invocation)
+                || !StationSyntaxHelper.TryParseRouteHandlerInvocation(invocation, out var parsedKind, out _)
                 || parsedKind != stationKind)
             {
                 return false;

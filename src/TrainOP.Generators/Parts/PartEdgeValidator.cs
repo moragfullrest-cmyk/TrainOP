@@ -19,44 +19,22 @@ namespace TrainOP.Generators.Parts
         {
             diagnostics = ImmutableArray<Diagnostic>.Empty;
 
-            if (edge.From == null || edge.To == null)
+            return edge.Kind switch
             {
-                return false;
-            }
-
-            switch (edge.Kind)
-            {
-                case PartEdgeKind.Bind:
-                    return IsOriginSeed(edge.From) && edge.To is LocalBinding;
-
-                case PartEdgeKind.Append:
-                    return IsAppendUpstream(edge.From) && edge.To is StationLink;
-
-                case PartEdgeKind.Join:
-                    // J2 fills port rules; accept structurally for now.
-                    return edge.From is JoinArm && edge.To is JoinSeed;
-
-                case PartEdgeKind.Extend:
-                    // E1 fills port rules; accept structurally for now.
-                    return edge.From is FactoryCall && edge.To is ExtensionTail;
-
-                default:
-                    return false;
-            }
+                PartEdgeKind.Bind => IsOriginSeed(edge.From) && edge.To is LocalBinding,
+                PartEdgeKind.Append => IsAppendUpstream(edge.From) && edge.To is StationLink,
+                // J2 fills port rules; accept structurally for now.
+                PartEdgeKind.Join => edge.From is JoinArm && edge.To is JoinSeed,
+                // E1 fills port rules; accept structurally for now.
+                PartEdgeKind.Extend => edge.From is FactoryCall && edge.To is ExtensionTail,
+                _ => false
+            };
         }
 
-        private static bool IsOriginSeed(IRoutePart part)
-        {
-            return part is CreationSeed || part is FactoryCall;
-        }
+        private static bool IsOriginSeed(IRoutePart part) =>
+            part is CreationSeed or FactoryCall;
 
-        private static bool IsAppendUpstream(IRoutePart part)
-        {
-            return part is CreationSeed
-                || part is FactoryCall
-                || part is LocalBinding
-                || part is StationLink
-                || part is JoinSeed;
-        }
+        private static bool IsAppendUpstream(IRoutePart part) =>
+            part is CreationSeed or FactoryCall or LocalBinding or StationLink or JoinSeed;
     }
 }

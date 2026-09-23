@@ -369,7 +369,7 @@ public static class Consumer
                     .ToArray(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            var sites = RouteSiteDiscoverer.CollectAll(consumerCompilation);
+            var sites = RoutePartDiscoverer.CollectAll(consumerCompilation);
             var graph = RouteGraphAssembler.Build(sites, consumerCompilation);
 
             Assert.Empty(

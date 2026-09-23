@@ -10,24 +10,16 @@ namespace TrainOP.Generators
         /// <summary>
         /// Converts a type symbol to a fully qualified display string for generated manifest code.
         /// </summary>
-        public static string ToManifestTypeDisplay(ITypeSymbol typeSymbol)
-        {
-            switch (typeSymbol.SpecialType)
+        public static string ToManifestTypeDisplay(ITypeSymbol typeSymbol) =>
+            typeSymbol.SpecialType switch
             {
-                case SpecialType.System_String:
-                    return "global::System.String";
-                case SpecialType.System_Decimal:
-                    return "global::System.Decimal";
-                case SpecialType.System_Int32:
-                    return "global::System.Int32";
-                case SpecialType.System_Int64:
-                    return "global::System.Int64";
-                case SpecialType.System_Boolean:
-                    return "global::System.Boolean";
-                default:
-                    return typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            }
-        }
+                SpecialType.System_String => "global::System.String",
+                SpecialType.System_Decimal => "global::System.Decimal",
+                SpecialType.System_Int32 => "global::System.Int32",
+                SpecialType.System_Int64 => "global::System.Int64",
+                SpecialType.System_Boolean => "global::System.Boolean",
+                _ => typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+            };
 
         /// <summary>
         /// Converts a handler return type to a display string for generated delegate signatures.

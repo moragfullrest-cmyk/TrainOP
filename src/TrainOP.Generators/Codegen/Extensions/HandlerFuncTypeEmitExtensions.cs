@@ -115,33 +115,22 @@ namespace TrainOP.Generators
             for (var i = 0; i < callOrder.Length; i++)
             {
                 var slot = callOrder[i];
-                switch (slot.Kind)
+                var typeDisplay = slot.Kind switch
                 {
-                    case HandlerInputKind.Wagon:
-                        var wagon = slot.Wagon;
-                        var typeDisplay = wagon.TypeDisplay;
-                        if (wagon.IsByReference)
-                        {
-                            typeDisplay = "ref " + typeDisplay;
-                        }
+                    HandlerInputKind.Wagon => slot.Wagon.IsByReference
+                        ? "ref " + slot.Wagon.TypeDisplay
+                        : slot.Wagon.TypeDisplay,
+                    HandlerInputKind.RedSignal => ReturnTypeDisplayHelper.RedSignalReturnTypeDisplay,
+                    HandlerInputKind.SignalIssue => ReturnTypeDisplayHelper.SignalIssueReturnTypeDisplay,
+                    HandlerInputKind.SignalIssues => ReturnTypeDisplayHelper.SignalIssuesListReturnTypeDisplay,
+                    HandlerInputKind.CargoManifest => ReturnTypeDisplayHelper.CargoManifestReturnTypeDisplay,
+                    HandlerInputKind.CancellationToken => "CancellationToken",
+                    _ => null
+                };
 
-                        parameters.Add(typeDisplay);
-                        break;
-                    case HandlerInputKind.RedSignal:
-                        parameters.Add(ReturnTypeDisplayHelper.RedSignalReturnTypeDisplay);
-                        break;
-                    case HandlerInputKind.SignalIssue:
-                        parameters.Add(ReturnTypeDisplayHelper.SignalIssueReturnTypeDisplay);
-                        break;
-                    case HandlerInputKind.SignalIssues:
-                        parameters.Add(ReturnTypeDisplayHelper.SignalIssuesListReturnTypeDisplay);
-                        break;
-                    case HandlerInputKind.CargoManifest:
-                        parameters.Add(ReturnTypeDisplayHelper.CargoManifestReturnTypeDisplay);
-                        break;
-                    case HandlerInputKind.CancellationToken:
-                        parameters.Add("CancellationToken");
-                        break;
+                if (typeDisplay != null)
+                {
+                    parameters.Add(typeDisplay);
                 }
             }
         }
@@ -161,35 +150,23 @@ namespace TrainOP.Generators
                 }
 
                 var slot = callOrder[i];
-                switch (slot.Kind)
+                writer.Append(slot.Kind switch
                 {
-                    case HandlerInputKind.Wagon:
-                        var wagon = slot.Wagon;
-                        if (wagon.IsByReference)
-                        {
-                            writer.Append("ref ");
-                        }
-
-                        var parameterName = useNeutralParameterNames ? "p" + slot.WagonIndex : wagon.Name;
-                        writer.Append(wagon.TypeDisplay).Append(" ").Append(parameterName);
-                        break;
-                    case HandlerInputKind.RedSignal:
-                        writer.Append("RedSignal ").Append(useNeutralParameterNames ? "pRed" : "red");
-                        break;
-                    case HandlerInputKind.SignalIssue:
-                        writer.Append("SignalIssue ").Append(useNeutralParameterNames ? "pIssue" : "issue");
-                        break;
-                    case HandlerInputKind.SignalIssues:
-                        writer.Append("global::System.Collections.Generic.IReadOnlyList<SignalIssue> ")
-                            .Append(useNeutralParameterNames ? "pIssues" : "issues");
-                        break;
-                    case HandlerInputKind.CargoManifest:
-                        writer.Append("CargoManifest ").Append(useNeutralParameterNames ? "pManifest" : "manifest");
-                        break;
-                    case HandlerInputKind.CancellationToken:
-                        writer.Append("CancellationToken ").Append(useNeutralParameterNames ? "pToken" : "cancellationToken");
-                        break;
-                }
+                    HandlerInputKind.Wagon => (slot.Wagon.IsByReference ? "ref " : string.Empty)
+                        + slot.Wagon.TypeDisplay
+                        + " "
+                        + (useNeutralParameterNames ? "p" + slot.WagonIndex : slot.Wagon.Name),
+                    HandlerInputKind.RedSignal => "RedSignal " + (useNeutralParameterNames ? "pRed" : "red"),
+                    HandlerInputKind.SignalIssue => "SignalIssue " + (useNeutralParameterNames ? "pIssue" : "issue"),
+                    HandlerInputKind.SignalIssues =>
+                        "global::System.Collections.Generic.IReadOnlyList<SignalIssue> "
+                        + (useNeutralParameterNames ? "pIssues" : "issues"),
+                    HandlerInputKind.CargoManifest =>
+                        "CargoManifest " + (useNeutralParameterNames ? "pManifest" : "manifest"),
+                    HandlerInputKind.CancellationToken =>
+                        "CancellationToken " + (useNeutralParameterNames ? "pToken" : "cancellationToken"),
+                    _ => string.Empty
+                });
 
                 needsComma = true;
             }
