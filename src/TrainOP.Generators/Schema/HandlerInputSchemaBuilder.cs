@@ -208,7 +208,7 @@ namespace TrainOP.Generators
                 }
             }
 
-            return HandlerReturnSchemaInference.IsTask(handlerSymbol.ReturnType);
+            return HandlerReturnTypeShape.IsTask(handlerSymbol.ReturnType);
         }
 
         /// <summary>

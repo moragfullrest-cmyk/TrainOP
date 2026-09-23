@@ -1,5 +1,3 @@
-using System;
-
 namespace TrainOP
 {
     /// <summary>
@@ -48,20 +46,12 @@ namespace TrainOP
             object[] refLocalValues,
             bool allocateDefaultItemNElements)
         {
-            if (manifest == null)
-            {
-                throw new ArgumentNullException(nameof(manifest));
-            }
-
             if (TryConvertPassthroughSignal(stationReturn, stationName, out var passthrough))
             {
                 return passthrough;
             }
 
-            if (TryUnwrapGreenPayload(stationReturn, out var payload))
-            {
-                stationReturn = payload;
-            }
+            stationReturn = WagonStationReturn.UnwrapGreenPayloadReturn(stationReturn);
 
             if (stationReturn is CargoManifest replacement)
             {
@@ -122,11 +112,6 @@ namespace TrainOP
             object[] refLocalValues,
             bool allocateDefaultItemNElements)
         {
-            if (manifest == null)
-            {
-                throw new ArgumentNullException(nameof(manifest));
-            }
-
             if (TryConvertPassthroughSignal(stationReturn, stationName, out var passthrough))
             {
                 return passthrough;
@@ -188,19 +173,5 @@ namespace TrainOP
             return RailwaySignals.Red(issue, fail.PriorIssues);
         }
 
-        /// <summary>
-        /// Unwraps a green payload wrapper to its inner value.
-        /// </summary>
-        private static bool TryUnwrapGreenPayload(object stationReturn, out object payload)
-        {
-            if (stationReturn is IGreenPayload greenPayload)
-            {
-                payload = greenPayload.GetValue();
-                return true;
-            }
-
-            payload = stationReturn;
-            return false;
-        }
     }
 }

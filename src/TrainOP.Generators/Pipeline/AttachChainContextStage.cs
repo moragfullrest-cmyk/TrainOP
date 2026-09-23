@@ -17,14 +17,9 @@ namespace TrainOP.Generators
             IEnumerable<DelegateSignatureGroup> groups,
             IReadOnlyDictionary<string, ImmutableArray<ChainSiteBinding>> chainIndex)
         {
-            if (groups == null)
-            {
-                return;
-            }
-
             foreach (var group in groups)
             {
-                group?.AttachChainContext(chainIndex);
+                group.AttachChainContext(chainIndex);
             }
         }
     }

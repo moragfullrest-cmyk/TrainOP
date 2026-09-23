@@ -38,11 +38,6 @@ namespace TrainOP.Generators
                 for (var i = 0; i < descriptors.Length; i++)
                 {
                     var descriptor = descriptors[i];
-                    if (descriptor == null)
-                    {
-                        continue;
-                    }
-
                     new RouteFactorySchema(descriptor).Emit(writer);
                 }
             }

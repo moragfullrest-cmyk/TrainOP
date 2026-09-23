@@ -41,7 +41,7 @@ namespace TrainOP.Generators
                 var compilation = source.Left;
                 var sites = source.Right;
 
-                // Stages 1a–7: populate IR only (no AddSource).
+                // Build IR first; AddSource only in EmitAll.
                 var schemaCollect = SchemaDescriptorsStage.Collect(compilation);
                 var graph = BuildChainsStage.Build(sites, compilation);
                 var generationModel = GenerationModel.Build(
@@ -51,8 +51,7 @@ namespace TrainOP.Generators
                     schemaCollect.Descriptors,
                     schemaCollect.Diagnostics);
 
-                // Stage 2 GroupSignatures, then Attach → stage 3 BranchPlans
-                // (logical ∥ with BuildChains is still single-callback; Cluster C fan-out deferred).
+                // Signature groups need the assembled graph; chain bindings attach before branch plans.
                 var groups = SignatureGroupingStage.Group(generationModel.RouteGraph);
                 AttachChainContextStage.Attach(groups.Values, generationModel.RouteGraph.ChainIndex);
                 var branchPlans = BranchPlanStage.Build(groups.Values, productionContext);

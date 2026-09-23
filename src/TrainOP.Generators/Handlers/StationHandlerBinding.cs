@@ -17,8 +17,8 @@ namespace TrainOP.Generators.Handlers
             HandlerOutputParameters output,
             bool isAsync)
         {
-            Input = input ?? throw new System.ArgumentNullException(nameof(input));
-            Output = output ?? throw new System.ArgumentNullException(nameof(output));
+            Input = input;
+            Output = output;
             IsAsync = isAsync;
         }
 

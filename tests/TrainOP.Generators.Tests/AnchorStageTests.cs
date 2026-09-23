@@ -12,7 +12,7 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests <see cref="AnchorStage"/> part → adapter → <see cref="RouteSite"/> (M4).
+    /// Tests <see cref="AnchorStage"/> part → <see cref="RouteSite"/> resolution.
     /// </summary>
     public sealed class AnchorStageTests
     {
@@ -35,7 +35,7 @@ public static class Route
 
             Assert.True(AnchorStage.TryResolveSite(node, model, out var site));
             Assert.Equal(RouteSiteKind.Anchor, site.Kind);
-            Assert.Equal(RouteChainAnchorKind.ObjectCreation, site.AnchorKind);
+            Assert.IsType<CreationSeed>(site.OriginPart);
         }
 
         [Fact]
@@ -59,9 +59,9 @@ public static class Route
             Assert.True(AnchorStage.TryResolvePart(identifier, model, out var part));
             Assert.IsType<LocalBinding>(part);
 
-            Assert.True(AnchorStage.TryResolve(identifier, model, out var anchor));
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, anchor.Kind);
-            Assert.Same(identifier, anchor.Root);
+            Assert.True(AnchorStage.TryResolveSite(identifier, model, out var site));
+            Assert.IsType<LocalBinding>(site.OriginPart);
+            Assert.Same(identifier, site.Expression);
         }
 
         [Fact]
@@ -86,7 +86,7 @@ public static class Route
             Assert.Equal(FactoryCallKind.Inline, ((FactoryCall)part).Kind);
 
             Assert.True(AnchorStage.TryResolveSite(invocation, model, out var site));
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, site.AnchorKind);
+            Assert.IsType<FactoryCall>(site.OriginPart);
             Assert.Equal("CreateSeed", site.FactoryMethod.Name);
         }
 
@@ -116,7 +116,7 @@ public static class Route
 
             Assert.True(AnchorStage.TryResolveSite(identifier, model, out var site));
             Assert.Equal(RouteSiteKind.Anchor, site.Kind);
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, site.AnchorKind);
+            Assert.IsType<LocalBinding>(site.OriginPart);
         }
 
         private static void GetNode<T>(

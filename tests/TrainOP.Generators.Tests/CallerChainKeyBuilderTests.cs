@@ -5,7 +5,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using TrainOP.Generators.Route;
+using TrainOP.Generators.Parts;
 using Xunit;
 
 namespace TrainOP.Generators.Tests
@@ -31,28 +31,14 @@ public static class Route
                 GetMetadataReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            var semanticModel = compilation.GetSemanticModel(syntaxTree);
-            var root = syntaxTree.GetRoot();
-
-            var methodDecl = root.DescendantNodes()
-                .OfType<MethodDeclarationSyntax>()
-                .Single(m => m.Identifier.ValueText == "Build");
-
-            var methodSymbol = semanticModel.GetDeclaredSymbol(methodDecl) as IMethodSymbol;
-            Assert.NotNull(methodSymbol);
-
-            var objectCreation = root.DescendantNodes()
+            var model = compilation.GetSemanticModel(syntaxTree);
+            var objectCreation = syntaxTree.GetRoot().DescendantNodes()
                 .OfType<ObjectCreationExpressionSyntax>()
                 .Single(n => n.Type is IdentifierNameSyntax id && id.Identifier.ValueText == "TrainRoute");
 
-            var anchor = new RouteChainAnchor(
-                RouteChainAnchorKind.ObjectCreation,
-                objectCreation,
-                objectCreation.GetLocation(),
-                methodSymbol);
+            Assert.True(CreationSeedMaterializer.TryMaterialize(objectCreation, model, out var seed));
 
-            var actual = CallerChainKeyBuilder.Build(anchor, compilation);
-
+            var actual = CallerChainKeyBuilder.Build(seed, compilation);
             var lineNumber = objectCreation.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
             var expected = CallerChainKeyFormat.Build(@"C:\repo\Test0.cs", lineNumber, "Build");
 
@@ -85,14 +71,12 @@ public static class Route
                 GetMetadataReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            var semanticModel = compilation.GetSemanticModel(syntaxTree);
+            var model = compilation.GetSemanticModel(syntaxTree);
             var root = syntaxTree.GetRoot();
 
             var createSeed = root.DescendantNodes()
                 .OfType<MethodDeclarationSyntax>()
                 .Single(m => m.Identifier.ValueText == "CreateSeed");
-            var createSeedSymbol = semanticModel.GetDeclaredSymbol(createSeed) as IMethodSymbol;
-            Assert.NotNull(createSeedSymbol);
 
             var factoryInvocation = root.DescendantNodes()
                 .OfType<InvocationExpressionSyntax>()
@@ -100,27 +84,15 @@ public static class Route
                     invocation.Expression is IdentifierNameSyntax id
                     && id.Identifier.ValueText == "CreateSeed");
 
-            var methodInvocationAnchor = new RouteChainAnchor(
-                RouteChainAnchorKind.MethodInvocation,
-                factoryInvocation,
-                factoryInvocation.GetLocation(),
-                semanticModel.GetDeclaredSymbol(
-                    root.DescendantNodes().OfType<MethodDeclarationSyntax>()
-                        .Single(m => m.Identifier.ValueText == "Build")) as IMethodSymbol,
-                createSeedSymbol);
+            Assert.True(FactoryCallMaterializer.TryMaterialize(factoryInvocation, model, out var factoryCall));
 
             var objectCreation = createSeed.DescendantNodes()
                 .OfType<ObjectCreationExpressionSyntax>()
                 .Single(n => n.Type is IdentifierNameSyntax id && id.Identifier.ValueText == "TrainRoute");
+            Assert.True(CreationSeedMaterializer.TryMaterialize(objectCreation, model, out var creation));
 
-            var objectCreationAnchor = new RouteChainAnchor(
-                RouteChainAnchorKind.ObjectCreation,
-                objectCreation,
-                objectCreation.GetLocation(),
-                createSeedSymbol);
-
-            var factoryKey = CallerChainKeyBuilder.Build(methodInvocationAnchor, compilation);
-            var ctorKey = CallerChainKeyBuilder.Build(objectCreationAnchor, compilation);
+            var factoryKey = CallerChainKeyBuilder.Build(factoryCall, compilation);
+            var ctorKey = CallerChainKeyBuilder.Build(creation, compilation);
 
             Assert.False(string.IsNullOrEmpty(factoryKey));
             Assert.Equal(ctorKey, factoryKey);
@@ -154,14 +126,12 @@ public static class Route
                 GetMetadataReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            var semanticModel = compilation.GetSemanticModel(syntaxTree);
+            var model = compilation.GetSemanticModel(syntaxTree);
             var root = syntaxTree.GetRoot();
 
             var createSeed = root.DescendantNodes()
                 .OfType<MethodDeclarationSyntax>()
                 .Single(m => m.Identifier.ValueText == "CreateSeed");
-            var createSeedSymbol = semanticModel.GetDeclaredSymbol(createSeed) as IMethodSymbol;
-            Assert.NotNull(createSeedSymbol);
 
             var factoryInvocation = root.DescendantNodes()
                 .OfType<InvocationExpressionSyntax>()
@@ -169,28 +139,16 @@ public static class Route
                     invocation.Expression is IdentifierNameSyntax id
                     && id.Identifier.ValueText == "CreateSeed");
 
-            var methodInvocationAnchor = new RouteChainAnchor(
-                RouteChainAnchorKind.MethodInvocation,
-                factoryInvocation,
-                factoryInvocation.GetLocation(),
-                semanticModel.GetDeclaredSymbol(
-                    root.DescendantNodes().OfType<MethodDeclarationSyntax>()
-                        .Single(m => m.Identifier.ValueText == "Build")) as IMethodSymbol,
-                createSeedSymbol);
+            Assert.True(FactoryCallMaterializer.TryMaterialize(factoryInvocation, model, out var factoryCall));
 
             var objectCreation = createSeed.DescendantNodes()
                 .OfType<ObjectCreationExpressionSyntax>()
                 .Single(n => n.Type is IdentifierNameSyntax id && id.Identifier.ValueText == "TrainRoute");
-
-            var objectCreationAnchor = new RouteChainAnchor(
-                RouteChainAnchorKind.ObjectCreation,
-                objectCreation,
-                objectCreation.GetLocation(),
-                createSeedSymbol);
+            Assert.True(CreationSeedMaterializer.TryMaterialize(objectCreation, model, out var creation));
 
             Assert.Equal(
-                CallerChainKeyBuilder.Build(objectCreationAnchor, compilation),
-                CallerChainKeyBuilder.Build(methodInvocationAnchor, compilation));
+                CallerChainKeyBuilder.Build(creation, compilation),
+                CallerChainKeyBuilder.Build(factoryCall, compilation));
         }
 
         [Fact]
@@ -206,12 +164,11 @@ public static class Route
         }
 
         /// <summary>
-        /// Verifies FactorySchema anchors without resolvable dispatch metadata return an empty key (no method-location guess).
+        /// Verifies schema factory without resolvable dispatch metadata returns an empty key (no method-location guess).
         /// </summary>
         [Fact]
         public void CallerChainKeyBuilder_FactorySchema_WithoutDispatchMetadata_ReturnsEmpty()
         {
-            // Metadata-only factory (no body, no schema attributes): FactorySchema must not guess method location.
             var libTree = CSharpSyntaxTree.ParseText(@"
 using TrainOP;
 public static class PublicFactory
@@ -243,31 +200,19 @@ public static class Consumer
                     .ToArray(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            var factory = consumerCompilation.GetTypeByMetadataName("PublicFactory");
-            Assert.NotNull(factory);
-            var buildMethod = factory.GetMembers("Build").OfType<IMethodSymbol>().Single();
-
-            var extend = consumerTree.GetRoot()
+            var model = consumerCompilation.GetSemanticModel(consumerTree);
+            var invocation = consumerTree.GetRoot()
                 .DescendantNodes()
-                .OfType<MethodDeclarationSyntax>()
-                .Single(m => m.Identifier.ValueText == "Extend");
-            var invocation = extend.DescendantNodes()
                 .OfType<InvocationExpressionSyntax>()
                 .First(n => n.Expression is MemberAccessExpressionSyntax ma
                     && ma.Name.Identifier.ValueText == "Build");
 
-            var anchor = new RouteChainAnchor(
-                RouteChainAnchorKind.FactorySchema,
-                invocation,
-                invocation.GetLocation(),
-                consumerCompilation.GetSemanticModel(consumerTree).GetDeclaredSymbol(extend) as IMethodSymbol,
-                buildMethod);
-
-            Assert.Equal(string.Empty, CallerChainKeyBuilder.Build(anchor, consumerCompilation));
+            Assert.True(FactoryCallMaterializer.TryMaterialize(invocation, model, out var factoryCall));
+            Assert.Equal(string.Empty, CallerChainKeyBuilder.Build(factoryCall, consumerCompilation));
         }
 
         [Fact]
-        public void CallerChainKeyBuilder_Build_from_FactoryCall_part_matches_anchor()
+        public void CallerChainKeyBuilder_Build_from_FactoryCall_part_is_stable()
         {
             const string source = @"
 using TrainOP;
@@ -288,26 +233,22 @@ public static class Route
                 GetMetadataReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
             var model = compilation.GetSemanticModel(syntaxTree);
-            var root = syntaxTree.GetRoot();
 
-            var factoryInvocation = root.DescendantNodes()
+            var factoryInvocation = syntaxTree.GetRoot()
+                .DescendantNodes()
                 .OfType<InvocationExpressionSyntax>()
                 .Single(invocation =>
                     invocation.Expression is IdentifierNameSyntax id
                     && id.Identifier.ValueText == "CreateSeed");
 
-            Assert.True(TrainOP.Generators.Parts.FactoryCallMaterializer.TryMaterialize(
+            Assert.True(FactoryCallMaterializer.TryMaterialize(
                 factoryInvocation,
                 model,
                 out var factoryCall));
 
-            Assert.True(TrainOP.Generators.Parts.LegacyRoutePartAdapter.TryToLegacyAnchor(
-                factoryCall,
-                out var anchor));
-
-            Assert.Equal(
-                CallerChainKeyBuilder.Build(anchor, compilation),
-                CallerChainKeyBuilder.Build(factoryCall, compilation));
+            var key = CallerChainKeyBuilder.Build(factoryCall, compilation);
+            Assert.False(string.IsNullOrEmpty(key));
+            Assert.Equal(key, CallerChainKeyBuilder.Build(factoryCall, compilation));
         }
 
         private static MetadataReference[] GetMetadataReferences()

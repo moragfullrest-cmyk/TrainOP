@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
 using System.Linq;
-using TrainOP.Generators.Route;
 using TrainOP.Generators.Wagons;
 
 namespace TrainOP.Generators.Parts
@@ -188,13 +187,13 @@ namespace TrainOP.Generators.Parts
             ExpressionSyntax forkExpression,
             SemanticModel semanticModel,
             IMethodSymbol sharedFactory,
-            RouteChainAnchorKind factoryKind,
+            FactoryCallKind factoryKind,
             ImmutableArray<WagonBinding> wagons,
             IMethodSymbol containingMethod,
             out FactoryCall factoryCall)
         {
             factoryCall = null;
-            var branches = JoinChainsStage.DiscoverBranches(forkExpression, semanticModel);
+            var branches = BranchRouteGraphDiscoverer.Discover(forkExpression, semanticModel);
             if (branches.IsDefaultOrEmpty)
             {
                 return false;
@@ -202,8 +201,8 @@ namespace TrainOP.Generators.Parts
 
             for (var i = 0; i < branches.Length; i++)
             {
-                if (!TryStampFromArmAnchor(
-                        branches[i].Chain?.Anchor,
+                if (!TryStampFromArmOrigin(
+                        branches[i].Chain?.Origin,
                         sharedFactory,
                         factoryKind,
                         wagons,
@@ -219,52 +218,37 @@ namespace TrainOP.Generators.Parts
             return false;
         }
 
-        private static bool TryStampFromArmAnchor(
-            RouteChainAnchor armAnchor,
+        private static bool TryStampFromArmOrigin(
+            IRoutePart armOrigin,
             IMethodSymbol sharedFactory,
-            RouteChainAnchorKind factoryKind,
+            FactoryCallKind factoryKind,
             ImmutableArray<WagonBinding> wagons,
             IMethodSymbol containingMethod,
             out FactoryCall factoryCall)
         {
+            _ = factoryKind;
             factoryCall = null;
-            if (armAnchor?.FactoryMethod == null
-                || !SymbolEqualityComparer.Default.Equals(armAnchor.FactoryMethod, sharedFactory))
+            var factory = armOrigin as FactoryCall
+                ?? (armOrigin as LocalBinding)?.Origin as FactoryCall;
+            if (factory?.FactoryMethod == null
+                || !SymbolEqualityComparer.Default.Equals(factory.FactoryMethod, sharedFactory))
             {
                 return false;
             }
 
-            if (FactoryCall.TryFromLegacyAnchor(armAnchor, out factoryCall))
+            if (factory.InitialWagons.IsDefaultOrEmpty && !wagons.IsDefaultOrEmpty)
             {
-                if (factoryCall.InitialWagons.IsDefaultOrEmpty && !wagons.IsDefaultOrEmpty)
-                {
-                    factoryCall = new FactoryCall(
-                        factoryCall.Root,
-                        factoryCall.Location,
-                        factoryCall.Kind,
-                        factoryCall.FactoryMethod,
-                        wagons,
-                        containingMethod ?? factoryCall.ContainingMethod);
-                }
-
+                factoryCall = new FactoryCall(
+                    factory.Root,
+                    factory.Location,
+                    factory.Kind,
+                    factory.FactoryMethod,
+                    wagons,
+                    containingMethod ?? factory.ContainingMethod);
                 return true;
             }
 
-            // Arm root is not an invocation — synthesize kind from legacy stamp.
-            if (armAnchor.Root is not InvocationExpressionSyntax invocation)
-            {
-                return false;
-            }
-
-            factoryCall = new FactoryCall(
-                invocation,
-                armAnchor.Location,
-                factoryKind == RouteChainAnchorKind.FactorySchema
-                    ? FactoryCallKind.Schema
-                    : FactoryCallKind.Inline,
-                sharedFactory,
-                wagons,
-                containingMethod);
+            factoryCall = factory;
             return true;
         }
 

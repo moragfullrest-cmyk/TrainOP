@@ -12,12 +12,12 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests dispatch/keys ports on <see cref="FactoryCall"/> (E2).
+    /// Tests dispatch/keys ports on <see cref="FactoryCall"/>.
     /// </summary>
     public sealed class FactoryCallDispatchTests
     {
         [Fact]
-        public void to_legacy_anchor_kind_maps_inline_and_schema()
+        public void uses_schema_dispatch_maps_inline_and_schema()
         {
             const string inlineSource = @"
 using TrainOP;
@@ -44,9 +44,9 @@ public static class Route
             GetFactoryCall(inlineSource, "CreateSeed", out var inlineCall, out _);
             GetFactoryCall(schemaSource, "CreateSeed", out var schemaCall, out _);
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, inlineCall.ToLegacyAnchorKind());
+            Assert.Equal(FactoryCallKind.Inline, inlineCall.Kind);
             Assert.False(inlineCall.UsesSchemaDispatch);
-            Assert.Equal(RouteChainAnchorKind.FactorySchema, schemaCall.ToLegacyAnchorKind());
+            Assert.Equal(FactoryCallKind.Schema, schemaCall.Kind);
             Assert.True(schemaCall.UsesSchemaDispatch);
         }
 
@@ -114,7 +114,7 @@ public static class Route
         }
 
         [Fact]
-        public void try_from_legacy_anchor_round_trips_ports()
+        public void try_build_caller_chain_key_from_origin_matches_factory_call()
         {
             const string source = @"
 using TrainOP;
@@ -128,14 +128,12 @@ public static class Route
 }";
 
             GetFactoryCall(source, "CreateSeed", out var factoryCall, out var compilation);
-            Assert.True(LegacyRoutePartAdapter.TryToLegacyAnchor(factoryCall, out var anchor));
-
-            Assert.True(FactoryCall.TryFromLegacyAnchor(anchor, out var rebuilt));
-            Assert.Equal(factoryCall.ToLegacyAnchorKind(), rebuilt.ToLegacyAnchorKind());
-            Assert.Equal(factoryCall.FactoryMethod.Name, rebuilt.FactoryMethod.Name);
-            Assert.Equal(
-                factoryCall.TryBuildCallerChainKey(compilation, out var a) ? a : null,
-                rebuilt.TryBuildCallerChainKey(compilation, out var b) ? b : null);
+            Assert.True(FactoryCall.TryBuildCallerChainKeyFromOrigin(
+                factoryCall,
+                compilation,
+                out var fromOrigin));
+            Assert.True(factoryCall.TryBuildCallerChainKey(compilation, out var direct));
+            Assert.Equal(direct, fromOrigin);
         }
 
         private static void GetFactoryCall(

@@ -1,23 +1,24 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
+using TrainOP.Generators.Parts;
 using TrainOP.Generators.Route;
 using TrainOP.Generators.Wagons;
 
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Stage 4 entry: unified BuildChains surface.
+    /// Unified BuildChains surface over graph assembly and chain entry points.
     /// </summary>
     /// <remarks>
-    /// <see cref="RouteGraphAssembler.Build"/> remains the graph facade. Walker entry points
-    /// (<see cref="FromStation"/> / <see cref="EndingAt"/> / <see cref="FactoryExtension"/>)
-    /// are variants of the same stage — not separate pipelines.
+    /// <see cref="RouteGraphAssembler.Build"/> remains the graph facade.
+    /// <see cref="FromStation"/> / <see cref="EndingAt"/> use <see cref="RouteChainWalker"/>;
+    /// <see cref="FactoryExtension"/> uses <see cref="ExtensionChainConnector"/>.
     /// </remarks>
     internal static class BuildChainsStage
     {
         /// <summary>
-        /// Assembles <see cref="RouteGraph"/> from discovered sites (primary BuildChains entry).
+        /// Assembles <see cref="RouteGraph"/> from discovered sites.
         /// </summary>
         public static RouteGraph Build(ImmutableArray<RouteSite> sites, Compilation compilation)
         {
@@ -60,7 +61,7 @@ namespace TrainOP.Generators
             out RouteChain chain,
             out ImmutableArray<Diagnostic> diagnostics)
         {
-            return RouteChainWalker.TryBuildFactoryExtensionChain(
+            return ExtensionChainConnector.TryConnectEndingAt(
                 endpoint,
                 semanticModel,
                 compilation,
@@ -69,3 +70,4 @@ namespace TrainOP.Generators
         }
     }
 }
+

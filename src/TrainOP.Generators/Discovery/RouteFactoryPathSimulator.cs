@@ -108,9 +108,7 @@ namespace TrainOP.Generators
             IParameterSymbol outParameter,
             SemanticModel semanticModel)
         {
-            if (outParameter == null
-                || semanticModel == null
-                || !TryGetFactoryBody(declaration, out var expressionBody, out var body))
+            if (!TryGetFactoryBody(declaration, out var expressionBody, out var body))
             {
                 yield break;
             }
@@ -241,74 +239,27 @@ namespace TrainOP.Generators
             SemanticModel semanticModel,
             Compilation compilation)
         {
-            expression = ReceiverExpressionSyntaxPeel.UnwrapTransparent(expression);
-            if (expression == null)
+            foreach (var leaf in ReturnPathExpressionExpander.Expand(expression))
             {
-                yield break;
-            }
-
-            if (expression is ConditionalExpressionSyntax conditional)
-            {
-                foreach (var path in ExpandAndSimulateReturnPaths(conditional.WhenTrue, semanticModel, compilation))
+                if (JoinChainsStage.TrySimulateFactoryForkJoin(
+                    leaf,
+                    semanticModel,
+                    out var forkJoinPaths))
                 {
-                    yield return path;
-                }
-
-                foreach (var path in ExpandAndSimulateReturnPaths(conditional.WhenFalse, semanticModel, compilation))
-                {
-                    yield return path;
-                }
-
-                yield break;
-            }
-
-            if (expression is BinaryExpressionSyntax binary
-                && binary.IsKind(SyntaxKind.CoalesceExpression))
-            {
-                foreach (var path in ExpandAndSimulateReturnPaths(binary.Left, semanticModel, compilation))
-                {
-                    yield return path;
-                }
-
-                foreach (var path in ExpandAndSimulateReturnPaths(binary.Right, semanticModel, compilation))
-                {
-                    yield return path;
-                }
-
-                yield break;
-            }
-
-            if (expression is SwitchExpressionSyntax switchExpression)
-            {
-                foreach (var arm in switchExpression.Arms)
-                {
-                    foreach (var path in ExpandAndSimulateReturnPaths(arm.Expression, semanticModel, compilation))
+                    foreach (var path in forkJoinPaths)
                     {
                         yield return path;
                     }
+
+                    continue;
                 }
 
-                yield break;
+                yield return SimulateReturnExpression(
+                    leaf,
+                    semanticModel,
+                    compilation,
+                    leaf.GetLocation());
             }
-
-            if (JoinChainsStage.TrySimulateFactoryForkJoin(
-                expression,
-                semanticModel,
-                out var forkJoinPaths))
-            {
-                foreach (var path in forkJoinPaths)
-                {
-                    yield return path;
-                }
-
-                yield break;
-            }
-
-            yield return SimulateReturnExpression(
-                expression,
-                semanticModel,
-                compilation,
-                expression.GetLocation());
         }
 
         private static FactoryPathSimulation SimulateReturnExpression(
@@ -319,7 +270,7 @@ namespace TrainOP.Generators
         {
             if (BuildChainsStage.EndingAt(expression, semanticModel, out var chain))
             {
-                var seed = TerminalSetAdapters.FromAnchorSeed(chain.Anchor.InitialWagons);
+                var seed = TerminalSetAdapters.FromAnchorSeed(chain.InitialWagons);
                 var simulation = ChainGraphSimulator.Simulate(
                     chain,
                     TerminalSetAdapters.ToWagons(seed));
@@ -347,7 +298,7 @@ namespace TrainOP.Generators
                         location);
                 }
 
-                var seed = TerminalSetAdapters.FromAnchorSeed(extensionChain.Anchor.InitialWagons);
+                var seed = TerminalSetAdapters.FromAnchorSeed(extensionChain.InitialWagons);
                 var simulation = ChainGraphSimulator.Simulate(
                     extensionChain,
                     TerminalSetAdapters.ToWagons(seed));

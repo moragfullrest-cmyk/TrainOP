@@ -205,10 +205,10 @@ namespace TrainOP.Generators.Handlers
                 return false;
             }
 
-            return returnTypeDisplay == "global::TrainOP.Signal"
-                || returnTypeDisplay == "global::TrainOP.RedFailure"
-                || returnTypeDisplay == "global::TrainOP.WhitePass"
-                || returnTypeDisplay == "global::TrainOP.CargoManifest";
+            return returnTypeDisplay == ReturnTypeDisplayHelper.SignalReturnTypeDisplay
+                || returnTypeDisplay == ReturnTypeDisplayHelper.RedFailureReturnTypeDisplay
+                || returnTypeDisplay == ReturnTypeDisplayHelper.WhitePassReturnTypeDisplay
+                || returnTypeDisplay == ReturnTypeDisplayHelper.CargoManifestReturnTypeDisplay;
         }
     }
 }

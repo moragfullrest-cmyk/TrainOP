@@ -2,12 +2,13 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
 using TrainOP.Generators.Handlers;
+using TrainOP.Generators.Parts;
 using TrainOP.Generators.Wagons;
 
 namespace TrainOP.Generators.Route
 {
     /// <summary>
-    /// A single node in the TrainRoute discovery graph: either a chain anchor or a handler call site.
+    /// A single node in the TrainRoute discovery graph: either a chain origin or a handler call site.
     /// </summary>
     internal sealed class RouteSite
     {
@@ -20,7 +21,7 @@ namespace TrainOP.Generators.Route
             string stationName,
             StationHandlerBinding handlerBinding,
             Location handlerLocation,
-            RouteChainAnchorKind anchorKind,
+            IRoutePart originPart,
             IMethodSymbol containingMethod,
             IMethodSymbol factoryMethod,
             ImmutableArray<WagonBinding> initialWagons)
@@ -33,7 +34,7 @@ namespace TrainOP.Generators.Route
             StationName = stationName;
             HandlerBinding = handlerBinding;
             HandlerLocation = handlerLocation;
-            AnchorKind = anchorKind;
+            OriginPart = originPart;
             ContainingMethod = containingMethod;
             FactoryMethod = factoryMethod;
             InitialWagons = initialWagons;
@@ -55,7 +56,10 @@ namespace TrainOP.Generators.Route
 
         public Location HandlerLocation { get; }
 
-        public RouteChainAnchorKind AnchorKind { get; }
+        /// <summary>
+        /// Origin part when <see cref="Kind"/> is <see cref="RouteSiteKind.Anchor"/>.
+        /// </summary>
+        public IRoutePart OriginPart { get; }
 
         public IMethodSymbol ContainingMethod { get; }
 
@@ -86,45 +90,35 @@ namespace TrainOP.Generators.Route
                 stationName,
                 handlerBinding,
                 handlerLocation,
-                default,
+                null,
                 null,
                 null,
                 default);
         }
 
         /// <summary>
-        /// Creates a chain anchor discovered from syntax.
+        /// Creates a chain-origin site from a materialized origin part.
         /// </summary>
-        public static RouteSite CreateAnchor(
-            RouteChainAnchor anchor)
+        public static RouteSite CreateAnchor(IRoutePart origin)
         {
+            if (origin == null || !RouteOriginPorts.TryGetRoot(origin, out var root))
+            {
+                return null;
+            }
+
             return new RouteSite(
                 RouteSiteKind.Anchor,
-                anchor.Root,
-                anchor.Location,
+                root,
+                origin.Location,
                 null,
                 null,
                 null,
                 null,
                 null,
-                anchor.Kind,
-                anchor.ContainingMethod,
-                anchor.FactoryMethod,
-                anchor.InitialWagons);
-        }
-
-        /// <summary>
-        /// Projects this site into a <see cref="RouteChainAnchor"/> when it represents a chain root.
-        /// </summary>
-        public RouteChainAnchor ToAnchor()
-        {
-            return new RouteChainAnchor(
-                AnchorKind,
-                Expression,
-                IdentityLocation,
-                ContainingMethod,
-                FactoryMethod,
-                InitialWagons);
+                origin,
+                RouteOriginPorts.GetContainingMethod(origin),
+                RouteOriginPorts.GetFactoryMethod(origin),
+                RouteOriginPorts.GetInitialWagons(origin));
         }
     }
 }

@@ -11,6 +11,11 @@ namespace TrainOP
     public static class ItemWagonNames
     {
         /// <summary>
+        /// Prefix for sequential default tuple wagon keys (<c>Item1</c>, <c>Item2</c>, …).
+        /// </summary>
+        public const string ItemPrefix = "Item";
+
+        /// <summary>
         /// Returns the highest <c>ItemN</c> index among live wagon keys, or <c>0</c> when none exist.
         /// </summary>
         public static int GetMaxItemIndex(CargoManifest manifest)
@@ -37,7 +42,7 @@ namespace TrainOP
         /// </summary>
         public static string NextItemName(CargoManifest manifest)
         {
-            return "Item" + (GetMaxItemIndex(manifest) + 1);
+            return ItemPrefix + (GetMaxItemIndex(manifest) + 1);
         }
 
         /// <summary>
@@ -45,11 +50,6 @@ namespace TrainOP
         /// </summary>
         public static CargoManifest LoadNextItemWagon(CargoManifest manifest, object value)
         {
-            if (manifest == null)
-            {
-                throw new ArgumentNullException(nameof(manifest));
-            }
-
             return manifest.LoadWagon(NextItemName(manifest), value);
         }
 
@@ -59,12 +59,12 @@ namespace TrainOP
         public static bool TryParseItemIndex(string name, out int index)
         {
             index = 0;
-            if (string.IsNullOrEmpty(name) || !name.StartsWith("Item", StringComparison.Ordinal))
+            if (string.IsNullOrEmpty(name) || !name.StartsWith(ItemPrefix, StringComparison.Ordinal))
             {
                 return false;
             }
 
-            var suffix = name.Substring(4);
+            var suffix = name.Substring(ItemPrefix.Length);
             if (suffix.Length == 0)
             {
                 return false;

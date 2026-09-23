@@ -12,7 +12,7 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests <see cref="LinearChainConnector"/> Bind/Append linear connect (C2).
+    /// Tests <see cref="LinearChainConnector"/> Bind/Append linear connect.
     /// </summary>
     public sealed class LinearChainConnectorTests
     {
@@ -35,7 +35,7 @@ public static class Route
             Assert.True(LinearChainConnector.TryConnect(seed, model, out var ctor, out var chain));
             Assert.Equal(2, chain.Stations.Length);
             Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
-            Assert.Equal(RouteChainAnchorKind.ObjectCreation, chain.Anchor.Kind);
+            Assert.IsType<CreationSeed>(chain.Origin);
             Assert.Equal(2, ctor.Edges.Count(e => e.Kind == PartEdgeKind.Append));
         }
 
@@ -60,8 +60,8 @@ public static class Route
             Assert.True(LocalBindingMaterializer.TryMaterialize(identifier, model, out var binding));
 
             Assert.True(LinearChainConnector.TryConnect(binding, model, out var ctor, out var chain));
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
-            Assert.Same(identifier, chain.Anchor.Root);
+            Assert.IsType<LocalBinding>(chain.Origin);
+            Assert.Same(identifier, chain.Root);
             Assert.Equal(2, chain.Stations.Length);
             Assert.Contains(ctor.Edges, e => e.Kind == PartEdgeKind.Bind);
             Assert.Equal(2, ctor.Edges.Count(e => e.Kind == PartEdgeKind.Append));
@@ -88,7 +88,7 @@ public static class Route
             Assert.True(CreationSeedMaterializer.TryMaterialize(creation, model, out var seed));
 
             Assert.True(LinearChainConnector.TryConnect(seed, model, out _, out var chain));
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.IsType<LocalBinding>(chain.Origin);
             Assert.Equal(2, chain.Stations.Length);
             Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
         }

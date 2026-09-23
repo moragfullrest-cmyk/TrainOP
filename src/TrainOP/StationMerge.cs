@@ -202,47 +202,114 @@ namespace TrainOP
             bool preserveManifestComposition,
             bool allocateDefaultItemNElements)
         {
-            if (TryUnwrapGreenPayload(stationReturn, out var payload))
-            {
-                stationReturn = payload;
-            }
+            stationReturn = WagonStationReturn.UnwrapGreenPayloadReturn(stationReturn);
 
-            if (stationReturn is CargoManifest replacement)
+            if (TryApplySpecialReturn(
+                manifest,
+                stationReturn,
+                wagonNames,
+                returnMemberNames,
+                preserveManifestComposition,
+                allocateDefaultItemNElements,
+                out var earlyResult))
             {
-                if (preserveManifestComposition)
-                {
-                    OverlayExistingKeys(manifest, replacement);
-                    return manifest;
-                }
-
-                return replacement;
-            }
-
-            if (stationReturn is RedFailure)
-            {
-                throw new InvalidOperationException("RedFailure must be handled by StationMerge.ToSignal.");
-            }
-
-            if (stationReturn is WhitePass)
-            {
-                return manifest;
-            }
-
-            if (wagonNames.Length == 0)
-            {
-                return preserveManifestComposition
-                    ? OverlayNamedMembersOntoExisting(manifest, stationReturn, returnMemberNames)
-                    : MergeAllReturnMembers(
-                        manifest,
-                        stationReturn,
-                        returnMemberNames,
-                        allocateDefaultItemNElements);
+                return earlyResult;
             }
 
             ValidateRefWagonMetadata(wagonNames, byReferenceWagons, refLocalValues, requirePresent: false);
 
             // Named matches and ref writeback first; omitted non-ref inputs unload before ItemN allocation
             // so sequential unnamed tuples can reuse Item1… after the previous hop spent them.
+            var consumedReturnMembers = ApplyNamedInputWagons(
+                manifest,
+                stationReturn,
+                wagonNames,
+                removeOmittedRegularInputs,
+                returnMemberNames,
+                byReferenceWagons,
+                refLocalValues,
+                preserveManifestComposition,
+                allocateDefaultItemNElements);
+
+            ApplyExtraReturnMembers(
+                manifest,
+                stationReturn,
+                wagonNames,
+                returnMemberNames,
+                consumedReturnMembers,
+                preserveManifestComposition,
+                allocateDefaultItemNElements);
+
+            return manifest;
+        }
+
+        /// <summary>
+        /// Handles CargoManifest replacement/overlay, RedFailure, WhitePass, and empty input-wagon maps.
+        /// </summary>
+        private static bool TryApplySpecialReturn(
+            CargoManifest manifest,
+            object stationReturn,
+            string[] wagonNames,
+            string[] returnMemberNames,
+            bool preserveManifestComposition,
+            bool allocateDefaultItemNElements,
+            out CargoManifest result)
+        {
+            if (stationReturn is CargoManifest replacement)
+            {
+                if (preserveManifestComposition)
+                {
+                    OverlayExistingKeys(manifest, replacement);
+                    result = manifest;
+                    return true;
+                }
+
+                result = replacement;
+                return true;
+            }
+
+            if (stationReturn is RedFailure)
+            {
+                throw new InvalidOperationException(
+                    "RedFailure must be handled by StationAdapter.TryConvertPassthroughSignal.");
+            }
+
+            if (stationReturn is WhitePass)
+            {
+                result = manifest;
+                return true;
+            }
+
+            if (wagonNames.Length == 0)
+            {
+                result = preserveManifestComposition
+                    ? OverlayNamedMembersOntoExisting(manifest, stationReturn, returnMemberNames)
+                    : MergeAllReturnMembers(
+                        manifest,
+                        stationReturn,
+                        returnMemberNames,
+                        allocateDefaultItemNElements);
+                return true;
+            }
+
+            result = null;
+            return false;
+        }
+
+        /// <summary>
+        /// Resolves named input wagons (and ref writeback / unload) from the station return.
+        /// </summary>
+        private static HashSet<string> ApplyNamedInputWagons(
+            CargoManifest manifest,
+            object stationReturn,
+            string[] wagonNames,
+            bool removeOmittedRegularInputs,
+            string[] returnMemberNames,
+            bool[] byReferenceWagons,
+            object[] refLocalValues,
+            bool preserveManifestComposition,
+            bool allocateDefaultItemNElements)
+        {
             var consumedReturnMembers = new HashSet<string>(StringComparer.Ordinal);
 
             for (var i = 0; i < wagonNames.Length; i++)
@@ -283,63 +350,78 @@ namespace TrainOP
                 }
             }
 
-            if (stationReturn != null)
+            return consumedReturnMembers;
+        }
+
+        /// <summary>
+        /// Loads leftover return members (named extras and default ItemN allocations).
+        /// </summary>
+        private static void ApplyExtraReturnMembers(
+            CargoManifest manifest,
+            object stationReturn,
+            string[] wagonNames,
+            string[] returnMemberNames,
+            HashSet<string> consumedReturnMembers,
+            bool preserveManifestComposition,
+            bool allocateDefaultItemNElements)
+        {
+            if (stationReturn == null)
             {
-                var extraMemberNames = returnMemberNames ?? WagonStationReturn.GetMemberNames(stationReturn);
-                for (var memberIndex = 0; memberIndex < extraMemberNames.Length; memberIndex++)
-                {
-                    var memberName = extraMemberNames[memberIndex];
-                    if (consumedReturnMembers.Contains(memberName))
-                    {
-                        continue;
-                    }
-
-                    var isInputWagon = false;
-                    for (var j = 0; j < wagonNames.Length; j++)
-                    {
-                        if (string.Equals(wagonNames[j], memberName, StringComparison.Ordinal))
-                        {
-                            isInputWagon = true;
-                            break;
-                        }
-                    }
-
-                    var allocateAsItemN = allocateDefaultItemNElements
-                        && ShouldAllocateDefaultItemMember(memberName, memberIndex);
-
-                    // Named returns that collide with input keys were already handled above.
-                    // Default ItemN elements must still allocate after spend/unload (parity with MergePlanBuilder).
-                    if (isInputWagon && !allocateAsItemN)
-                    {
-                        continue;
-                    }
-
-                    if (!WagonStationReturn.TryGetMemberValue(
-                        stationReturn,
-                        memberName,
-                        returnMemberNames,
-                        out var extraValue))
-                    {
-                        continue;
-                    }
-
-                    if (allocateAsItemN)
-                    {
-                        if (preserveManifestComposition)
-                        {
-                            // ServiceStation cannot add wagons; skip (analyzer TOP015).
-                            continue;
-                        }
-
-                        ItemWagonNames.LoadNextItemWagon(manifest, extraValue);
-                        continue;
-                    }
-
-                    TryLoadWagon(manifest, memberName, extraValue, preserveManifestComposition);
-                }
+                return;
             }
 
-            return manifest;
+            var extraMemberNames = returnMemberNames ?? WagonStationReturn.GetMemberNames(stationReturn);
+            for (var memberIndex = 0; memberIndex < extraMemberNames.Length; memberIndex++)
+            {
+                var memberName = extraMemberNames[memberIndex];
+                if (consumedReturnMembers.Contains(memberName))
+                {
+                    continue;
+                }
+
+                var isInputWagon = false;
+                for (var j = 0; j < wagonNames.Length; j++)
+                {
+                    if (string.Equals(wagonNames[j], memberName, StringComparison.Ordinal))
+                    {
+                        isInputWagon = true;
+                        break;
+                    }
+                }
+
+                var allocateAsItemN = allocateDefaultItemNElements
+                    && ShouldAllocateDefaultItemMember(memberName, memberIndex);
+
+                // Named returns that collide with input keys were already handled above.
+                // Default ItemN elements must still allocate after spend/unload (parity with MergePlanBuilder).
+                if (isInputWagon && !allocateAsItemN)
+                {
+                    continue;
+                }
+
+                if (!WagonStationReturn.TryGetMemberValue(
+                    stationReturn,
+                    memberName,
+                    returnMemberNames,
+                    out var extraValue))
+                {
+                    continue;
+                }
+
+                if (allocateAsItemN)
+                {
+                    if (preserveManifestComposition)
+                    {
+                        // ServiceStation cannot add wagons; skip (analyzer TOP015).
+                        continue;
+                    }
+
+                    ItemWagonNames.LoadNextItemWagon(manifest, extraValue);
+                    continue;
+                }
+
+                TryLoadWagon(manifest, memberName, extraValue, preserveManifestComposition);
+            }
         }
 
         private static int IndexOfMember(string[] returnMemberNames, string memberName)
@@ -365,23 +447,13 @@ namespace TrainOP
         /// </summary>
         private static bool ShouldAllocateDefaultItemMember(string memberName, int memberIndex)
         {
-            if (memberIndex < 0 || string.IsNullOrEmpty(memberName))
+            if (memberIndex < 0)
             {
                 return false;
             }
 
-            if (!memberName.StartsWith("Item", StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            var suffix = memberName.Substring(4);
-            if (suffix.Length == 0 || !int.TryParse(suffix, out var parsed) || parsed != memberIndex + 1)
-            {
-                return false;
-            }
-
-            return true;
+            return ItemWagonNames.TryParseItemIndex(memberName, out var parsed)
+                && parsed == memberIndex + 1;
         }
 
         /// <summary>
@@ -731,21 +803,6 @@ namespace TrainOP
             }
 
             return manifest;
-        }
-
-        /// <summary>
-        /// Unwraps a green payload wrapper to its inner value.
-        /// </summary>
-        private static bool TryUnwrapGreenPayload(object stationReturn, out object payload)
-        {
-            if (stationReturn is IGreenPayload greenPayload)
-            {
-                payload = greenPayload.GetValue();
-                return true;
-            }
-
-            payload = stationReturn;
-            return false;
         }
 
         /// <summary>

@@ -7,7 +7,7 @@ using System.Collections.Immutable;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Stage 6: discovers exported route factories and builds <see cref="SchemaDescriptor"/> IR.
+    /// Discovers exported route factories and builds <see cref="SchemaDescriptor"/> IR.
     /// Diagnostics mirror the historical <c>RouteSchemasFile</c> validation path (TOP012/013).
     /// </summary>
     internal static class SchemaDescriptorsStage

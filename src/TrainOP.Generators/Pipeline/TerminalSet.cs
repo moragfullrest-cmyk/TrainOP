@@ -6,12 +6,12 @@ using TrainOP.Generators.Wagons;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Stage 5 IR: a terminal wagon set tagged with how it was produced.
+    /// Terminal wagon set tagged with how it was produced.
     /// </summary>
     internal sealed class TerminalSet
     {
         /// <summary>
-        /// Provenance of a <see cref="TerminalSet"/> (variant folding for stage 5).
+        /// Provenance of a <see cref="TerminalSet"/> (how the wagon set was obtained).
         /// </summary>
         internal enum Origin
         {
@@ -140,7 +140,7 @@ namespace TrainOP.Generators
         /// </summary>
         public static ImmutableArray<WagonBinding> ToWagons(TerminalSet terminals)
         {
-            if (terminals == null || terminals.HasUnknownReturn)
+            if (terminals.HasUnknownReturn)
             {
                 return ImmutableArray<WagonBinding>.Empty;
             }

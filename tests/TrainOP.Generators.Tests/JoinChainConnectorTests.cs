@@ -12,7 +12,7 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests <see cref="JoinChainConnector"/> arms → JoinSeed + validator (J2).
+    /// Tests <see cref="JoinChainConnector"/> arms → JoinSeed + validator.
     /// </summary>
     public sealed class JoinChainConnectorTests
     {
@@ -45,9 +45,7 @@ public static class Route
             Assert.Equal(2, ctor.Edges.Count(e => e.Kind == PartEdgeKind.Join));
             Assert.Single(seed.MergedTerminalWagons);
             Assert.Equal("value", seed.MergedTerminalWagons[0].Name);
-
-            Assert.True(LegacyRoutePartAdapter.TryToLegacyAnchor(seed, out var anchor));
-            Assert.Equal(RouteChainAnchorKind.BranchJoin, anchor.Kind);
+            Assert.True(RouteOriginPorts.IsOriginPart(seed));
         }
 
         [Fact]

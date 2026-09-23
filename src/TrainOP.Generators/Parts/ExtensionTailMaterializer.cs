@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using TrainOP.Generators.Chain;
 using TrainOP.Generators.Route;
 
 namespace TrainOP.Generators.Parts
@@ -30,19 +29,20 @@ namespace TrainOP.Generators.Parts
                 return false;
             }
 
-            var legacyStations = ImmutableArray.CreateBuilder<StationChainLink>();
+            var stations = ImmutableArray.CreateBuilder<StationLink>();
             var current = (ExpressionSyntax)factoryCall.Root;
             ExpressionSyntax tailEndpoint = current;
             var target = endpoint == null
                 ? null
                 : ReceiverExpressionSyntaxPeel.UnwrapTransparent(endpoint);
 
-            while (endpoint == null || !MatchesEndpoint(current, endpoint, target))
+            while (endpoint == null
+                || !RouteChainRootResolver.MatchesChainEndpoint(current, endpoint, target))
             {
-                if (!RouteChainWalker.TryAdvanceChain(
+                if (!RouteChainPeel.TryAdvanceChain(
                     current,
                     semanticModel,
-                    legacyStations,
+                    stations,
                     out current,
                     null,
                     stationByKey))
@@ -58,22 +58,7 @@ namespace TrainOP.Generators.Parts
                 tailEndpoint = current;
             }
 
-            if (legacyStations.Count == 0 && !allowEmpty)
-            {
-                return false;
-            }
-
-            var links = ImmutableArray.CreateBuilder<StationLink>(legacyStations.Count);
-            foreach (var legacy in legacyStations)
-            {
-                var link = StationLink.FromStationChainLink(legacy);
-                if (link != null)
-                {
-                    links.Add(link);
-                }
-            }
-
-            if (links.Count == 0 && !allowEmpty)
+            if (stations.Count == 0 && !allowEmpty)
             {
                 return false;
             }
@@ -83,7 +68,7 @@ namespace TrainOP.Generators.Parts
                 tailEndpoint = endpoint;
             }
 
-            tail = new ExtensionTail(tailEndpoint, links.ToImmutable());
+            tail = new ExtensionTail(tailEndpoint, stations.ToImmutable());
             return true;
         }
 
@@ -114,29 +99,6 @@ namespace TrainOP.Generators.Parts
             out ExtensionTail tail)
         {
             return TryMaterialize(factoryCall, semanticModel, stationByKey: null, out tail);
-        }
-
-        private static bool MatchesEndpoint(
-            ExpressionSyntax current,
-            ExpressionSyntax endpoint,
-            ExpressionSyntax unwrappedEndpoint)
-        {
-            if (ReferenceEquals(current, endpoint)
-                || ReferenceEquals(current, unwrappedEndpoint))
-            {
-                return true;
-            }
-
-            var unwrappedCurrent = ReceiverExpressionSyntaxPeel.UnwrapTransparent(current);
-            if (ReferenceEquals(unwrappedCurrent, endpoint)
-                || ReferenceEquals(unwrappedCurrent, unwrappedEndpoint))
-            {
-                return true;
-            }
-
-            var outermostCurrent = ReceiverExpressionSyntaxPeel.WrapTransparentOutermost(current);
-            var outermostEndpoint = ReceiverExpressionSyntaxPeel.WrapTransparentOutermost(endpoint);
-            return ReferenceEquals(outermostCurrent, outermostEndpoint);
         }
     }
 }

@@ -6,7 +6,7 @@ using TrainOP.Generators.Wagons;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Stage 6 IR: data-oriented export descriptor for one public route factory schema.
+    /// Data-oriented export descriptor for one public route factory schema.
     /// Holds attribute payload for <c>RouteSchemas.g.cs</c> without <c>StringBuilder</c> / <c>AddSource</c>.
     /// </summary>
     internal sealed class SchemaDescriptor
@@ -67,11 +67,6 @@ namespace TrainOP.Generators
         /// </summary>
         internal static string BuildSchemaTypeName(IMethodSymbol methodSymbol)
         {
-            if (methodSymbol == null)
-            {
-                return "_Schema";
-            }
-
             var typeName = methodSymbol.ContainingType?.Name ?? string.Empty;
             var methodName = methodSymbol.Name;
             if (typeName.Length == 0)

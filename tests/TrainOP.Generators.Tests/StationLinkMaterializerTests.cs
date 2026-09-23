@@ -11,7 +11,7 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests <see cref="StationLinkMaterializer"/> (C1).
+    /// Tests <see cref="StationLinkMaterializer"/>.
     /// </summary>
     public sealed class StationLinkMaterializerTests
     {
@@ -35,10 +35,8 @@ public static class Route
             Assert.Equal("Next", link.StationName);
             Assert.Same(invocation, link.Invocation);
             Assert.NotNull(link.Handler);
-
-            var legacy = link.ToStationChainLink();
-            Assert.Equal("Next", legacy.StationName);
-            Assert.Same(invocation, legacy.Invocation);
+            Assert.Equal("Next", link.StationName);
+            Assert.Same(invocation, link.Invocation);
         }
 
         [Fact]

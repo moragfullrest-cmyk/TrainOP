@@ -12,7 +12,7 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests <see cref="ExtensionTailMaterializer"/> / <see cref="ExtensionChainConnector"/> (E1).
+    /// Tests <see cref="ExtensionTailMaterializer"/> / <see cref="ExtensionChainConnector"/>.
     /// </summary>
     public sealed class ExtensionChainConnectorTests
     {
@@ -66,8 +66,8 @@ public static class Route
                 out var chain));
 
             Assert.Contains(ctor.Edges, e => e.Kind == PartEdgeKind.Extend);
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, chain.Anchor.Kind);
-            Assert.Equal("CreateSeed", chain.Anchor.FactoryMethod.Name);
+            Assert.True(chain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (chain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.Equal("CreateSeed", chain.FactoryMethod.Name);
             Assert.Equal(new[] { "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
         }
 
@@ -109,7 +109,7 @@ public static class Route
                 out var chain,
                 out _));
 
-            Assert.Equal(RouteChainAnchorKind.FactorySchema, chain.Anchor.Kind);
+            Assert.True(chain.Origin is FactoryCall { Kind: FactoryCallKind.Schema } || (chain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Schema));
             Assert.Equal("Next", chain.Stations.Single().StationName);
         }
 

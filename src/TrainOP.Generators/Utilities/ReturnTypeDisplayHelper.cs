@@ -9,6 +9,22 @@ namespace TrainOP.Generators
     internal static class ReturnTypeDisplayHelper
     {
         public const string SignalReturnTypeDisplay = "global::TrainOP.Signal";
+        public const string RedFailureReturnTypeDisplay = "global::TrainOP.RedFailure";
+        public const string WhitePassReturnTypeDisplay = "global::TrainOP.WhitePass";
+        public const string CargoManifestReturnTypeDisplay = "global::TrainOP.CargoManifest";
+        public const string RedSignalReturnTypeDisplay = "global::TrainOP.RedSignal";
+        public const string SignalIssueReturnTypeDisplay = "global::TrainOP.SignalIssue";
+        public const string SignalIssuesListReturnTypeDisplay =
+            "global::System.Collections.Generic.IReadOnlyList<global::TrainOP.SignalIssue>";
+
+        public const string TrainRouteTypeName = "TrainOP.TrainRoute";
+        public const string SignalTypeName = "TrainOP.Signal";
+        public const string GreenSignalTypeName = "TrainOP.GreenSignal";
+        public const string RedSignalTypeName = "TrainOP.RedSignal";
+        public const string RedFailureTypeName = "TrainOP.RedFailure";
+        public const string WhitePassTypeName = "TrainOP.WhitePass";
+        public const string CargoManifestTypeName = "TrainOP.CargoManifest";
+        public const string SignalIssueTypeName = "TrainOP.SignalIssue";
 
         /// <summary>
         /// Determines whether the return type must be expressed as <c>object</c>
@@ -38,8 +54,8 @@ namespace TrainOP.Generators
             }
 
             var display = returnType.ToDisplayString();
-            return string.Equals(display, "TrainOP.GreenSignal", StringComparison.Ordinal)
-                || string.Equals(display, "TrainOP.RedSignal", StringComparison.Ordinal);
+            return string.Equals(display, GreenSignalTypeName, StringComparison.Ordinal)
+                || string.Equals(display, RedSignalTypeName, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -48,7 +64,15 @@ namespace TrainOP.Generators
         public static bool IsSignalBaseReturn(ITypeSymbol returnType)
         {
             return returnType != null
-                && string.Equals(returnType.ToDisplayString(), "TrainOP.Signal", StringComparison.Ordinal);
+                && string.Equals(returnType.ToDisplayString(), SignalTypeName, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// True when <paramref name="display"/> matches a known TrainOP type display string.
+        /// </summary>
+        public static bool EqualsTypeName(string display, string typeName)
+        {
+            return string.Equals(display, typeName, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -107,12 +131,12 @@ namespace TrainOP.Generators
 
         private static bool IsRedFailure(ITypeSymbol typeSymbol)
         {
-            return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.RedFailure", StringComparison.Ordinal);
+            return EqualsTypeName(typeSymbol?.ToDisplayString(), RedFailureTypeName);
         }
 
         private static bool IsWhitePass(ITypeSymbol typeSymbol)
         {
-            return string.Equals(typeSymbol?.ToDisplayString(), "TrainOP.WhitePass", StringComparison.Ordinal);
+            return EqualsTypeName(typeSymbol?.ToDisplayString(), WhitePassTypeName);
         }
     }
 }

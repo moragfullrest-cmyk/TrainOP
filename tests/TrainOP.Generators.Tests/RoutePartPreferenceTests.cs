@@ -6,13 +6,12 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using TrainOP.Generators.Parts;
-using TrainOP.Generators.Route;
 using Xunit;
 
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests <see cref="RoutePartPreference"/> ports used by Assembler (K1).
+    /// Tests <see cref="RoutePartPreference"/> ports used by Assembler.
     /// </summary>
     public sealed class RoutePartPreferenceTests
     {
@@ -44,7 +43,7 @@ namespace TrainOP.Generators.Tests
         }
 
         [Fact]
-        public void score_legacy_anchor_uses_root_shape_not_kind_sprawl()
+        public void score_and_origin_key_use_part_shape()
         {
             const string source = @"
 using TrainOP;
@@ -72,26 +71,16 @@ public static class Route
                 .OfType<IdentifierNameSyntax>()
                 .Last(id => id.Identifier.ValueText == "route");
 
-            var creationAnchor = new RouteChainAnchor(
-                RouteChainAnchorKind.ObjectCreation,
-                objectCreation,
-                objectCreation.GetLocation(),
-                model.GetDeclaredSymbol(root.DescendantNodes().OfType<MethodDeclarationSyntax>().Single()) as IMethodSymbol);
+            Assert.True(CreationSeedMaterializer.TryMaterialize(objectCreation, model, out var creation));
+            Assert.True(LocalBindingMaterializer.TryMaterialize(identifier, model, out var local));
 
-            var localAnchor = new RouteChainAnchor(
-                RouteChainAnchorKind.LocalVariable,
-                identifier,
-                objectCreation.GetLocation(),
-                creationAnchor.ContainingMethod);
-
-            Assert.True(RoutePartPreference.ScoreLegacyAnchor(localAnchor)
-                > RoutePartPreference.ScoreLegacyAnchor(creationAnchor));
-            Assert.True(RoutePartPreference.IsOriginKeyed(localAnchor));
-            Assert.False(RoutePartPreference.IsOriginKeyed(creationAnchor));
+            Assert.True(RoutePartPreference.Score(local) > RoutePartPreference.Score(creation));
+            Assert.True(RoutePartPreference.IsOriginKeyed(local));
+            Assert.False(RoutePartPreference.IsOriginKeyed(creation));
         }
 
         [Fact]
-        public void score_legacy_branch_join_shape_without_kind_switch()
+        public void score_join_seed_is_lowest_origin()
         {
             const string source = @"
 using TrainOP;
@@ -108,20 +97,19 @@ public static class Route
                 new[] { tree },
                 GetMetadataReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-            var model = compilation.GetSemanticModel(tree);
             var station = tree.GetRoot()
                 .DescendantNodes()
                 .OfType<InvocationExpressionSyntax>()
                 .First(StationSyntaxHelper.IsCandidateStationInvocation);
 
-            var joinAnchor = new RouteChainAnchor(
-                RouteChainAnchorKind.BranchJoin,
+            var joinSeed = new JoinSeed(
                 station,
-                station.GetLocation(),
-                model.GetDeclaredSymbol(tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>().Single()) as IMethodSymbol);
+                station,
+                System.Collections.Immutable.ImmutableArray<JoinArm>.Empty,
+                validation: null);
 
-            Assert.Equal(1, RoutePartPreference.ScoreLegacyAnchor(joinAnchor));
-            Assert.False(RoutePartPreference.IsOriginKeyed(joinAnchor));
+            Assert.Equal(1, RoutePartPreference.Score(joinSeed));
+            Assert.False(RoutePartPreference.IsOriginKeyed(joinSeed));
         }
 
         private static MetadataReference[] GetMetadataReferences()

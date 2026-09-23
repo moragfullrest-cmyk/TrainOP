@@ -126,12 +126,12 @@ namespace TrainOP.Generators
         {
             foreach (var chain in graph.GetChainsInTree(tree))
             {
-                if (chain.Anchor.FactoryMethod != null)
+                if (chain.FactoryMethod != null)
                 {
                     if (!RouteFactoryResolver.TryResolve(
-                        chain.Anchor.FactoryMethod,
+                        chain.FactoryMethod,
                         compilation,
-                        chain.Anchor.Location,
+                        chain.AnchorLocation,
                         out _,
                         out var factoryDiagnostics))
                     {
@@ -142,7 +142,7 @@ namespace TrainOP.Generators
                     }
                 }
 
-                var seed = TerminalSetAdapters.FromAnchorSeed(chain.Anchor.InitialWagons);
+                var seed = TerminalSetAdapters.FromAnchorSeed(chain.InitialWagons);
                 foreach (var diagnostic in ChainGraphSimulator
                     .Simulate(chain, TerminalSetAdapters.ToWagons(seed))
                     .Diagnostics)

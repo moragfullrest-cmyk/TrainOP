@@ -8,35 +8,40 @@ using TrainOP.Generators.Wagons;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Detects route chain anchors via Parts materializers (K4).
+    /// Detects route chain origins via Parts materializers.
     /// </summary>
     internal static class RouteAnchorDetector
     {
         /// <summary>
-        /// Attempts to detect a route chain anchor at the given syntax node.
+        /// Attempts to detect a route chain origin at the given syntax node.
         /// </summary>
         public static bool TryDetect(
             SyntaxNode node,
             SemanticModel semanticModel,
-            out RouteChainAnchor anchor)
+            out IRoutePart origin)
         {
-            anchor = null;
+            origin = null;
 
             if (node is ObjectCreationExpressionSyntax objectCreation
-                && TryDetectObjectCreation(objectCreation, semanticModel, out anchor))
+                && CreationSeedMaterializer.TryMaterialize(objectCreation, semanticModel, out var seed))
             {
+                origin = seed;
                 return true;
             }
 
             if (node is IdentifierNameSyntax identifier
-                && TryDetectLocalVariable(identifier, semanticModel, out anchor))
+                && IsLocalVariableChainReceiver(identifier)
+                && LocalBindingMaterializer.TryMaterialize(identifier, semanticModel, out var binding))
             {
+                origin = binding;
                 return true;
             }
 
             if (node is InvocationExpressionSyntax factoryInvocation
-                && TryDetectFactoryInvocation(factoryInvocation, semanticModel, out anchor))
+                && IsFactoryChainReceiver(factoryInvocation)
+                && FactoryCallMaterializer.TryMaterialize(factoryInvocation, semanticModel, out var factoryCall))
             {
+                origin = factoryCall;
                 return true;
             }
 
@@ -98,7 +103,7 @@ namespace TrainOP.Generators
                 return false;
             }
 
-            var branches = JoinChainsStage.DiscoverBranches(forkExpression, semanticModel);
+            var branches = BranchRouteGraphDiscoverer.Discover(forkExpression, semanticModel);
             var joinSet = new BranchRouteJoinSet(
                 forkExpression,
                 downstreamStation: null,
@@ -108,43 +113,43 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// When all join arms share one factory method, returns that factory and its legacy kind.
+        /// When all join arms share one factory method, returns that factory and its call kind.
         /// </summary>
         public static bool TryGetSharedFactoryFromJoinArms(
             ExpressionSyntax forkExpression,
             SemanticModel semanticModel,
             out IMethodSymbol sharedFactory,
-            out RouteChainAnchorKind anchorKind,
+            out FactoryCallKind factoryKind,
             out ImmutableArray<WagonBinding> initialWagons)
         {
             sharedFactory = null;
-            anchorKind = default;
+            factoryKind = default;
             initialWagons = ImmutableArray<WagonBinding>.Empty;
 
-            var branches = JoinChainsStage.DiscoverBranches(forkExpression, semanticModel);
+            var branches = BranchRouteGraphDiscoverer.Discover(forkExpression, semanticModel);
             if (branches.IsDefaultOrEmpty)
             {
                 return false;
             }
 
             IMethodSymbol candidate = null;
-            RouteChainAnchorKind candidateKind = default;
+            FactoryCallKind candidateKind = default;
             ImmutableArray<WagonBinding> candidateWagons = default;
 
             for (var i = 0; i < branches.Length; i++)
             {
                 var branch = branches[i];
-                if (!branch.IsResolved || branch.Chain?.Anchor?.FactoryMethod == null)
+                var factory = branch.Chain?.FactoryMethod;
+                if (!branch.IsResolved || factory == null)
                 {
                     return false;
                 }
 
-                var factory = branch.Chain.Anchor.FactoryMethod;
                 if (candidate == null)
                 {
                     candidate = factory;
-                    candidateKind = branch.Chain.Anchor.Kind;
-                    candidateWagons = branch.Chain.Anchor.InitialWagons;
+                    candidateKind = ResolveFactoryKind(branch.Chain.Origin);
+                    candidateWagons = branch.Chain.InitialWagons;
                     continue;
                 }
 
@@ -160,60 +165,24 @@ namespace TrainOP.Generators
             }
 
             sharedFactory = candidate;
-            anchorKind = candidateKind;
+            factoryKind = candidateKind;
             initialWagons = candidateWagons;
             return true;
         }
 
-        private static bool TryDetectObjectCreation(
-            ObjectCreationExpressionSyntax objectCreation,
-            SemanticModel semanticModel,
-            out RouteChainAnchor anchor)
+        private static FactoryCallKind ResolveFactoryKind(IRoutePart origin)
         {
-            anchor = null;
-
-            if (!CreationSeedMaterializer.TryMaterialize(objectCreation, semanticModel, out var seed))
+            if (origin is FactoryCall factoryCall)
             {
-                return false;
+                return factoryCall.Kind;
             }
 
-            return LegacyRoutePartAdapter.TryToLegacyAnchor(seed, out anchor);
-        }
-
-        private static bool TryDetectLocalVariable(
-            IdentifierNameSyntax identifier,
-            SemanticModel semanticModel,
-            out RouteChainAnchor anchor)
-        {
-            anchor = null;
-
-            if (!IsLocalVariableChainReceiver(identifier))
+            if (origin is LocalBinding localBinding && localBinding.FactoryKind.HasValue)
             {
-                return false;
+                return localBinding.FactoryKind.Value;
             }
 
-            return LocalBindingMaterializer.TryMaterialize(identifier, semanticModel, out var binding)
-                && LegacyRoutePartAdapter.TryToLegacyAnchor(binding, out anchor);
-        }
-
-        private static bool TryDetectFactoryInvocation(
-            InvocationExpressionSyntax factoryInvocation,
-            SemanticModel semanticModel,
-            out RouteChainAnchor anchor)
-        {
-            anchor = null;
-
-            if (!IsFactoryChainReceiver(factoryInvocation))
-            {
-                return false;
-            }
-
-            if (!FactoryCallMaterializer.TryMaterialize(factoryInvocation, semanticModel, out var factoryCall))
-            {
-                return false;
-            }
-
-            return LegacyRoutePartAdapter.TryToLegacyAnchor(factoryCall, out anchor);
+            return FactoryCallKind.Inline;
         }
     }
 }

@@ -12,7 +12,7 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests <see cref="CreationSeedMaterializer"/> (M1).
+    /// Tests <see cref="CreationSeedMaterializer"/>.
     /// </summary>
     public sealed class CreationSeedMaterializerTests
     {
@@ -35,11 +35,9 @@ public static class Route
             Assert.Equal(creation.GetLocation().SourceSpan, seed.Location.SourceSpan);
             Assert.NotNull(seed.ContainingMethod);
             Assert.Equal("Build", seed.ContainingMethod.Name);
-
-            Assert.True(LegacyRoutePartAdapter.TryToLegacyAnchor(seed, out var anchor));
-            Assert.Equal(RouteChainAnchorKind.ObjectCreation, anchor.Kind);
-            Assert.Same(creation, anchor.Root);
-            Assert.Equal("Build", anchor.ContainingMethod.Name);
+            Assert.True(RouteOriginPorts.IsOriginPart(seed));
+            Assert.True(RouteOriginPorts.TryGetRoot(seed, out var root));
+            Assert.Same(creation, root);
         }
 
         [Fact]

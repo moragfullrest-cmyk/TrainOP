@@ -9,7 +9,7 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Stage 6 boundary: <see cref="SchemaDescriptorsStage"/> export descriptor shape.
+    /// Tests <see cref="SchemaDescriptorsStage"/> export descriptor shape.
     /// </summary>
     public sealed class SchemaDescriptorsStageTests
     {

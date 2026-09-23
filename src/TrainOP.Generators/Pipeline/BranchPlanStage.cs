@@ -7,7 +7,7 @@ using System.Linq;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Stage 3: turn attached signature groups into canonical ∥ chain-aware branch plans (+ TOP007).
+    /// Turns attached signature groups into canonical or chain-aware branch plans (may report TOP007).
     /// </summary>
     internal static class BranchPlanStage
     {
@@ -28,11 +28,6 @@ namespace TrainOP.Generators
             IEnumerable<DelegateSignatureGroup> groups,
             Action<Diagnostic> reportDiagnostic = null)
         {
-            if (groups == null)
-            {
-                return ImmutableArray<BranchPlan>.Empty;
-            }
-
             return groups
                 .Select(group => group.ToBranchPlan(reportDiagnostic))
                 .OrderBy(plan => plan.Schema.DelegateTypeId, StringComparer.Ordinal)

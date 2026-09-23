@@ -10,7 +10,7 @@ using TrainOP.Generators.Route;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Stage 2: group station handler bindings by signature without chain context.
+    /// Groups station handler bindings by signature without chain context.
     /// </summary>
     internal static class SignatureGroupingStage
     {

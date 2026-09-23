@@ -3,7 +3,7 @@ using TrainOP.Generators.Route;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Stage 7 IR: one fork-join site with validation and optional merged terminals.
+    /// One fork-join site with validation and optional merged terminals.
     /// </summary>
     internal sealed class JoinedChain
     {

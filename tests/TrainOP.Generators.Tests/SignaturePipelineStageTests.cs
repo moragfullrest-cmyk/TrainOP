@@ -11,7 +11,7 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Stage-boundary tests: GroupSignatures → AttachChainContext → BranchPlans.
+    /// Tests GroupSignatures → AttachChainContext → BranchPlans pipeline.
     /// </summary>
     public sealed class SignaturePipelineStageTests
     {

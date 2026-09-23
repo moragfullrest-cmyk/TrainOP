@@ -11,7 +11,7 @@ namespace TrainOP.Generators
     {
         /// <summary>
         /// Reports pipeline diagnostics and emits Extensions + RouteSchemas from ready IR.
-        /// No discovery / stage work — only <c>AddSource</c> / <c>ReportDiagnostic</c>.
+        /// No discovery or IR assembly — only <c>AddSource</c> / <c>ReportDiagnostic</c>.
         /// </summary>
         public static void EmitAll(SourceProductionContext context, GenerationModel model)
         {

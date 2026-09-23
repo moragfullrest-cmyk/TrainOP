@@ -12,7 +12,7 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests <see cref="LocalBindingMaterializer"/> (M3).
+    /// Tests <see cref="LocalBindingMaterializer"/>.
     /// </summary>
     public sealed class LocalBindingMaterializerTests
     {
@@ -38,11 +38,6 @@ public static class Route
             Assert.Same(identifier, binding.Identifier);
             Assert.IsType<CreationSeed>(binding.Origin);
             Assert.Equal("Build", binding.ContainingMethod.Name);
-
-            Assert.True(LegacyRoutePartAdapter.TryToLegacyAnchor(binding, out var anchor));
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, anchor.Kind);
-            Assert.Same(identifier, anchor.Root);
-            Assert.Equal(binding.Location.SourceSpan, anchor.Location.SourceSpan);
         }
 
         [Fact]
@@ -69,11 +64,6 @@ public static class Route
             Assert.True(LocalBindingMaterializer.TryMaterialize(identifier, model, out var binding));
             Assert.IsType<FactoryCall>(binding.Origin);
             Assert.Equal(FactoryCallKind.Inline, ((FactoryCall)binding.Origin).Kind);
-
-            Assert.True(LegacyRoutePartAdapter.TryToLegacyAnchor(binding, out var anchor));
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, anchor.Kind);
-            Assert.Equal("CreateSeed", anchor.FactoryMethod.Name);
-            Assert.Same(identifier, anchor.Root);
         }
 
         [Fact]
@@ -99,9 +89,6 @@ public static class Route
 
             Assert.True(LocalBindingMaterializer.TryMaterialize(identifier, model, out var binding));
             Assert.Equal(FactoryCallKind.Schema, ((FactoryCall)binding.Origin).Kind);
-
-            Assert.True(LegacyRoutePartAdapter.TryToLegacyAnchor(binding, out var anchor));
-            Assert.Equal(RouteChainAnchorKind.FactorySchema, anchor.Kind);
         }
 
         [Fact]
@@ -147,11 +134,6 @@ public static class Route
             Assert.Null(binding.FactoryMethod);
             Assert.Single(binding.InitialWagons);
             Assert.Equal("id", binding.InitialWagons[0].Name);
-
-            Assert.True(LegacyRoutePartAdapter.TryToLegacyAnchor(binding, out var anchor));
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, anchor.Kind);
-            Assert.Same(identifier, anchor.Root);
-            Assert.Single(anchor.InitialWagons);
         }
 
         [Fact]
@@ -178,11 +160,6 @@ public static class Route
             Assert.True(LocalBindingMaterializer.TryMaterialize(identifier, model, out var binding));
             Assert.IsType<FactoryCall>(binding.Origin);
             Assert.Equal("CreateSeed", binding.FactoryMethod.Name);
-
-            Assert.True(LegacyRoutePartAdapter.TryToLegacyAnchor(binding, out var anchor));
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, anchor.Kind);
-            Assert.Equal("CreateSeed", anchor.FactoryMethod.Name);
-            Assert.Same(identifier, anchor.Root);
         }
 
         private static void GetLocalReceiver(

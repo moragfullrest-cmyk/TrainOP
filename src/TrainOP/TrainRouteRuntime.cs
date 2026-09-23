@@ -60,7 +60,7 @@ namespace TrainOP
 
             if (!_wagons.TryGetValue(wagonName, out var value))
             {
-                throw new KeyNotFoundException("Wagon '" + wagonName + "' was not found in the manifest.");
+                throw new KeyNotFoundException($"Wagon '{wagonName}' was not found in the manifest.");
             }
 
             return CastWagonValue<T>(wagonName, value);
@@ -79,13 +79,13 @@ namespace TrainOP
                 }
 
                 throw new InvalidCastException(
-                    "Wagon '" + wagonName + "' contains null, cannot cast to '" + typeof(T).FullName + "'.");
+                    $"Wagon '{wagonName}' contains null, cannot cast to '{typeof(T).FullName}'.");
             }
 
             if (!(value is T typed))
             {
                 throw new InvalidCastException(
-                    "Wagon '" + wagonName + "' contains '" + value.GetType().FullName + "', cannot cast to '" + typeof(T).FullName + "'.");
+                    $"Wagon '{wagonName}' contains '{value.GetType().FullName}', cannot cast to '{typeof(T).FullName}'.");
             }
 
             return typed;
@@ -473,7 +473,7 @@ namespace TrainOP
 
             if (!Manifest.TryGetWagon(wagonName, out var value))
             {
-                throw new KeyNotFoundException("Wagon '" + wagonName + "' was not found in the terminal report.");
+                throw new KeyNotFoundException($"Wagon '{wagonName}' was not found in the terminal report.");
             }
 
             return CargoManifest.CastWagonValue<T>(wagonName, value);
@@ -995,39 +995,12 @@ namespace TrainOP
             if (plan.IsAsync)
             {
                 throw new InvalidOperationException(
-                    "Route contains async station '" + plan.StationName + "'. Use TravelAsync instead of Travel.");
+                    $"Route contains async station '{plan.StationName}'. Use TravelAsync instead of Travel.");
             }
 
             try
             {
-                if (plan.ThroughStationWithToken != null)
-                {
-                    var nextManifest = plan.ThroughStationWithToken(current, cancellationToken);
-                    if (nextManifest != null)
-                    {
-                        current = nextManifest;
-                    }
-
-                    return RailwaySignals.Green();
-                }
-
-                if (plan.ThroughStation != null)
-                {
-                    var nextManifest = plan.ThroughStation(current);
-                    if (nextManifest != null)
-                    {
-                        current = nextManifest;
-                    }
-
-                    return RailwaySignals.Green();
-                }
-
-                if (plan.StationWithToken != null)
-                {
-                    return plan.StationWithToken(current, cancellationToken);
-                }
-
-                return plan.Station(current);
+                return ExecuteSyncStationHandlers(plan, ref current, cancellationToken);
             }
             catch (OperationCanceledException)
             {
@@ -1066,34 +1039,10 @@ namespace TrainOP
                     return await plan.AsyncStation(manifest.Current, cancellationToken).ConfigureAwait(false);
                 }
 
-                if (plan.ThroughStationWithToken != null)
-                {
-                    var nextManifest = plan.ThroughStationWithToken(manifest.Current, cancellationToken);
-                    if (nextManifest != null)
-                    {
-                        manifest.Current = nextManifest;
-                    }
-
-                    return RailwaySignals.Green();
-                }
-
-                if (plan.ThroughStation != null)
-                {
-                    var nextManifest = plan.ThroughStation(manifest.Current);
-                    if (nextManifest != null)
-                    {
-                        manifest.Current = nextManifest;
-                    }
-
-                    return RailwaySignals.Green();
-                }
-
-                if (plan.StationWithToken != null)
-                {
-                    return plan.StationWithToken(manifest.Current, cancellationToken);
-                }
-
-                return plan.Station(manifest.Current);
+                var current = manifest.Current;
+                var signal = ExecuteSyncStationHandlers(plan, ref current, cancellationToken);
+                manifest.Current = current;
+                return signal;
             }
             catch (OperationCanceledException)
             {
@@ -1103,6 +1052,44 @@ namespace TrainOP
             {
                 return WrapStationException(plan, exception);
             }
+        }
+
+        /// <summary>
+        /// Shared sync Through*/Station* dispatch used by Travel and the sync fallback of TravelAsync.
+        /// </summary>
+        private static Signal ExecuteSyncStationHandlers(
+            StationPlan plan,
+            ref CargoManifest current,
+            CancellationToken cancellationToken)
+        {
+            if (plan.ThroughStationWithToken != null)
+            {
+                var nextManifest = plan.ThroughStationWithToken(current, cancellationToken);
+                if (nextManifest != null)
+                {
+                    current = nextManifest;
+                }
+
+                return RailwaySignals.Green();
+            }
+
+            if (plan.ThroughStation != null)
+            {
+                var nextManifest = plan.ThroughStation(current);
+                if (nextManifest != null)
+                {
+                    current = nextManifest;
+                }
+
+                return RailwaySignals.Green();
+            }
+
+            if (plan.StationWithToken != null)
+            {
+                return plan.StationWithToken(current, cancellationToken);
+            }
+
+            return plan.Station(current);
         }
 
         /// <summary>
@@ -1118,7 +1105,7 @@ namespace TrainOP
             if (servicePlan.AsyncHandler != null)
             {
                 throw new InvalidOperationException(
-                    "Route contains async service station '" + plan.StationName + "'. Use TravelAsync instead of Travel.");
+                    $"Route contains async service station '{plan.StationName}'. Use TravelAsync instead of Travel.");
             }
 
             try
@@ -1188,7 +1175,7 @@ namespace TrainOP
             if (!signal.IsGreen && !(signal is RedSignal))
             {
                 throw new InvalidOperationException(
-                    "Station '" + stationName + "' returned unsupported non-green signal type '" + signal.GetType().FullName + "'.");
+                    $"Station '{stationName}' returned unsupported non-green signal type '{signal.GetType().FullName}'.");
             }
 
             return signal;
@@ -1219,7 +1206,7 @@ namespace TrainOP
             if (!signal.IsGreen)
             {
                 throw new InvalidOperationException(
-                    "Station '" + stationName + "' returned unsupported non-green signal type '" + signal.GetType().FullName + "'.");
+                    $"Station '{stationName}' returned unsupported non-green signal type '{signal.GetType().FullName}'.");
             }
 
             return signal;
@@ -1232,7 +1219,7 @@ namespace TrainOP
         {
             if (signal == null)
             {
-                throw new InvalidOperationException("Station '" + stationName + "' returned null signal.");
+                throw new InvalidOperationException($"Station '{stationName}' returned null signal.");
             }
         }
 
@@ -1243,7 +1230,7 @@ namespace TrainOP
         {
             var issue = new SignalIssue(
                 StationExceptionCode,
-                "Unhandled station exception: " + exception.Message,
+                $"Unhandled station exception: {exception.Message}",
                 plan.StationName,
                 exception);
             return RailwaySignals.Red(issue);
@@ -1258,7 +1245,7 @@ namespace TrainOP
         {
             var issue = new SignalIssue(
                 ServiceStationExceptionCode,
-                "Unhandled service station exception: " + exception.Message,
+                $"Unhandled service station exception: {exception.Message}",
                 serviceStation.StationName,
                 exception);
             return RailwaySignals.Red(issue);

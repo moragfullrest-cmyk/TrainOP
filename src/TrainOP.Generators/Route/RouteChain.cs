@@ -1,27 +1,60 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
-using TrainOP.Generators.Chain;
+using TrainOP.Generators.Parts;
+using TrainOP.Generators.Wagons;
 
 namespace TrainOP.Generators.Route
 {
     /// <summary>
-    /// Represents a detected TrainRoute station chain anchored at a root expression.
+    /// Detected TrainRoute station chain: origin part plus ordered station links.
     /// </summary>
     internal sealed class RouteChain
     {
         /// <summary>
-        /// Creates a route chain with an anchor and ordered station links.
+        /// Creates a route chain from an origin part and ordered station links.
         /// </summary>
-        public RouteChain(RouteChainAnchor anchor, ImmutableArray<StationChainLink> stations)
+        public RouteChain(IRoutePart origin, ImmutableArray<StationLink> stations)
         {
-            Anchor = anchor;
-            Stations = stations;
+            Origin = origin;
+            Stations = stations.IsDefault ? ImmutableArray<StationLink>.Empty : stations;
         }
 
-        public RouteChainAnchor Anchor { get; }
+        /// <summary>
+        /// Origin part (<see cref="CreationSeed"/>, <see cref="FactoryCall"/>,
+        /// <see cref="LocalBinding"/>, or <see cref="JoinSeed"/>).
+        /// </summary>
+        public IRoutePart Origin { get; }
 
-        public Location AnchorLocation => Anchor.Location;
+        /// <summary>
+        /// Ordered station / service-station steps.
+        /// </summary>
+        public ImmutableArray<StationLink> Stations { get; }
 
-        public ImmutableArray<StationChainLink> Stations { get; }
+        /// <summary>
+        /// Fluent / statement root expression for this chain.
+        /// </summary>
+        public ExpressionSyntax Root =>
+            RouteOriginPorts.TryGetRoot(Origin, out var root) ? root : null;
+
+        /// <summary>
+        /// Origin stamp location.
+        /// </summary>
+        public Location AnchorLocation => Origin?.Location;
+
+        /// <summary>
+        /// Factory method when the origin is a factory call or stamped local.
+        /// </summary>
+        public IMethodSymbol FactoryMethod => RouteOriginPorts.GetFactoryMethod(Origin);
+
+        /// <summary>
+        /// Initial / merged wagons from the origin part.
+        /// </summary>
+        public ImmutableArray<WagonBinding> InitialWagons => RouteOriginPorts.GetInitialWagons(Origin);
+
+        /// <summary>
+        /// Containing method stamped on the origin, when available.
+        /// </summary>
+        public IMethodSymbol ContainingMethod => RouteOriginPorts.GetContainingMethod(Origin);
     }
 }

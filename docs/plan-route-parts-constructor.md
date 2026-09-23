@@ -1,6 +1,6 @@
 # План: модульные части маршрута (constructor IR)
 
-> **Статус:** **закрыт** — D0–Z0 выполнены (Materialize → Construct → Validate); post-Z0 nesting extract O1–O4 — **сделано**. Gate финального контура — у оператора.  
+> **Статус:** **закрыт** — D0–Z0, O1–O4, L0–L4 (Parts-native `RouteChain`, legacy adapter удалён). Gate финального контура — у оператора.  
 > **Аудитория:** разработчики и AI-агенты.  
 > **Скоуп:** только IR генератора + эта дока. Публичный `TrainRoute` / `.Station` **не** меняем.  
 > **Семантика:** TOP* и пользовательские формы сборки — без изменений.
@@ -79,7 +79,7 @@ internal sealed class ChainConstructor
 2. **Существующие валидаторы** — statement-window / alias TOP005, join TOP008, factory path TOP012/013, wagon sim через Terminals; не дублировать логику.
 3. Новые TOP* **не** вводить без отдельного решения оператора.
 
-На миграции `RouteChainAnchor` / `RouteChain` — адаптеры вниз (`ToLegacyAnchor` / `ToRouteChain`). `RouteChainAnchorKind` — legacy adapter stamp; горячие пути — через Parts-порты.
+На миграции (закрыто): legacy `RouteChainAnchor` / `StationChainLink` / `LegacyRoutePartAdapter` **удалены**. `RouteChain` = `IRoutePart Origin` + `StationLink[]`; `RouteSite.CreateAnchor(IRoutePart)`.
 
 ## Граф зависимостей этапов
 
@@ -131,11 +131,13 @@ flowchart TB
 | S0 | `IRoutePart` + `PartEdge` stubs в `Parts/` | — | core | 🟢 сделано (gate — у оператора) |
 | S1 | `ChainConstructor` + `PartEdgeValidator` stubs (без wiring) | S0 | core | 🟢 сделано (gate — у оператора) |
 | S2 | Пустые sealed-типы всех 7 частей | S0 | core | 🟢 сделано (gate — у оператора) |
-| S3 | `ToLegacyAnchor` / `ToRouteChain` адаптер (ещё не в pipeline) | S2 | core | 🟢 сделано (gate — у оператора) |
+| S3 | ~~`ToLegacyAnchor` / `ToRouteChain` адаптер~~ → superseded: `RouteOriginPorts.TryToRouteChain` (L0–L3) | S2 | core | 🟢 удалено (legacy снят) |
+| K5 | ~~deprecate `RouteChainAnchorKind`~~ → удалены `RouteChainAnchor` / Kind / `StationChainLink` / adapter | K1+K2+K3+K4 | core + factory/consumer | 🟢 удалено |
+| L0–L4 | Parts-native `RouteChain` / `RouteSite`; потребители на порты; delete legacy; тесты/доки | Z0 | core + factory/consumer | 🟢 сделано (gate — у оператора) |
 | M1 | Materialize `CreationSeed` + тесты | S3 | core | 🟢 сделано (gate — у оператора) |
 | M2 | Materialize `FactoryCall` Inline/Schema + тесты | S3 | factory/consumer | 🟢 сделано (gate — у оператора) |
 | M3 | Materialize `LocalBinding` + origin window + тесты | S3 | core | 🟢 сделано (gate — у оператора) |
-| M4 | `AnchorStage` → parts → `RouteSite` через адаптер | M1+M2+M3 | core (+ factory/consumer если schema) | 🟢 сделано (gate — у оператора) |
+| M4 | `AnchorStage` → parts → `RouteSite.CreateAnchor` | M1+M2+M3 | core (+ factory/consumer если schema) | 🟢 сделано (gate — у оператора) |
 | C1 | Materialize `StationLink` + тесты | S2 | core | 🟢 сделано (gate — у оператора) |
 | C2 | Connect seed/local → StationLink (linear + SL-fold) | M4+C1 | core | 🟢 сделано (gate — у оператора) |
 | C3 | `RouteGraphAssembler` primary path через `ChainConstructor` | C2 | core | 🟢 сделано (gate — у оператора) |
@@ -147,7 +149,6 @@ flowchart TB
 | K2 | Вычистить kind-switch из `CallerChainKeyBuilder` | E2 | core | 🟢 сделано (gate — у оператора) |
 | K3 | Вычистить kind-switch из `FactoryDispatchMetadata` | E2 | factory/consumer | 🟢 сделано (gate — у оператора) |
 | K4 | Распилить `RouteChainWalker` на materializers + thin peel | M4+C3+J2+E2 | core | 🟢 сделано (gate — у оператора) |
-| K5 | Мёртвые kind-ветки / optional deprecate `RouteChainAnchorKind` | K1+K2+K3+K4 | core + factory/consumer | 🟢 сделано (gate — у оператора) |
 | D2 | [`architecture-internals.md`](architecture-internals.md): BuildChains = Materialize→Construct→Validate | D0+K5 | docs review | 🟢 сделано |
 | Z0 | Финальная чистка мёртвого кода (shim'ы, helpers, stubs, мёртвые kind/тесты) | K5+D2 | core + factory/consumer | 🟢 сделано (gate — у оператора) |
 

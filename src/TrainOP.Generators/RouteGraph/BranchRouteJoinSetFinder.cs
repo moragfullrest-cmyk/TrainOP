@@ -40,7 +40,7 @@ namespace TrainOP.Generators
                 var peeled = ReceiverExpressionSyntaxPeel.UnwrapTransparent(memberAccess.Expression);
                 if (JoinChainsStage.IsForkingExpression(peeled))
                 {
-                    var branches = JoinChainsStage.DiscoverBranches(memberAccess.Expression, model);
+                    var branches = BranchRouteGraphDiscoverer.Discover(memberAccess.Expression, model);
                     builder.Add(new BranchRouteJoinSet(
                         joinReceiver: memberAccess.Expression,
                         downstreamStation: invocation,
@@ -55,7 +55,7 @@ namespace TrainOP.Generators
                         model,
                         out var forkExpression))
                 {
-                    var branches = JoinChainsStage.DiscoverBranches(forkExpression, model);
+                    var branches = BranchRouteGraphDiscoverer.Discover(forkExpression, model);
                     builder.Add(new BranchRouteJoinSet(
                         joinReceiver: forkExpression,
                         downstreamStation: invocation,

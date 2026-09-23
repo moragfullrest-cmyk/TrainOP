@@ -135,7 +135,7 @@ flowchart TB
 
 ### 4 BuildChains: Materialize → Construct → Validate
 
-Внутренний IR этапа 4 — first-class **части маршрута** (`TrainOP.Generators.Parts`), не switch по `RouteChainAnchorKind`:
+Внутренний IR этапа 4 — first-class **части маршрута** (`TrainOP.Generators.Parts`):
 
 ```mermaid
 flowchart LR
@@ -147,11 +147,12 @@ flowchart LR
 | Шаг | Смысл | Код |
 |-----|--------|-----|
 | **Materialize** | syntax/semantic → `CreationSeed` / `FactoryCall` / `LocalBinding` / `StationLink` / `JoinArm` / `ExtensionTail` | `*Materializer`, `RouteAnchorDetector` |
-| **Construct** | `TryBind` / `TryAppend` / `TryJoin` / `TryExtend` | `ChainConstructor`, `*ChainConnector` |
+| **Construct** | `TryBind` / `TryAppend` / `TryJoin` / `TryExtend` | `ChainConstructor`, `*ChainConnector`, `RouteOriginPorts.TryToRouteChain` |
 | **Validate** | structural ports + существующие TOP* / soft reject | `PartEdgeValidator`, join/factory validators |
-| **Adapt** | вниз на legacy `RouteChainAnchor` / `RouteChain` | `LegacyRoutePartAdapter` |
 
-Фасад: `BuildChainsStage` / `RouteGraphAssembler`. Peel одного fluent-шага: `RouteChainPeel`. Origin-window (preceding / Collect SL): `RouteOriginWindow`. Backward root walk: `RouteChainRootResolver`. План миграции: [`plan-route-parts-constructor.md`](plan-route-parts-constructor.md).
+`RouteChain` хранит `IRoutePart Origin` + `StationLink[]` (без legacy `RouteChainAnchor` / `StationChainLink`).
+
+Фасад: `BuildChainsStage` / `RouteGraphAssembler`. Peel одного fluent-шага: `RouteChainPeel`. Origin-window (preceding / Collect SL): `RouteOriginWindow`. Backward root walk: `RouteChainRootResolver`. План: [`plan-route-parts-constructor.md`](plan-route-parts-constructor.md).
 
 ### Параллелизм
 
@@ -180,7 +181,7 @@ RegisterSourceOutput(model, EmitAll);
 | Этап / тип | Варианты | Единый контракт |
 |------------|----------|-----------------|
 | **1a StationSignatures** | lambda / anonymous / method group / local function; Station ∥ ServiceStation; sync ∥ async; классификация параметра; формы return | `StationHandlerBinding` (+ site). `MergePlan` handler→manifest — следствие return shape (1a / emit-prep), не JoinChains |
-| **1b Anchors** | `new` / local / private·internal factory / **public + external schema** / seed после join | якорь с `InitialWagons`, dispatch identity, kind |
+| **1b Anchors** | `new` / local / private·internal factory / **public + external schema** / seed после join | origin part (`CreationSeed` / `FactoryCall` / `LocalBinding` / `JoinSeed`) с `InitialWagons`, dispatch identity |
 | **3 BranchPlans** | canonical ∥ chain-aware; TOP007 canonical vs non-chain | `BranchPlan` + diagnostics policy |
 | **4 BuildChains** | Materialize parts → `ChainConstructor` Connect → Validate on edge; forward / ending-at / factory-extension | один `BuildChains` / `RouteGraph` |
 | **5 Terminals** | linear sim / factory path sim / join merge / upstream `InitialWagons` | `TerminalSet` + `Origin` |
@@ -322,9 +323,9 @@ Handler schema строится **один раз** в discovery; walk цепо�
 2. **Materialize** origin parts (`CreationSeed` / `FactoryCall` / `LocalBinding`) и station links.
 3. **Construct** — `ChainConstructor` / `LinearChainConnector` (Bind·Append; Extend / Join — отдельные connectors).
 4. **Validate** на каждом ребре (`PartEdgeValidator` + существующие TOP* / soft reject).
-5. Адаптер вниз → legacy `RouteChain` / `RouteGraph` (`Chains`, `ChainIndex`, chained-set). Peel одного шага — `RouteChainPeel.TryAdvanceChain`; origin window — `RouteOriginWindow`; root walk — `RouteChainRootResolver`.
+5. Сборка `RouteChain` (`Origin` + `StationLink[]`) / `RouteGraph` (`Chains`, `ChainIndex`, chained-set). Peel одного шага — `RouteChainPeel.TryAdvanceChain`; origin window — `RouteOriginWindow`; root walk — `RouteChainRootResolver`.
 
-Внутренний IR частей: [`plan-route-parts-constructor.md`](plan-route-parts-constructor.md). `RouteChainAnchorKind` — legacy adapter stamp (не switch в горячих путях; Parts-порты предпочтительны).
+Внутренний IR частей: [`plan-route-parts-constructor.md`](plan-route-parts-constructor.md). Origin identity — type ports (`CreationSeed` / `FactoryCall` / `LocalBinding` / `JoinSeed`), не kind-enum.
 
 Analyzer: `RouteSiteDiscoverer.CollectAll` + `RouteGraphAssembler.Build` раз на compilation; per-tree — `GetChainsInTree` / `IsChainedInvocation`.
 

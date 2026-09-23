@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using TrainOP.Generators.Chain;
 using TrainOP.Generators.Route;
 
 namespace TrainOP.Generators.Parts
@@ -93,18 +92,18 @@ namespace TrainOP.Generators.Parts
                 return false;
             }
 
-            var legacyStations = RouteOriginWindow.CollectLocalStatementStationLinks(
+            var stations = RouteOriginWindow.CollectLocalStatementStationLinks(
                 localBinding.Identifier,
                 semanticModel,
                 stationByKey);
 
-            if (legacyStations.Length == 0
-                || !TryAppendStations(constructor, localBinding, legacyStations))
+            if (stations.Length == 0
+                || !TryAppendStations(constructor, localBinding, stations))
             {
                 return false;
             }
 
-            return LegacyRoutePartAdapter.TryToRouteChain(constructor, out chain)
+            return RouteOriginPorts.TryToRouteChain(constructor, out chain)
                 && chain.Stations.Length > 0;
         }
 
@@ -150,7 +149,7 @@ namespace TrainOP.Generators.Parts
                     return false;
                 }
 
-                return LegacyRoutePartAdapter.TryToRouteChain(constructor, out chain)
+                return RouteOriginPorts.TryToRouteChain(constructor, out chain)
                     && chain.Stations.Length > 0;
             }
 
@@ -160,9 +159,9 @@ namespace TrainOP.Generators.Parts
                 return false;
             }
 
-            var stations = ImmutableArray.CreateBuilder<StationChainLink>();
+            var stations = ImmutableArray.CreateBuilder<StationLink>();
             var current = root;
-            while (RouteChainWalker.TryAdvanceChain(
+            while (RouteChainPeel.TryAdvanceChain(
                 current,
                 semanticModel,
                 stations,
@@ -178,19 +177,18 @@ namespace TrainOP.Generators.Parts
                 return false;
             }
 
-            return LegacyRoutePartAdapter.TryToRouteChain(constructor, out chain)
+            return RouteOriginPorts.TryToRouteChain(constructor, out chain)
                 && chain.Stations.Length > 0;
         }
 
         private static bool TryAppendStations(
             ChainConstructor constructor,
             IRoutePart upstream,
-            ImmutableArray<StationChainLink> legacyStations)
+            ImmutableArray<StationLink> stations)
         {
             var currentUpstream = upstream;
-            foreach (var legacy in legacyStations)
+            foreach (var link in stations)
             {
-                var link = StationLink.FromStationChainLink(legacy);
                 if (link == null)
                 {
                     continue;

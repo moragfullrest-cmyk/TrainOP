@@ -1,20 +1,18 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
-using TrainOP.Generators.Route;
 using TrainOP.Generators.Wagons;
 
 namespace TrainOP.Generators.Parts
 {
     /// <summary>
-    /// Local variable binding window after a known origin (legacy LocalVariable /
-    /// factory kind when origin is a factory call / join-assign).
+    /// Local variable binding window after a known origin (creation / factory / join-assign).
     /// </summary>
     internal sealed class LocalBinding : IRoutePart
     {
         private readonly ImmutableArray<WagonBinding> _initialWagons;
         private readonly IMethodSymbol _stampedFactoryMethod;
-        private readonly RouteChainAnchorKind? _stampedFactoryKind;
+        private readonly FactoryCallKind? _stampedFactoryKind;
 
         /// <summary>
         /// Creates a local binding from a materialized identifier and its origin part.
@@ -37,7 +35,7 @@ namespace TrainOP.Generators.Parts
         /// <see cref="FactoryCall"/> (rare; prefer Origin = FactoryCall).
         /// </param>
         /// <param name="factoryKind">
-        /// Legacy factory kind accompanying <paramref name="factoryMethod"/> when Origin is null.
+        /// Factory kind accompanying <paramref name="factoryMethod"/> when Origin is null.
         /// </param>
         public LocalBinding(
             IdentifierNameSyntax identifier,
@@ -46,7 +44,7 @@ namespace TrainOP.Generators.Parts
             IMethodSymbol containingMethod = null,
             ImmutableArray<WagonBinding> initialWagons = default,
             IMethodSymbol factoryMethod = null,
-            RouteChainAnchorKind? factoryKind = null)
+            FactoryCallKind? factoryKind = null)
         {
             Identifier = identifier;
             Location = originLocation;
@@ -85,6 +83,22 @@ namespace TrainOP.Generators.Parts
             (Origin as FactoryCall)?.FactoryMethod ?? _stampedFactoryMethod;
 
         /// <summary>
+        /// Effective factory kind when a factory stamp is present.
+        /// </summary>
+        public FactoryCallKind? FactoryKind
+        {
+            get
+            {
+                if (Origin is FactoryCall factoryOrigin)
+                {
+                    return factoryOrigin.Kind;
+                }
+
+                return _stampedFactoryKind;
+            }
+        }
+
+        /// <summary>
         /// Effective initial wagons: from <see cref="FactoryCall"/> origin when present,
         /// otherwise the join / residual stamp.
         /// </summary>
@@ -92,28 +106,5 @@ namespace TrainOP.Generators.Parts
             Origin is FactoryCall factoryCall && !factoryCall.InitialWagons.IsDefaultOrEmpty
                 ? factoryCall.InitialWagons
                 : _initialWagons;
-
-        /// <summary>
-        /// Maps this binding to a legacy anchor kind (factory stamp, LocalVariable, or Origin port).
-        /// </summary>
-        public RouteChainAnchorKind ToLegacyAnchorKind()
-        {
-            if (Origin is FactoryCall factoryOrigin)
-            {
-                return factoryOrigin.ToLegacyAnchorKind();
-            }
-
-            if (_stampedFactoryKind.HasValue)
-            {
-                return _stampedFactoryKind.Value;
-            }
-
-            if (FactoryMethod != null)
-            {
-                return RouteChainAnchorKind.MethodInvocation;
-            }
-
-            return RouteChainAnchorKind.LocalVariable;
-        }
     }
 }

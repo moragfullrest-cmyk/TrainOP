@@ -11,7 +11,7 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests <see cref="JoinArmMaterializer"/> (J1).
+    /// Tests <see cref="JoinArmMaterializer"/>.
     /// </summary>
     public sealed class JoinArmMaterializerTests
     {

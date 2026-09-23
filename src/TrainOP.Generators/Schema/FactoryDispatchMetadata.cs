@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
+using TrainOP.Generators.Parts;
 using TrainOP.Generators.Route;
 
 namespace TrainOP.Generators
@@ -177,18 +178,18 @@ namespace TrainOP.Generators
         {
             callerChainKey = string.Empty;
             stationCount = 0;
-            var anchor = chain.Anchor;
-            if (anchor == null)
+            var origin = chain?.Origin;
+            if (origin == null || !RouteOriginPorts.TryGetRoot(origin, out var root))
             {
                 return false;
             }
 
-            // Nested factory: FactoryMethod stamp / FactoryCall port — no RouteChainAnchorKind switch.
+            // Nested factory: FactoryMethod stamp / FactoryCall port.
             // Visiting set stays here so cycles across nested factories are detected.
-            if (anchor.FactoryMethod != null)
+            if (chain.FactoryMethod != null)
             {
                 if (!TryResolveNested(
-                    anchor.FactoryMethod,
+                    chain.FactoryMethod,
                     compilation,
                     visiting,
                     out callerChainKey,
@@ -202,14 +203,14 @@ namespace TrainOP.Generators
             }
 
             // CreationSeed / LocalBinding (non-factory): ctor / origin stamp location.
-            // Shape-gated so BranchJoin and other residuals do not invent a key.
-            if (anchor.Root is ObjectCreationExpressionSyntax
-                || anchor.Root is IdentifierNameSyntax)
+            // Shape-gated so JoinSeed and other residuals do not invent a key.
+            if (root is ObjectCreationExpressionSyntax
+                || root is IdentifierNameSyntax)
             {
                 var memberName = string.IsNullOrEmpty(factoryMemberName)
-                    ? anchor.ContainingMethod?.Name
+                    ? chain.ContainingMethod?.Name
                     : factoryMemberName;
-                callerChainKey = CallerChainKeyBuilder.BuildFromLocation(anchor.Location, memberName);
+                callerChainKey = CallerChainKeyBuilder.BuildFromLocation(chain.AnchorLocation, memberName);
                 stationCount = chain.Stations.Length;
                 return !string.IsNullOrEmpty(callerChainKey);
             }
@@ -240,57 +241,7 @@ namespace TrainOP.Generators
 
         private static IEnumerable<ExpressionSyntax> ExpandReturnPathLeaves(ExpressionSyntax expression)
         {
-            expression = ReceiverExpressionSyntaxPeel.UnwrapTransparent(expression);
-            if (expression == null)
-            {
-                yield break;
-            }
-
-            if (expression is ConditionalExpressionSyntax conditional)
-            {
-                foreach (var leaf in ExpandReturnPathLeaves(conditional.WhenTrue))
-                {
-                    yield return leaf;
-                }
-
-                foreach (var leaf in ExpandReturnPathLeaves(conditional.WhenFalse))
-                {
-                    yield return leaf;
-                }
-
-                yield break;
-            }
-
-            if (expression is BinaryExpressionSyntax binary
-                && binary.IsKind(SyntaxKind.CoalesceExpression))
-            {
-                foreach (var leaf in ExpandReturnPathLeaves(binary.Left))
-                {
-                    yield return leaf;
-                }
-
-                foreach (var leaf in ExpandReturnPathLeaves(binary.Right))
-                {
-                    yield return leaf;
-                }
-
-                yield break;
-            }
-
-            if (expression is SwitchExpressionSyntax switchExpression)
-            {
-                foreach (var arm in switchExpression.Arms)
-                {
-                    foreach (var leaf in ExpandReturnPathLeaves(arm.Expression))
-                    {
-                        yield return leaf;
-                    }
-                }
-
-                yield break;
-            }
-
-            yield return expression;
+            return ReturnPathExpressionExpander.Expand(expression);
         }
     }
 }

@@ -8,7 +8,7 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Unit tests for <see cref="ChainDispatchPolicy"/> (stage 3 dispatch boundary).
+    /// Unit tests for <see cref="ChainDispatchPolicy"/> (when chain-aware dispatch is required).
     /// </summary>
     public sealed class ChainDispatchPolicyTests
     {

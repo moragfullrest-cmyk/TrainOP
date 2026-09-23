@@ -1,9 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System.Collections.Immutable;
 using TrainOP.Generators.Parts;
-using TrainOP.Generators.Route;
-using TrainOP.Generators.Wagons;
 
 namespace TrainOP.Generators
 {
@@ -11,28 +8,20 @@ namespace TrainOP.Generators
     /// Backward root walk from a chain endpoint: <c>new</c> / local origin / factory / peel.
     /// </summary>
     /// <remarks>
-    /// Flattened from <see cref="RouteChainWalker.TryFindChainRootEndingAt"/> (post-Z0 nesting extract).
     /// Local-origin lookup uses <see cref="RouteOriginWindow"/>.
     /// </remarks>
     internal static class RouteChainRootResolver
     {
         /// <summary>
         /// Walks backward from <paramref name="endpoint"/> through Station / ServiceStation
-        /// receivers until a resolvable chain root is found.
+        /// receivers until a resolvable origin part is found.
         /// </summary>
         public static bool TryFindChainRootEndingAt(
             ExpressionSyntax endpoint,
             SemanticModel semanticModel,
-            out ExpressionSyntax root,
-            out RouteChainAnchorKind anchorKind,
-            out IMethodSymbol factoryMethod,
-            out ImmutableArray<WagonBinding> initialWagons)
+            out IRoutePart origin)
         {
-            root = null;
-            anchorKind = default;
-            factoryMethod = null;
-            initialWagons = ImmutableArray<WagonBinding>.Empty;
-
+            origin = null;
             var current = endpoint;
 
             while (current != null)
@@ -43,31 +32,23 @@ namespace TrainOP.Generators
                     return false;
                 }
 
-                if (TryRootFromCreation(current, semanticModel, out root, out anchorKind))
+                if (TryOriginFromCreation(current, semanticModel, out origin))
                 {
                     return true;
                 }
 
                 if (current is IdentifierNameSyntax identifier
-                    && TryRootFromLocalOrigin(
+                    && TryOriginFromLocal(
                         identifier,
                         semanticModel,
-                        out root,
-                        out anchorKind,
-                        out factoryMethod,
-                        out initialWagons))
+                        out origin))
                 {
                     return true;
                 }
 
-                if (TryResolveFactoryRoot(
-                        current,
-                        semanticModel,
-                        out root,
-                        out anchorKind,
-                        out factoryMethod,
-                        out initialWagons))
+                if (TryResolveFactoryRoot(current, semanticModel, out var factoryCall))
                 {
+                    origin = factoryCall;
                     return true;
                 }
 
@@ -88,26 +69,9 @@ namespace TrainOP.Generators
         public static bool TryResolveFactoryRoot(
             ExpressionSyntax current,
             SemanticModel semanticModel,
-            out ExpressionSyntax root,
-            out RouteChainAnchorKind anchorKind,
-            out IMethodSymbol factoryMethod,
-            out ImmutableArray<WagonBinding> initialWagons)
+            out FactoryCall factoryCall)
         {
-            root = null;
-            anchorKind = default;
-            factoryMethod = null;
-            initialWagons = ImmutableArray<WagonBinding>.Empty;
-
-            if (!FactoryCallMaterializer.TryMaterialize(current, semanticModel, out var factoryCall))
-            {
-                return false;
-            }
-
-            root = factoryCall.Root;
-            anchorKind = factoryCall.ToLegacyAnchorKind();
-            factoryMethod = factoryCall.FactoryMethod;
-            initialWagons = factoryCall.InitialWagons;
-            return true;
+            return FactoryCallMaterializer.TryMaterialize(current, semanticModel, out factoryCall);
         }
 
         /// <summary>
@@ -176,19 +140,15 @@ namespace TrainOP.Generators
                     return false;
                 }
 
-                if (TryRootFromCreation(current, semanticModel, out root, out _))
+                if (TryOriginFromCreation(current, semanticModel, out var creation)
+                    && RouteOriginPorts.TryGetRoot(creation, out root))
                 {
                     return true;
                 }
 
-                if (TryResolveFactoryRoot(
-                        current,
-                        semanticModel,
-                        out root,
-                        out _,
-                        out _,
-                        out _))
+                if (TryResolveFactoryRoot(current, semanticModel, out var factoryCall))
                 {
+                    root = factoryCall.Root;
                     return true;
                 }
 
@@ -203,122 +163,34 @@ namespace TrainOP.Generators
             return false;
         }
 
-        private static bool TryRootFromCreation(
+        private static bool TryOriginFromCreation(
             ExpressionSyntax current,
             SemanticModel semanticModel,
-            out ExpressionSyntax root,
-            out RouteChainAnchorKind anchorKind)
+            out IRoutePart origin)
         {
-            root = null;
-            anchorKind = default;
-
+            origin = null;
             if (current is not ObjectCreationExpressionSyntax objectCreation
-                || !StationSyntaxHelper.IsTrainRouteCreation(objectCreation, semanticModel))
+                || !CreationSeedMaterializer.TryMaterialize(objectCreation, semanticModel, out var seed))
             {
                 return false;
             }
 
-            root = objectCreation;
-            anchorKind = RouteChainAnchorKind.ObjectCreation;
+            origin = seed;
             return true;
         }
 
-        /// <summary>
-        /// Local-origin root: priority <c>new</c> → factory (SL-2) → join assign (C-10/C-11).
-        /// </summary>
-        private static bool TryRootFromLocalOrigin(
+        private static bool TryOriginFromLocal(
             IdentifierNameSyntax identifier,
             SemanticModel semanticModel,
-            out ExpressionSyntax root,
-            out RouteChainAnchorKind anchorKind,
-            out IMethodSymbol factoryMethod,
-            out ImmutableArray<WagonBinding> initialWagons)
+            out IRoutePart origin)
         {
-            root = null;
-            anchorKind = default;
-            factoryMethod = null;
-            initialWagons = ImmutableArray<WagonBinding>.Empty;
-
-            if (!RouteOriginWindow.TryGetPrecedingTrainRouteOriginAssignment(
-                    identifier,
-                    semanticModel,
-                    out var originExpression,
-                    out _))
+            origin = null;
+            if (!LocalBindingMaterializer.TryMaterialize(identifier, semanticModel, out var binding))
             {
                 return false;
             }
 
-            if (originExpression is ObjectCreationExpressionSyntax)
-            {
-                root = identifier;
-                anchorKind = RouteChainAnchorKind.LocalVariable;
-                return true;
-            }
-
-            // SL-2a/2b: bare factory origin on a local (MethodInvocation / FactorySchema).
-            if (TryResolveFactoryRoot(
-                    originExpression,
-                    semanticModel,
-                    out _,
-                    out anchorKind,
-                    out factoryMethod,
-                    out initialWagons))
-            {
-                root = identifier;
-                return true;
-            }
-
-            return TryRootFromJoinAssign(
-                identifier,
-                originExpression,
-                semanticModel,
-                out root,
-                out anchorKind,
-                out factoryMethod,
-                out initialWagons);
-        }
-
-        private static bool TryRootFromJoinAssign(
-            IdentifierNameSyntax identifier,
-            ExpressionSyntax originExpression,
-            SemanticModel semanticModel,
-            out ExpressionSyntax root,
-            out RouteChainAnchorKind anchorKind,
-            out IMethodSymbol factoryMethod,
-            out ImmutableArray<WagonBinding> initialWagons)
-        {
-            root = null;
-            anchorKind = default;
-            factoryMethod = null;
-            initialWagons = ImmutableArray<WagonBinding>.Empty;
-
-            if (!RouteAnchorDetector.TryValidateLocalAssignJoin(
-                    originExpression,
-                    semanticModel,
-                    out var joinValidation)
-                || !joinValidation.CanMerge)
-            {
-                return false;
-            }
-
-            root = identifier;
-            if (RouteAnchorDetector.TryGetSharedFactoryFromJoinArms(
-                    originExpression,
-                    semanticModel,
-                    out factoryMethod,
-                    out anchorKind,
-                    out initialWagons))
-            {
-                if (initialWagons.IsDefaultOrEmpty)
-                {
-                    initialWagons = joinValidation.MergedTerminalWagons;
-                }
-
-                return true;
-            }
-
-            anchorKind = RouteChainAnchorKind.LocalVariable;
-            initialWagons = joinValidation.MergedTerminalWagons;
+            origin = binding;
             return true;
         }
     }

@@ -5,6 +5,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using TrainOP.Generators.Chain;
 using TrainOP.Generators.Handlers;
+using TrainOP.Generators.Parts;
 using TrainOP.Generators.Route;
 using TrainOP.Generators.Wagons;
 
@@ -154,7 +155,7 @@ namespace TrainOP.Generators
         /// Validates required and optional input wagons at a station.
         /// </summary>
         private static void ProcessStationInputs(
-            StationChainLink station,
+            StationLink station,
             SimulationState state)
         {
             if (state.HasUnknownReturn)
@@ -207,7 +208,7 @@ namespace TrainOP.Generators
         /// <summary>
         /// Handles return shapes that skip or reset wagon state. Returns true when ApplyReturn should be skipped.
         /// </summary>
-        private static bool TryHandleSpecialReturn(StationChainLink station, SimulationState state)
+        private static bool TryHandleSpecialReturn(StationLink station, SimulationState state)
         {
             var handler = station.Handler;
 
@@ -225,7 +226,7 @@ namespace TrainOP.Generators
                     TrainRouteDiagnostics.RuntimeSignalReturn,
                     station.HandlerLocation,
                     station.StationName,
-                    handler.ReturnShape.ReturnTypeDisplay ?? "TrainOP.Signal"));
+                    handler.ReturnShape.ReturnTypeDisplay ?? ReturnTypeDisplayHelper.SignalTypeName));
                 state.HasUnknownReturn = true;
                 return true;
             }
@@ -270,7 +271,7 @@ namespace TrainOP.Generators
         /// Reports composition-changing ServiceStation returns without mutating live wagon state.
         /// </summary>
         private static void ValidateServiceStationComposition(
-            StationChainLink station,
+            StationLink station,
             SimulationState state)
         {
             var handler = station.Handler;
@@ -281,7 +282,7 @@ namespace TrainOP.Generators
                     TrainRouteDiagnostics.RuntimeSignalReturn,
                     station.HandlerLocation,
                     station.StationName,
-                    handler.ReturnShape.ReturnTypeDisplay ?? "TrainOP.Signal"));
+                    handler.ReturnShape.ReturnTypeDisplay ?? ReturnTypeDisplayHelper.SignalTypeName));
                 state.HasUnknownReturn = true;
                 return;
             }
@@ -380,7 +381,7 @@ namespace TrainOP.Generators
         /// Reports TOP016 for non-ref ServiceStation inputs omitted from the return shape.
         /// </summary>
         private static void ReportServiceStationOmittedInputs(
-            StationChainLink station,
+            StationLink station,
             StationHandlerBinding handler,
             SimulationState state,
             HashSet<string> returnedNames)
@@ -409,7 +410,7 @@ namespace TrainOP.Generators
         /// Applies void-return semantics: non-ref inputs are removed and no wagons are produced.
         /// </summary>
         private static void ApplyVoidReturn(
-            StationChainLink station,
+            StationLink station,
             StationHandlerBinding handler,
             Dictionary<string, LiveWagon> live,
             Dictionary<string, RemovedWagon> removed)
@@ -432,7 +433,7 @@ namespace TrainOP.Generators
         /// (parity with <see cref="TrainOP.StationMerge"/> / <see cref="MergePlanBuilder"/>).
         /// </summary>
         private static void ApplyReturn(
-            StationChainLink station,
+            StationLink station,
             StationHandlerBinding handler,
             Dictionary<string, LiveWagon> live,
             List<string> liveOrder,

@@ -9,7 +9,7 @@ using TrainOP.Generators.Wagons;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Stage 7 entry: unified JoinChains API for <c>?:</c> / <c>??</c> / <c>switch</c>
+    /// Unified JoinChains API for <c>?:</c> / <c>??</c> / <c>switch</c>
     /// branch joins and factory fork-join return paths.
     /// </summary>
     /// <remarks>
@@ -38,7 +38,7 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Finds and validates a join set into stage-7 IR.
+        /// Finds and validates a join set into <see cref="JoinedChain"/> IR.
         /// Prefers <see cref="JoinChainConnector"/> (arms → JoinSeed + validator).
         /// </summary>
         public static JoinedChain Join(
@@ -55,24 +55,6 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Connects fork arms into a <see cref="JoinSeed"/> via parts constructor.
-        /// </summary>
-        public static bool TryConnectParts(
-            ExpressionSyntax forkExpression,
-            InvocationExpressionSyntax downstreamStation,
-            SemanticModel semanticModel,
-            out ChainConstructor constructor,
-            out JoinSeed joinSeed)
-        {
-            return JoinChainConnector.TryConnect(
-                forkExpression,
-                downstreamStation,
-                semanticModel,
-                out constructor,
-                out joinSeed);
-        }
-
-        /// <summary>
         /// Collects joined-chain IR for every syntax tree in <paramref name="compilation"/>.
         /// </summary>
         public static ImmutableArray<JoinedChain> Collect(Compilation compilation)
@@ -85,11 +67,6 @@ namespace TrainOP.Generators
             var builder = ImmutableArray.CreateBuilder<JoinedChain>();
             foreach (var tree in compilation.SyntaxTrees)
             {
-                if (tree == null)
-                {
-                    continue;
-                }
-
                 var semanticModel = compilation.GetSemanticModel(tree);
                 foreach (var joinSet in Find(tree, semanticModel))
                 {

@@ -12,7 +12,7 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests <see cref="FactoryCallMaterializer"/> (M2).
+    /// Tests <see cref="FactoryCallMaterializer"/>.
     /// </summary>
     public sealed class FactoryCallMaterializerTests
     {
@@ -38,10 +38,9 @@ public static class Route
             Assert.Equal("CreateSeed", call.FactoryMethod.Name);
             Assert.Same(invocation, call.Root);
             Assert.False(call.InitialWagons.IsDefault);
-
-            Assert.True(LegacyRoutePartAdapter.TryToLegacyAnchor(call, out var anchor));
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, anchor.Kind);
-            Assert.Equal("CreateSeed", anchor.FactoryMethod.Name);
+            Assert.Equal(FactoryCallKind.Inline, call.Kind);
+            Assert.True(RouteOriginPorts.TryGetRoot(call, out var root));
+            Assert.Same(invocation, root);
         }
 
         [Fact]
@@ -64,9 +63,7 @@ public static class Route
             Assert.True(FactoryCallMaterializer.TryMaterialize(invocation, model, out var call));
             Assert.Equal(FactoryCallKind.Schema, call.Kind);
             Assert.Equal("CreateSeed", call.FactoryMethod.Name);
-
-            Assert.True(LegacyRoutePartAdapter.TryToLegacyAnchor(call, out var anchor));
-            Assert.Equal(RouteChainAnchorKind.FactorySchema, anchor.Kind);
+            Assert.True(call.UsesSchemaDispatch);
         }
 
         [Fact]

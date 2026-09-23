@@ -6,14 +6,13 @@ using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using TrainOP.Generators.Chain;
-using TrainOP.Generators.Route;
+using TrainOP.Generators.Parts;
 using Xunit;
 
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests K4 peel/detect split (<see cref="RouteChainPeel"/> / <see cref="RouteAnchorDetector"/>).
+    /// Tests peel/detect split (<see cref="RouteChainPeel"/> / <see cref="RouteAnchorDetector"/>).
     /// </summary>
     public sealed class RouteChainPeelTests
     {
@@ -42,7 +41,7 @@ public static class Route
                 .OfType<ObjectCreationExpressionSyntax>()
                 .Single();
 
-            var stations = ImmutableArray.CreateBuilder<StationChainLink>();
+            var stations = ImmutableArray.CreateBuilder<StationLink>();
             Assert.True(RouteChainPeel.TryAdvanceChain(
                 creation,
                 model,
@@ -84,9 +83,7 @@ public static class Route
                 .Single();
 
             Assert.True(RouteAnchorDetector.TryDetect(creation, model, out var viaDetector));
-            Assert.True(RouteChainWalker.TryDetectAnchorSite(creation, model, out var viaWalker));
-            Assert.Equal(viaDetector.Kind, viaWalker.Kind);
-            Assert.Equal(RouteChainAnchorKind.ObjectCreation, viaDetector.Kind);
+            Assert.IsType<CreationSeed>(viaDetector);
         }
 
         private static MetadataReference[] GetMetadataReferences()

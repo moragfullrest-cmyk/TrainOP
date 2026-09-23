@@ -58,7 +58,9 @@ namespace TrainOP.Generators
         public static bool IsCargoManifest(ITypeSymbol typeSymbol)
         {
             return typeSymbol != null
-                && string.Equals(typeSymbol.ToDisplayString(), "TrainOP.CargoManifest", StringComparison.Ordinal);
+                && ReturnTypeDisplayHelper.EqualsTypeName(
+                    typeSymbol.ToDisplayString(),
+                    ReturnTypeDisplayHelper.CargoManifestTypeName);
         }
 
         /// <summary>
@@ -89,7 +91,9 @@ namespace TrainOP.Generators
         public static bool IsRedSignal(ITypeSymbol typeSymbol)
         {
             return typeSymbol != null
-                && string.Equals(typeSymbol.ToDisplayString(), "TrainOP.RedSignal", StringComparison.Ordinal);
+                && ReturnTypeDisplayHelper.EqualsTypeName(
+                    typeSymbol.ToDisplayString(),
+                    ReturnTypeDisplayHelper.RedSignalTypeName);
         }
 
         /// <summary>
@@ -98,7 +102,9 @@ namespace TrainOP.Generators
         public static bool IsSignalIssue(ITypeSymbol typeSymbol)
         {
             return typeSymbol != null
-                && string.Equals(typeSymbol.ToDisplayString(), "TrainOP.SignalIssue", StringComparison.Ordinal);
+                && ReturnTypeDisplayHelper.EqualsTypeName(
+                    typeSymbol.ToDisplayString(),
+                    ReturnTypeDisplayHelper.SignalIssueTypeName);
         }
 
         /// <summary>

@@ -2,12 +2,13 @@ using Microsoft.CodeAnalysis;
 using System;
 using System.Collections.Immutable;
 using TrainOP.Generators.Handlers;
+using TrainOP.Generators.Parts;
 using TrainOP.Generators.Route;
 
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Data-oriented IR root for the generator pipeline (stages 1a–7).
+    /// Data-oriented IR root for the generator pipeline.
     /// Holders only — no <c>StringBuilder</c> / <c>AddSource</c>.
     /// </summary>
     internal sealed class GenerationModel
@@ -17,7 +18,7 @@ namespace TrainOP.Generators
         /// </summary>
         public GenerationModel(
             ImmutableArray<StationHandlerBinding> stationSignatures,
-            ImmutableArray<RouteChainAnchor> anchors,
+            ImmutableArray<IRoutePart> anchors,
             ImmutableArray<DelegateSignatureGroup> signatureGroups,
             ImmutableArray<BranchPlan> branchPlans,
             RouteGraph routeGraph,
@@ -30,7 +31,7 @@ namespace TrainOP.Generators
                 ? ImmutableArray<StationHandlerBinding>.Empty
                 : stationSignatures;
             Anchors = anchors.IsDefault
-                ? ImmutableArray<RouteChainAnchor>.Empty
+                ? ImmutableArray<IRoutePart>.Empty
                 : anchors;
             SignatureGroups = signatureGroups.IsDefault
                 ? ImmutableArray<DelegateSignatureGroup>.Empty
@@ -53,28 +54,28 @@ namespace TrainOP.Generators
                 : diagnostics;
         }
 
-        /// <summary>Stage 1a: resolved station handler bindings.</summary>
+        /// <summary>Resolved station handler bindings.</summary>
         public ImmutableArray<StationHandlerBinding> StationSignatures { get; }
 
-        /// <summary>Stage 1b: resolved chain anchors.</summary>
-        public ImmutableArray<RouteChainAnchor> Anchors { get; }
+        /// <summary>Resolved chain origin parts (<c>new</c> / local / factory / join).</summary>
+        public ImmutableArray<IRoutePart> Anchors { get; }
 
-        /// <summary>Stage 2: signature groups (after GroupSignatures; chain attached separately).</summary>
+        /// <summary>Handler bindings grouped by signature (chain context attached separately).</summary>
         public ImmutableArray<DelegateSignatureGroup> SignatureGroups { get; }
 
-        /// <summary>Stage 3: branch plans (canonical ∥ chain-aware + TOP007).</summary>
+        /// <summary>Merged schemas ready for emit (canonical or chain-aware; may carry TOP007).</summary>
         public ImmutableArray<BranchPlan> BranchPlans { get; }
 
-        /// <summary>Stage 4: assembled route graph.</summary>
+        /// <summary>Assembled route chains indexed for attach and dispatch.</summary>
         public RouteGraph RouteGraph { get; }
 
-        /// <summary>Stage 5: terminal sets (<see cref="TerminalSet"/> + <see cref="TerminalSet.Origin"/>).</summary>
+        /// <summary>Terminal wagon sets with provenance (<see cref="TerminalSet.Origin"/>).</summary>
         public ImmutableArray<TerminalSet> Terminals { get; }
 
-        /// <summary>Stage 6: schema export descriptors for <c>RouteSchemas.g.cs</c>.</summary>
+        /// <summary>Export descriptors for <c>RouteSchemas.g.cs</c>.</summary>
         public ImmutableArray<SchemaDescriptor> SchemaDescriptors { get; }
 
-        /// <summary>Stage 7: joined chain IR from <see cref="JoinChainsStage"/>.</summary>
+        /// <summary>Validated fork-join sites from <see cref="JoinChainsStage"/>.</summary>
         public ImmutableArray<JoinedChain> JoinedChains { get; }
 
         /// <summary>Pipeline diagnostics accumulated into the model.</summary>
@@ -133,7 +134,7 @@ namespace TrainOP.Generators
             {
                 return new GenerationModel(
                     ImmutableArray<StationHandlerBinding>.Empty,
-                    ImmutableArray<RouteChainAnchor>.Empty,
+                    ImmutableArray<IRoutePart>.Empty,
                     ImmutableArray<DelegateSignatureGroup>.Empty,
                     ImmutableArray<BranchPlan>.Empty,
                     graph,
@@ -144,7 +145,7 @@ namespace TrainOP.Generators
             }
 
             var signatures = ImmutableArray.CreateBuilder<StationHandlerBinding>();
-            var anchors = ImmutableArray.CreateBuilder<RouteChainAnchor>();
+            var anchors = ImmutableArray.CreateBuilder<IRoutePart>();
 
             for (var i = 0; i < sites.Length; i++)
             {
@@ -164,9 +165,9 @@ namespace TrainOP.Generators
                     continue;
                 }
 
-                if (site.Kind == RouteSiteKind.Anchor)
+                if (site.Kind == RouteSiteKind.Anchor && site.OriginPart != null)
                 {
-                    anchors.Add(site.ToAnchor());
+                    anchors.Add(site.OriginPart);
                 }
             }
 
@@ -179,7 +180,7 @@ namespace TrainOP.Generators
 
                 for (var i = 0; i < anchors.Count; i++)
                 {
-                    var seed = TerminalSetAdapters.FromAnchorSeed(anchors[i].InitialWagons);
+                    var seed = TerminalSetAdapters.FromAnchorSeed(RouteOriginPorts.GetInitialWagons(anchors[i]));
                     if (!seed.Wagons.IsDefaultOrEmpty)
                     {
                         terminalBuilder.Add(seed);
@@ -202,7 +203,7 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Attaches stage-2/3 signature pipeline results without rebuilding discovery IR.
+        /// Attaches signature groups and branch plans without rebuilding discovery IR.
         /// </summary>
         public GenerationModel WithSignaturePipeline(
             ImmutableArray<DelegateSignatureGroup> signatureGroups,
@@ -248,7 +249,7 @@ namespace TrainOP.Generators
     }
 
     /// <summary>
-    /// Stage 3 BranchPlan: merged station schema with canonical ∥ chain-aware emit intent.
+    /// Merged station schema with canonical or chain-aware emit intent.
     /// </summary>
     internal sealed class BranchPlan
     {

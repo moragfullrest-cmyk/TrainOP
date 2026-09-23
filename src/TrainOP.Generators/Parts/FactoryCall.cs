@@ -1,17 +1,16 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
-using TrainOP.Generators.Route;
 using TrainOP.Generators.Wagons;
 
 namespace TrainOP.Generators.Parts
 {
     /// <summary>
-    /// Origin part: factory invocation (legacy MethodInvocation / FactorySchema).
+    /// Origin part: factory invocation (Inline vs Schema resolve).
     /// </summary>
     /// <remarks>
-    /// Dispatch identity and caller-chain keys are owned here — callers must not switch on
-    /// <see cref="FactoryCallKind"/> / legacy factory anchor kinds for those purposes.
+    /// Dispatch identity and caller-chain keys are owned here — callers must not invent
+    /// a parallel kind enum for those purposes.
     /// </remarks>
     internal sealed class FactoryCall : IRoutePart
     {
@@ -70,64 +69,44 @@ namespace TrainOP.Generators.Parts
         public bool UsesSchemaDispatch => Kind == FactoryCallKind.Schema;
 
         /// <summary>
-        /// Builds a <see cref="FactoryCall"/> from a legacy factory anchor when the root is an invocation.
-        /// </summary>
-        public static bool TryFromLegacyAnchor(RouteChainAnchor anchor, out FactoryCall factoryCall)
-        {
-            factoryCall = null;
-            if (anchor?.Root is not InvocationExpressionSyntax invocation
-                || anchor.FactoryMethod == null)
-            {
-                return false;
-            }
-
-            factoryCall = new FactoryCall(
-                invocation,
-                anchor.Location,
-                KindFromLegacyAnchor(anchor.Kind),
-                anchor.FactoryMethod,
-                anchor.InitialWagons,
-                anchor.ContainingMethod);
-            return true;
-        }
-
-        /// <summary>
-        /// Resolves caller-chain key for a legacy anchor that carries a factory method
+        /// Resolves caller-chain key for an origin that carries a factory method
         /// (invocation root or identifier-rooted factory local). Never guesses call-site location.
         /// </summary>
-        public static bool TryBuildCallerChainKeyFromAnchor(
-            RouteChainAnchor anchor,
+        public static bool TryBuildCallerChainKeyFromOrigin(
+            IRoutePart origin,
             Compilation compilation,
             out string callerChainKey)
         {
             callerChainKey = string.Empty;
-            if (anchor?.FactoryMethod == null)
+            if (origin == null)
             {
                 return false;
             }
 
-            if (TryFromLegacyAnchor(anchor, out var factoryCall))
+            if (origin is FactoryCall factoryCall)
             {
                 return factoryCall.TryBuildCallerChainKey(compilation, out callerChainKey);
             }
 
-            // Identifier-rooted factory local: method stamp without invocation root.
-            return FactoryDispatchMetadata.TryResolve(
-                    anchor.FactoryMethod,
-                    compilation,
-                    out callerChainKey,
-                    out _)
-                && !string.IsNullOrEmpty(callerChainKey);
-        }
+            if (origin is LocalBinding localBinding)
+            {
+                if (localBinding.Origin is FactoryCall nested)
+                {
+                    return nested.TryBuildCallerChainKey(compilation, out callerChainKey);
+                }
 
-        /// <summary>
-        /// Maps this part to the legacy factory <see cref="RouteChainAnchorKind"/>.
-        /// </summary>
-        public RouteChainAnchorKind ToLegacyAnchorKind()
-        {
-            return UsesSchemaDispatch
-                ? RouteChainAnchorKind.FactorySchema
-                : RouteChainAnchorKind.MethodInvocation;
+                if (localBinding.FactoryMethod != null)
+                {
+                    return FactoryDispatchMetadata.TryResolve(
+                            localBinding.FactoryMethod,
+                            compilation,
+                            out callerChainKey,
+                            out _)
+                        && !string.IsNullOrEmpty(callerChainKey);
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -165,13 +144,6 @@ namespace TrainOP.Generators.Parts
                 compilation,
                 out callerChainKey,
                 out stationCount);
-        }
-
-        private static FactoryCallKind KindFromLegacyAnchor(RouteChainAnchorKind kind)
-        {
-            return kind == RouteChainAnchorKind.FactorySchema
-                ? FactoryCallKind.Schema
-                : FactoryCallKind.Inline;
         }
     }
 }

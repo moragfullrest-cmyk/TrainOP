@@ -11,12 +11,12 @@ namespace TrainOP.Generators
 {
     /// <summary>
     /// Assembles <see cref="RouteGraph"/> instances from discovered <see cref="RouteSite"/> nodes.
-    /// Primary facade for stage 4 BuildChains (see also <see cref="BuildChainsStage"/>).
+    /// Prefer <see cref="BuildChainsStage"/> at call sites that only need the graph.
     /// </summary>
     internal static class RouteGraphAssembler
     {
         /// <summary>
-        /// Builds route chains from discovered anchors via <see cref="LinearChainConnector"/>
+        /// Builds route chains from discovered origins via <see cref="LinearChainConnector"/>
         /// (parts → Bind/Append), including join-assign locals.
         /// Station sites supply pre-resolved handler bindings for station materialize.
         /// </summary>
@@ -28,7 +28,7 @@ namespace TrainOP.Generators
             }
 
             var stationSites = ImmutableArray.CreateBuilder<RouteSite>();
-            var anchorByKey = new Dictionary<string, RouteChainAnchor>(StringComparer.Ordinal);
+            var originByKey = new Dictionary<string, IRoutePart>(StringComparer.Ordinal);
             var stationByKey = new Dictionary<string, RouteSite>(StringComparer.Ordinal);
 
             for (var i = 0; i < sites.Length; i++)
@@ -51,9 +51,9 @@ namespace TrainOP.Generators
                     continue;
                 }
 
-                if (site.Kind == RouteSiteKind.Anchor)
+                if (site.Kind == RouteSiteKind.Anchor && site.OriginPart != null)
                 {
-                    RegisterAnchor(anchorByKey, site.ToAnchor(), compilation);
+                    RegisterOrigin(originByKey, site.OriginPart, compilation);
                 }
             }
 
@@ -61,16 +61,16 @@ namespace TrainOP.Generators
             var chainIndex = new Dictionary<string, List<ChainSiteBinding>>(StringComparer.Ordinal);
             var chainsByInvocationKey = new Dictionary<string, RouteChain>(StringComparer.Ordinal);
 
-            foreach (var anchor in anchorByKey.Values)
+            foreach (var origin in originByKey.Values)
             {
-                var chain = BuildChain(anchor, compilation, stationByKey);
+                var chain = BuildChain(origin, compilation, stationByKey);
                 if (chain == null)
                 {
                     continue;
                 }
 
                 chains.Add(chain);
-                if (!TryResolveDispatchIdentity(anchor, compilation, out var chainId, out var upstreamStationCount))
+                if (!TryResolveDispatchIdentity(origin, compilation, out var chainId, out var upstreamStationCount))
                 {
                     // Factory schema without CallerChainKey/StationCount: do not emit wrong index-0 bindings.
                     continue;
@@ -122,7 +122,7 @@ namespace TrainOP.Generators
         }
 
         private static bool TryResolveDispatchIdentity(
-            RouteChainAnchor anchor,
+            IRoutePart origin,
             Compilation compilation,
             out string chainId,
             out int upstreamStationCount)
@@ -130,28 +130,13 @@ namespace TrainOP.Generators
             chainId = string.Empty;
             upstreamStationCount = 0;
 
-            var semanticModel = compilation.GetSemanticModel(anchor.Root.SyntaxTree);
-            if (TryToOriginPart(anchor, semanticModel, out var origin)
-                && TryResolveDispatchFromOrigin(origin, compilation, out chainId, out upstreamStationCount))
+            if (TryResolveDispatchFromOrigin(origin, compilation, out chainId, out upstreamStationCount))
             {
                 return true;
             }
 
-            // Identifier-rooted shared factory (ternary/switch join-assign): no FactoryCall root,
-            // but FactoryMethod is stamped on the anchor — resolve dispatch without inventing call-site.
-            if (anchor.FactoryMethod != null
-                && FactoryDispatchMetadata.TryResolve(
-                    anchor.FactoryMethod,
-                    compilation,
-                    out chainId,
-                    out upstreamStationCount)
-                && !string.IsNullOrEmpty(chainId))
-            {
-                return true;
-            }
-
-            // Residual (e.g. BranchJoin / creation) — key builder without factory upstream count.
-            chainId = CallerChainKeyBuilder.Build(anchor, compilation);
+            // Residual (e.g. JoinSeed / creation) — key builder without factory upstream count.
+            chainId = CallerChainKeyBuilder.Build(origin, compilation);
             upstreamStationCount = 0;
             return !string.IsNullOrEmpty(chainId);
         }
@@ -187,28 +172,20 @@ namespace TrainOP.Generators
                     && !string.IsNullOrEmpty(chainId);
             }
 
-            if (!LegacyRoutePartAdapter.TryToLegacyAnchor(origin, out var legacy))
-            {
-                return false;
-            }
-
-            chainId = CallerChainKeyBuilder.Build(legacy, compilation);
-            upstreamStationCount = 0;
-            return !string.IsNullOrEmpty(chainId);
+            return false;
         }
 
         private static RouteChain BuildChain(
-            RouteChainAnchor anchor,
+            IRoutePart origin,
             Compilation compilation,
             IReadOnlyDictionary<string, RouteSite> stationByKey)
         {
-            var semanticModel = compilation.GetSemanticModel(anchor.Root.SyntaxTree);
-
-            if (!TryToOriginPart(anchor, semanticModel, out var origin))
+            if (origin == null || !RouteOriginPorts.TryGetRoot(origin, out var root))
             {
                 return null;
             }
 
+            var semanticModel = compilation.GetSemanticModel(root.SyntaxTree);
             return LinearChainConnector.TryConnect(
                     origin,
                     semanticModel,
@@ -219,114 +196,69 @@ namespace TrainOP.Generators
                 : null;
         }
 
-        /// <summary>
-        /// Maps a legacy anchor to an origin part by root/port shape (no Kind switch).
-        /// </summary>
-        private static bool TryToOriginPart(
-            RouteChainAnchor anchor,
-            SemanticModel semanticModel,
-            out IRoutePart origin)
-        {
-            origin = null;
-            if (anchor?.Root == null || semanticModel == null)
-            {
-                return false;
-            }
-
-            if (anchor.Root is IdentifierNameSyntax identifier
-                && LocalBindingMaterializer.TryMaterialize(
-                    identifier,
-                    semanticModel,
-                    out var localBinding))
-            {
-                origin = localBinding;
-                return true;
-            }
-
-            if (FactoryCall.TryFromLegacyAnchor(anchor, out var factoryCall))
-            {
-                origin = factoryCall;
-                return true;
-            }
-
-            if (anchor.Root is ObjectCreationExpressionSyntax objectCreation)
-            {
-                origin = new CreationSeed(
-                    objectCreation,
-                    anchor.Location,
-                    anchor.ContainingMethod);
-                return true;
-            }
-
-            return false;
-        }
-
-        private static void RegisterAnchor(
-            IDictionary<string, RouteChainAnchor> anchorByKey,
-            RouteChainAnchor anchor,
+        private static void RegisterOrigin(
+            IDictionary<string, IRoutePart> originByKey,
+            IRoutePart origin,
             Compilation compilation)
         {
-            if (anchor == null)
+            if (origin == null)
             {
                 return;
             }
 
-            var anchorKey = BuildAnchorKey(anchor, compilation);
-            if (string.IsNullOrEmpty(anchorKey))
+            var originKey = BuildOriginKey(origin, compilation);
+            if (string.IsNullOrEmpty(originKey))
             {
                 return;
             }
 
-            if (!anchorByKey.TryGetValue(anchorKey, out var existing))
+            if (!originByKey.TryGetValue(originKey, out var existing))
             {
-                anchorByKey[anchorKey] = anchor;
+                originByKey[originKey] = origin;
                 return;
             }
 
-            anchorByKey[anchorKey] = MergeAnchors(existing, anchor);
+            originByKey[originKey] = MergeOrigins(existing, origin);
         }
 
-        private static string BuildAnchorKey(RouteChainAnchor anchor, Compilation compilation)
+        private static string BuildOriginKey(IRoutePart origin, Compilation compilation)
         {
-            var chainId = CallerChainKeyBuilder.Build(anchor, compilation);
-            if (string.IsNullOrEmpty(chainId))
+            var chainId = CallerChainKeyBuilder.Build(origin, compilation);
+            if (string.IsNullOrEmpty(chainId)
+                || !RouteOriginPorts.TryGetRoot(origin, out var root))
             {
                 return string.Empty;
             }
 
             // Collapse all use-sites of the same origin into one chain key.
             // Origin stamp lives on Location (ctor / factory call site), not Root.SpanStart.
-            var spanStart = RoutePartPreference.IsOriginKeyed(anchor)
-                && anchor.Location != null
-                    ? anchor.Location.SourceSpan.Start
-                    : anchor.Root.SpanStart;
+            var spanStart = RoutePartPreference.IsOriginKeyed(origin)
+                && origin.Location != null
+                    ? origin.Location.SourceSpan.Start
+                    : root.SpanStart;
 
             return chainId + "@" + spanStart;
         }
 
-        private static RouteChainAnchor MergeAnchors(RouteChainAnchor left, RouteChainAnchor right)
+        private static IRoutePart MergeOrigins(IRoutePart left, IRoutePart right)
         {
-            var preferred = PreferAnchor(left, right);
+            var preferred = PreferOrigin(left, right);
             var other = ReferenceEquals(preferred, left) ? right : left;
 
-            if (preferred.FactoryMethod == null && other.FactoryMethod != null)
+            var preferredFactory = RouteOriginPorts.GetFactoryMethod(preferred);
+            var otherFactory = RouteOriginPorts.GetFactoryMethod(other);
+            if (preferredFactory == null && otherFactory != null)
             {
-                return new RouteChainAnchor(
-                    other.Kind,
-                    other.Root,
-                    other.Location,
-                    other.ContainingMethod ?? preferred.ContainingMethod,
-                    other.FactoryMethod,
-                    other.InitialWagons.IsDefaultOrEmpty ? preferred.InitialWagons : other.InitialWagons);
+                return other;
             }
 
             return preferred;
         }
 
-        private static RouteChainAnchor PreferAnchor(RouteChainAnchor left, RouteChainAnchor right)
+        private static IRoutePart PreferOrigin(IRoutePart left, IRoutePart right)
         {
-            var leftScore = RoutePartPreference.ScoreLegacyAnchor(left);
-            var rightScore = RoutePartPreference.ScoreLegacyAnchor(right);
+            var leftScore = RoutePartPreference.Score(left);
+            var rightScore = RoutePartPreference.Score(right);
             return rightScore > leftScore ? right : left;
         }
     }

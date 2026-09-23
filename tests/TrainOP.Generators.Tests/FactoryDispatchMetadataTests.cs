@@ -10,7 +10,7 @@ using Xunit;
 namespace TrainOP.Generators.Tests
 {
     /// <summary>
-    /// Tests <see cref="FactoryDispatchMetadata"/> without legacy kind-switch (K3).
+    /// Tests <see cref="FactoryDispatchMetadata"/> without kind-switch on origin ports.
     /// </summary>
     public sealed class FactoryDispatchMetadataTests
     {

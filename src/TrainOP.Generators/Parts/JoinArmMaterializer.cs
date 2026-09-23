@@ -30,7 +30,7 @@ namespace TrainOP.Generators.Parts
                 return false;
             }
 
-            var graphs = JoinChainsStage.DiscoverBranches(forkExpression, semanticModel);
+            var graphs = BranchRouteGraphDiscoverer.Discover(forkExpression, semanticModel);
             if (graphs.IsDefaultOrEmpty)
             {
                 return false;

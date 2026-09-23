@@ -8,7 +8,7 @@ namespace TrainOP.Generators.Parts
 {
     /// <summary>
     /// Connects a <see cref="FactoryCall"/> to its <see cref="ExtensionTail"/> via Extend,
-    /// producing a legacy <see cref="RouteChain"/>.
+    /// producing a <see cref="RouteChain"/>.
     /// </summary>
     internal static class ExtensionChainConnector
     {
@@ -65,16 +65,21 @@ namespace TrainOP.Generators.Parts
             if (!RouteChainRootResolver.TryFindChainRootEndingAt(
                     endpoint,
                     semanticModel,
-                    out var root,
-                    out _,
-                    out _,
-                    out _))
+                    out var origin))
             {
                 return false;
             }
 
-            // FactoryCallMaterializer rejects non-factory roots — no legacy kind-switch here.
-            if (!FactoryCallMaterializer.TryMaterialize(root, semanticModel, out var factoryCall))
+            var factoryCall = origin as FactoryCall
+                ?? (origin as LocalBinding)?.Origin as FactoryCall;
+            if (factoryCall == null
+                && RouteOriginPorts.TryGetRoot(origin, out var root)
+                && !FactoryCallMaterializer.TryMaterialize(root, semanticModel, out factoryCall))
+            {
+                return false;
+            }
+
+            if (factoryCall == null)
             {
                 return false;
             }
@@ -123,7 +128,7 @@ namespace TrainOP.Generators.Parts
                 return false;
             }
 
-            return LegacyRoutePartAdapter.TryToRouteChain(constructor, out chain);
+            return RouteOriginPorts.TryToRouteChain(constructor, out chain);
         }
     }
 }

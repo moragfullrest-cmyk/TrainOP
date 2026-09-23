@@ -113,20 +113,29 @@ namespace TrainOP.Generators
                 return ImmutableArray<RouteSite>.Empty;
             }
 
-            if (stationSites.IsDefaultOrEmpty)
-            {
-                return anchorSites;
-            }
-
-            if (anchorSites.IsDefaultOrEmpty)
-            {
-                return stationSites;
-            }
-
-            var builder = ImmutableArray.CreateBuilder<RouteSite>(stationSites.Length + anchorSites.Length);
-            builder.AddRange(stationSites);
-            builder.AddRange(anchorSites);
+            var builder = ImmutableArray.CreateBuilder<RouteSite>();
+            AppendNonNull(builder, stationSites);
+            AppendNonNull(builder, anchorSites);
             return builder.ToImmutable();
+        }
+
+        private static void AppendNonNull(
+            ImmutableArray<RouteSite>.Builder builder,
+            ImmutableArray<RouteSite> sites)
+        {
+            if (sites.IsDefaultOrEmpty)
+            {
+                return;
+            }
+
+            for (var i = 0; i < sites.Length; i++)
+            {
+                var site = sites[i];
+                if (site != null)
+                {
+                    builder.Add(site);
+                }
+            }
         }
 
         private static RouteSite TryDiscoverStation(

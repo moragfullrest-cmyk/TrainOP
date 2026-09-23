@@ -1,6 +1,5 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using TrainOP.Generators.Chain;
 using TrainOP.Generators.Handlers;
 
 namespace TrainOP.Generators.Parts
@@ -64,39 +63,8 @@ namespace TrainOP.Generators.Parts
         public Location Location { get; }
 
         /// <summary>
-        /// Projects this part into a legacy <see cref="StationChainLink"/>.
+        /// Invocation location (alias of <see cref="Location"/> for call-site indexing).
         /// </summary>
-        public StationChainLink ToStationChainLink()
-        {
-            return new StationChainLink(
-                StationName,
-                StationNameLocation,
-                HandlerLocation,
-                Handler,
-                Invocation);
-        }
-
-        /// <summary>
-        /// Rebuilds a <see cref="StationLink"/> from a legacy chain link.
-        /// </summary>
-        public static StationLink FromStationChainLink(StationChainLink legacy)
-        {
-            if (legacy == null)
-            {
-                return null;
-            }
-
-            var kind = legacy.Handler != null && legacy.Handler.IsServiceStation
-                ? StationLinkKind.ServiceStation
-                : StationLinkKind.Station;
-
-            return new StationLink(
-                kind,
-                legacy.StationName,
-                legacy.StationNameLocation,
-                legacy.HandlerLocation,
-                legacy.Handler,
-                legacy.Invocation);
-        }
+        public Location InvocationLocation => Location;
     }
 }

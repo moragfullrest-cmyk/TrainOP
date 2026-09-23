@@ -128,16 +128,16 @@ namespace TrainOP.Generators
                         parameters.Add(typeDisplay);
                         break;
                     case HandlerInputKind.RedSignal:
-                        parameters.Add("global::TrainOP.RedSignal");
+                        parameters.Add(ReturnTypeDisplayHelper.RedSignalReturnTypeDisplay);
                         break;
                     case HandlerInputKind.SignalIssue:
-                        parameters.Add("global::TrainOP.SignalIssue");
+                        parameters.Add(ReturnTypeDisplayHelper.SignalIssueReturnTypeDisplay);
                         break;
                     case HandlerInputKind.SignalIssues:
-                        parameters.Add("global::System.Collections.Generic.IReadOnlyList<global::TrainOP.SignalIssue>");
+                        parameters.Add(ReturnTypeDisplayHelper.SignalIssuesListReturnTypeDisplay);
                         break;
                     case HandlerInputKind.CargoManifest:
-                        parameters.Add("global::TrainOP.CargoManifest");
+                        parameters.Add(ReturnTypeDisplayHelper.CargoManifestReturnTypeDisplay);
                         break;
                     case HandlerInputKind.CancellationToken:
                         parameters.Add("CancellationToken");

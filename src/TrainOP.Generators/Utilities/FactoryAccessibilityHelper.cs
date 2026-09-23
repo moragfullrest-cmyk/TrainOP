@@ -36,11 +36,6 @@ namespace TrainOP.Generators
         /// </summary>
         public static bool IsExportedFactoryContract(IMethodSymbol factoryMethod)
         {
-            if (factoryMethod == null)
-            {
-                return false;
-            }
-
             if (factoryMethod.DeclaredAccessibility != Accessibility.Public
                 && factoryMethod.DeclaredAccessibility != Accessibility.Protected
                 && factoryMethod.DeclaredAccessibility != Accessibility.ProtectedOrInternal)

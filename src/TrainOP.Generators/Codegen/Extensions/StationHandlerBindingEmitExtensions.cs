@@ -118,8 +118,6 @@ namespace TrainOP.Generators
             writer.EndLine();
             using (writer.Block())
             {
-                writer.AppendLine("if (route == null) throw new ArgumentNullException(nameof(route));");
-                writer.AppendLine("if (handler == null) throw new ArgumentNullException(nameof(handler));");
                 writer.AppendLine("var inputNames = binding.InputNames;");
                 writer.AppendLine("var returnMembers = binding.ReturnMembers;");
                 writer.AppendLine("var refFlags = binding.RefFlags;");

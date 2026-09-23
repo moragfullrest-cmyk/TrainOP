@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using TrainOP.Generators.Chain;
 using TrainOP.Generators.Handlers;
 using TrainOP.Generators.Parts;
 using TrainOP.Generators.Route;
@@ -10,11 +9,11 @@ using TrainOP.Generators.Route;
 namespace TrainOP.Generators
 {
     /// <summary>
-    /// Thin fluent peel: advance one Station / ServiceStation step (K4).
+    /// Thin fluent peel: advance one Station / ServiceStation step.
     /// </summary>
     /// <remarks>
     /// Materialize of station links is owned by <see cref="StationLinkMaterializer"/>;
-    /// this type only peels the next invocation and appends legacy station links.
+    /// this type only peels the next invocation and appends station links.
     /// </remarks>
     internal static class RouteChainPeel
     {
@@ -24,7 +23,7 @@ namespace TrainOP.Generators
         public static bool TryAdvanceChain(
             ExpressionSyntax current,
             SemanticModel semanticModel,
-            ImmutableArray<StationChainLink>.Builder stations,
+            ImmutableArray<StationLink>.Builder stations,
             out ExpressionSyntax next,
             ImmutableArray<InvocationExpressionSyntax>.Builder chainedInvocations,
             IReadOnlyDictionary<string, RouteSite> stationSitesByKey = null)
@@ -69,40 +68,26 @@ namespace TrainOP.Generators
             InvocationExpressionSyntax serviceInvocation,
             SemanticModel semanticModel,
             IReadOnlyDictionary<string, RouteSite> stationSitesByKey,
-            out StationChainLink link)
+            out StationLink link)
         {
-            link = null;
-            if (!StationLinkMaterializer.TryMaterializeServiceStation(
-                    serviceInvocation,
-                    semanticModel,
-                    stationSitesByKey,
-                    out var part))
-            {
-                return false;
-            }
-
-            link = part.ToStationChainLink();
-            return true;
+            return StationLinkMaterializer.TryMaterializeServiceStation(
+                serviceInvocation,
+                semanticModel,
+                stationSitesByKey,
+                out link);
         }
 
         private static bool TryCreateStationLink(
             InvocationExpressionSyntax stationInvocation,
             SemanticModel semanticModel,
             IReadOnlyDictionary<string, RouteSite> stationSitesByKey,
-            out StationChainLink link)
+            out StationLink link)
         {
-            link = null;
-            if (!StationLinkMaterializer.TryMaterializeStation(
-                    stationInvocation,
-                    semanticModel,
-                    stationSitesByKey,
-                    out var part))
-            {
-                return false;
-            }
-
-            link = part.ToStationChainLink();
-            return true;
+            return StationLinkMaterializer.TryMaterializeStation(
+                stationInvocation,
+                semanticModel,
+                stationSitesByKey,
+                out link);
         }
 
         private static bool TryGetDirectServiceStationInvocation(

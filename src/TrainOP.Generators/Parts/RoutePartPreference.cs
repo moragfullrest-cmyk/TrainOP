@@ -1,14 +1,12 @@
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using TrainOP.Generators.Route;
 
 namespace TrainOP.Generators.Parts
 {
     /// <summary>
-    /// Preference / identity helpers for origin parts (Assembler merge, adapter select).
+    /// Preference / identity helpers for origin parts (Assembler merge, chain select).
     /// </summary>
     /// <remarks>
-    /// Scores live on part shape — callers must not switch on <see cref="RouteChainAnchorKind"/>
-    /// for preference or origin-keying.
+    /// Scores live on part shape — callers must not invent a kind enum for preference.
     /// </remarks>
     internal static class RoutePartPreference
     {
@@ -33,62 +31,27 @@ namespace TrainOP.Generators.Parts
         }
 
         /// <summary>
-        /// Preference score for a legacy anchor by root/port shape (no kind-switch hot path).
+        /// Whether the chain key should stamp on <see cref="IRoutePart.Location"/>
+        /// (origin call-site) rather than root <c>SpanStart</c>.
         /// </summary>
-        public static int ScoreLegacyAnchor(RouteChainAnchor anchor)
+        public static bool IsOriginKeyed(IRoutePart part)
         {
-            if (anchor?.Root == null)
-            {
-                return 0;
-            }
-
-            // Local binding window (identifier root) outranks raw factory invocation.
-            if (anchor.Root is IdentifierNameSyntax)
-            {
-                return 4;
-            }
-
-            if (FactoryCall.TryFromLegacyAnchor(anchor, out _))
-            {
-                return 3;
-            }
-
-            if (anchor.Root is ObjectCreationExpressionSyntax)
-            {
-                return 2;
-            }
-
-            // Synthetic BranchJoin: station/fork invocation root without a factory method stamp.
-            if (anchor.Root is InvocationExpressionSyntax && anchor.FactoryMethod == null)
-            {
-                return 1;
-            }
-
-            return 0;
-        }
-
-        /// <summary>
-        /// Whether the chain key should stamp on <see cref="RouteChainAnchor.Location"/>
-        /// (origin call-site) rather than <c>Root.SpanStart</c>.
-        /// </summary>
-        public static bool IsOriginKeyed(RouteChainAnchor anchor)
-        {
-            if (anchor?.Root == null)
+            if (part == null || !RouteOriginPorts.TryGetRoot(part, out var root))
             {
                 return false;
             }
 
-            if (anchor.Root is ObjectCreationExpressionSyntax)
+            if (root is ObjectCreationExpressionSyntax)
             {
                 return false;
             }
 
-            if (anchor.Root is IdentifierNameSyntax)
+            if (root is IdentifierNameSyntax)
             {
                 return true;
             }
 
-            if (FactoryCall.TryFromLegacyAnchor(anchor, out _))
+            if (part is FactoryCall || (part as LocalBinding)?.Origin is FactoryCall)
             {
                 return true;
             }

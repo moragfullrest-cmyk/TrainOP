@@ -72,7 +72,7 @@ namespace TrainOP.Generators.Route
 
         private static bool ChainBelongsToTree(RouteChain chain, SyntaxTree syntaxTree)
         {
-            if (chain.Anchor?.Root?.SyntaxTree == syntaxTree)
+            if (chain.Root?.SyntaxTree == syntaxTree)
             {
                 return true;
             }

@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using TrainOP.Generators.Parts;
 using TrainOP.Generators.Route;
 using Xunit;
 
@@ -37,7 +38,7 @@ public static class LinearRoute
             Assert.Equal(0, graph.ChainIndex.Values.SelectMany(x => x).Single(b => b.StationName == "Seed").StationIndex);
             Assert.Equal(1, graph.ChainIndex.Values.SelectMany(x => x).Single(b => b.StationName == "Discount").StationIndex);
             Assert.Equal(2, graph.ChainIndex.Values.SelectMany(x => x).Single(b => b.StationName == "Validate").StationIndex);
-            Assert.False(string.IsNullOrEmpty(CallerChainKeyBuilder.Build(chain.Anchor)));
+            Assert.False(string.IsNullOrEmpty(CallerChainKeyBuilder.Build(chain.Origin)));
         }
 
         [Fact]
@@ -61,8 +62,8 @@ public static class LocalRoute
             var chain = Assert.Single(graph.Chains);
 
             Assert.Equal(2, chain.Stations.Length);
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
-            Assert.False(string.IsNullOrEmpty(CallerChainKeyBuilder.Build(chain.Anchor)));
+            Assert.IsType<LocalBinding>(chain.Origin);
+            Assert.False(string.IsNullOrEmpty(CallerChainKeyBuilder.Build(chain.Origin)));
         }
 
         [Fact]
@@ -85,13 +86,13 @@ public static class StatementLocalRoute
             var graph = BuildGraph(source);
             var chain = Assert.Single(graph.Chains);
 
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.IsType<LocalBinding>(chain.Origin);
             Assert.Equal(2, chain.Stations.Length);
             Assert.Equal("Seed", chain.Stations[0].StationName);
             Assert.Equal("Next", chain.Stations[1].StationName);
             Assert.Equal(0, graph.ChainIndex.Values.SelectMany(x => x).Single(b => b.StationName == "Seed").StationIndex);
             Assert.Equal(1, graph.ChainIndex.Values.SelectMany(x => x).Single(b => b.StationName == "Next").StationIndex);
-            Assert.False(string.IsNullOrEmpty(CallerChainKeyBuilder.Build(chain.Anchor)));
+            Assert.False(string.IsNullOrEmpty(CallerChainKeyBuilder.Build(chain.Origin)));
         }
 
         [Fact]
@@ -163,7 +164,7 @@ public static class FluentRhsNewRoute
             var graph = BuildGraph(source);
             var chain = Assert.Single(graph.Chains);
 
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.IsType<LocalBinding>(chain.Origin);
             Assert.Equal(2, chain.Stations.Length);
             Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
             Assert.Equal(0, graph.ChainIndex.Values.SelectMany(x => x).Single(b => b.StationName == "Seed").StationIndex);
@@ -202,7 +203,7 @@ public static class EndingAtFluentRhsRoute
                 .Expression;
 
             Assert.True(BuildChainsStage.EndingAt(returnExpression, semanticModel, out var chain));
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.IsType<LocalBinding>(chain.Origin);
             Assert.Equal(2, chain.Stations.Length);
             Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
         }
@@ -231,9 +232,9 @@ public static class FluentRhsFactoryRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Tail"));
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
-            Assert.NotNull(consumerChain.Anchor.FactoryMethod);
-            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod.Name);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.NotNull(consumerChain.FactoryMethod);
+            Assert.Equal("CreateSeed", consumerChain.FactoryMethod.Name);
             Assert.Equal(2, consumerChain.Stations.Length);
             Assert.Equal(new[] { "Mid", "Tail" }, consumerChain.Stations.Select(s => s.StationName).ToArray());
 
@@ -282,8 +283,8 @@ public static class EndingAtFluentRhsFactoryRoute
                 .Expression;
 
             Assert.True(BuildChainsStage.EndingAt(returnExpression, semanticModel, out var chain));
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, chain.Anchor.Kind);
-            Assert.Equal("CreateSeed", chain.Anchor.FactoryMethod?.Name);
+            Assert.True(chain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (chain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.Equal("CreateSeed", chain.FactoryMethod?.Name);
             Assert.Equal(2, chain.Stations.Length);
             Assert.Equal(new[] { "Mid", "Tail" }, chain.Stations.Select(s => s.StationName).ToArray());
         }
@@ -320,7 +321,7 @@ public static class EndingAtStatementLocalRoute
                 .Expression;
 
             Assert.True(BuildChainsStage.EndingAt(returnExpression, semanticModel, out var chain));
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.IsType<LocalBinding>(chain.Origin);
             Assert.Equal(2, chain.Stations.Length);
             Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
         }
@@ -344,9 +345,9 @@ public static class FactoryRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
-            Assert.NotNull(consumerChain.Anchor.FactoryMethod);
-            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod.Name);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.NotNull(consumerChain.FactoryMethod);
+            Assert.Equal("CreateSeed", consumerChain.FactoryMethod.Name);
         }
 
         [Fact]
@@ -372,9 +373,9 @@ public static class StatementFactoryLocalRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
-            Assert.NotNull(consumerChain.Anchor.FactoryMethod);
-            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod.Name);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.NotNull(consumerChain.FactoryMethod);
+            Assert.Equal("CreateSeed", consumerChain.FactoryMethod.Name);
             Assert.Equal(1, consumerChain.Stations.Length);
             Assert.Equal("Next", consumerChain.Stations[0].StationName);
 
@@ -406,10 +407,10 @@ public static class LocalFunctionFactoryRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
-            Assert.NotNull(consumerChain.Anchor.FactoryMethod);
-            Assert.Equal("Local", consumerChain.Anchor.FactoryMethod.Name);
-            Assert.Equal(MethodKind.LocalFunction, consumerChain.Anchor.FactoryMethod.MethodKind);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.NotNull(consumerChain.FactoryMethod);
+            Assert.Equal("Local", consumerChain.FactoryMethod.Name);
+            Assert.Equal(MethodKind.LocalFunction, consumerChain.FactoryMethod.MethodKind);
         }
 
         [Fact]
@@ -435,9 +436,9 @@ public static class StatementLocalFunctionFactoryRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
-            Assert.Equal("Local", consumerChain.Anchor.FactoryMethod?.Name);
-            Assert.Equal(MethodKind.LocalFunction, consumerChain.Anchor.FactoryMethod.MethodKind);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.Equal("Local", consumerChain.FactoryMethod?.Name);
+            Assert.Equal(MethodKind.LocalFunction, consumerChain.FactoryMethod.MethodKind);
             Assert.Equal(1, consumerChain.Stations.Length);
             Assert.Equal("Next", consumerChain.Stations[0].StationName);
 
@@ -468,8 +469,8 @@ public static class AwaitAsyncFactoryRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
-            Assert.Equal("CreateAsync", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.Equal("CreateAsync", consumerChain.FactoryMethod?.Name);
         }
 
         [Fact]
@@ -496,8 +497,8 @@ public static class StatementAwaitAsyncFactoryRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
-            Assert.Equal("CreateAsync", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.Equal("CreateAsync", consumerChain.FactoryMethod?.Name);
             Assert.Equal(1, consumerChain.Stations.Length);
             Assert.Equal("Next", consumerChain.Stations[0].StationName);
 
@@ -530,8 +531,8 @@ public static class StatementOutFactoryRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
-            Assert.Equal("Get", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.Equal("Get", consumerChain.FactoryMethod?.Name);
             Assert.Equal(1, consumerChain.Stations.Length);
             Assert.Equal("Next", consumerChain.Stations[0].StationName);
 
@@ -565,8 +566,8 @@ public static class StatementOutPredeclaredRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
-            Assert.Equal("Get", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.Equal("Get", consumerChain.FactoryMethod?.Name);
 
             var nextBinding = graph.ChainIndex.Values
                 .SelectMany(x => x)
@@ -593,7 +594,7 @@ public static class TupleDeconstructRoute
             var graph = BuildGraph(source);
             var chain = Assert.Single(graph.Chains);
 
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.IsType<LocalBinding>(chain.Origin);
             Assert.Equal(2, chain.Stations.Length);
             Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
         }
@@ -618,7 +619,7 @@ public static class VarTupleDeconstructRoute
             var graph = BuildGraph(source);
             var chain = Assert.Single(graph.Chains);
 
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.IsType<LocalBinding>(chain.Origin);
             Assert.Equal(2, chain.Stations.Length);
             Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
         }
@@ -646,8 +647,8 @@ public static class TupleDeconstructFactoryRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
-            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.Equal("CreateSeed", consumerChain.FactoryMethod?.Name);
             Assert.Equal(1, consumerChain.Stations.Length);
 
             var nextBinding = graph.ChainIndex.Values
@@ -679,7 +680,7 @@ public static class IsPatternRoute
             var graph = BuildGraph(source);
             var chain = graph.Chains.Single(c => c.Stations.Any(s => s.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.IsType<LocalBinding>(chain.Origin);
             Assert.Equal(2, chain.Stations.Length);
             Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
         }
@@ -712,8 +713,8 @@ public static class SwitchCasePatternRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
-            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.Equal("CreateSeed", consumerChain.FactoryMethod?.Name);
             Assert.Equal(1, consumerChain.Stations.Length);
 
             var nextBinding = graph.ChainIndex.Values
@@ -744,7 +745,7 @@ public static class TernaryAssignRoute
             var graph = BuildGraph(source);
             var chain = Assert.Single(graph.Chains);
 
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.IsType<LocalBinding>(chain.Origin);
             Assert.Equal(2, chain.Stations.Length);
             Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
         }
@@ -772,8 +773,8 @@ public static class TernaryFactoryAssignRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
-            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.Equal("CreateSeed", consumerChain.FactoryMethod?.Name);
             Assert.Equal(1, consumerChain.Stations.Length);
 
             var nextBinding = graph.ChainIndex.Values
@@ -806,7 +807,7 @@ public static class SwitchAssignRoute
             var graph = BuildGraph(source);
             var chain = Assert.Single(graph.Chains);
 
-            Assert.Equal(RouteChainAnchorKind.LocalVariable, chain.Anchor.Kind);
+            Assert.IsType<LocalBinding>(chain.Origin);
             Assert.Equal(2, chain.Stations.Length);
             Assert.Equal(new[] { "Seed", "Next" }, chain.Stations.Select(s => s.StationName).ToArray());
         }
@@ -838,8 +839,8 @@ public static class SwitchFactoryAssignRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, consumerChain.Anchor.Kind);
-            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod?.Name);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.Equal("CreateSeed", consumerChain.FactoryMethod?.Name);
             Assert.Equal(1, consumerChain.Stations.Length);
 
             var nextBinding = graph.ChainIndex.Values
@@ -871,9 +872,9 @@ public static class StatementPublicFactoryLocalRoute
             var consumerChain = graph.Chains.Single(chain =>
                 chain.Stations.Any(station => station.StationName == "Next"));
 
-            Assert.Equal(RouteChainAnchorKind.FactorySchema, consumerChain.Anchor.Kind);
-            Assert.NotNull(consumerChain.Anchor.FactoryMethod);
-            Assert.Equal("CreateSeed", consumerChain.Anchor.FactoryMethod.Name);
+            Assert.True(consumerChain.Origin is FactoryCall { Kind: FactoryCallKind.Schema } || (consumerChain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Schema));
+            Assert.NotNull(consumerChain.FactoryMethod);
+            Assert.Equal("CreateSeed", consumerChain.FactoryMethod.Name);
             Assert.Equal(1, consumerChain.Stations.Length);
 
             var nextBinding = graph.ChainIndex.Values
@@ -920,8 +921,8 @@ public static class EndingAtFactoryLocalRoute
                 .Expression;
 
             Assert.True(BuildChainsStage.EndingAt(returnExpression, semanticModel, out var chain));
-            Assert.Equal(RouteChainAnchorKind.MethodInvocation, chain.Anchor.Kind);
-            Assert.Equal("CreateSeed", chain.Anchor.FactoryMethod?.Name);
+            Assert.True(chain.Origin is FactoryCall { Kind: FactoryCallKind.Inline } || (chain.Origin is LocalBinding lb && lb.FactoryKind == FactoryCallKind.Inline));
+            Assert.Equal("CreateSeed", chain.FactoryMethod?.Name);
             Assert.Equal(1, chain.Stations.Length);
             Assert.Equal("Next", chain.Stations[0].StationName);
         }
@@ -968,13 +969,12 @@ public static class FactoryOffsetRoute
                     && id.Identifier.ValueText == "TrainRoute");
             var semanticModel = compilation.GetSemanticModel(syntaxTree);
             var createSeedSymbol = semanticModel.GetDeclaredSymbol(createSeed) as IMethodSymbol;
-            var ctorAnchor = new RouteChainAnchor(
-                RouteChainAnchorKind.ObjectCreation,
+            var ctorSeed = new CreationSeed(
                 objectCreation,
                 objectCreation.GetLocation(),
                 createSeedSymbol);
 
-            Assert.Equal(CallerChainKeyBuilder.Build(ctorAnchor, compilation), consumerBinding.ChainId);
+            Assert.Equal(CallerChainKeyBuilder.Build(ctorSeed, compilation), consumerBinding.ChainId);
         }
 
         [Fact]
@@ -998,7 +998,7 @@ public static class DualRoute
 
             Assert.Equal(2, graph.Chains.Length);
             var chainIds = graph.Chains
-                .Select(chain => CallerChainKeyBuilder.Build(chain.Anchor))
+                .Select(chain => CallerChainKeyBuilder.Build(chain.Origin))
                 .ToArray();
             Assert.Equal(2, chainIds.Distinct(StringComparer.Ordinal).Count());
         }

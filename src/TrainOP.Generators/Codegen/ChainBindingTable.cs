@@ -138,37 +138,7 @@ namespace TrainOP.Generators
                     writer.AppendLine("switch (chainKey)");
                     using (writer.Block())
                     {
-                        for (var i = 0; i < orderedBindings.Count;)
-                        {
-                            var chainId = orderedBindings[i].ChainId;
-                            writer.AppendIndented("case \"")
-                                .Append(StringHelpers.Escape(chainId))
-                                .Append("\":");
-                            writer.EndLine();
-                            using (writer.PushIndent())
-                            {
-                                writer.AppendLine("switch (chainStationIndex)");
-                                using (writer.Block())
-                                {
-                                    while (i < orderedBindings.Count
-                                        && string.Equals(orderedBindings[i].ChainId, chainId, StringComparison.Ordinal))
-                                    {
-                                        var binding = orderedBindings[i];
-                                        writer.AppendIndented("case ")
-                                            .Append(binding.StationIndex)
-                                            .Append(": return ")
-                                            .Append(BuildBindingFieldName(_names.DelegateTypeId, binding))
-                                            .Append(";");
-                                        writer.EndLine();
-                                        i++;
-                                    }
-                                }
-
-                                writer.AppendLine("break;");
-                            }
-
-                            writer.AppendLine();
-                        }
+                        EmitChainKeyCases(writer, orderedBindings);
                     }
                 }
 
@@ -178,6 +148,53 @@ namespace TrainOP.Generators
                     .Append(";");
                 writer.EndLine();
             }
+        }
+
+        private void EmitChainKeyCases(CodegenWriter writer, List<ChainSiteBinding> orderedBindings)
+        {
+            for (var i = 0; i < orderedBindings.Count;)
+            {
+                var chainId = orderedBindings[i].ChainId;
+                writer.AppendIndented("case \"")
+                    .Append(StringHelpers.Escape(chainId))
+                    .Append("\":");
+                writer.EndLine();
+                using (writer.PushIndent())
+                {
+                    writer.AppendLine("switch (chainStationIndex)");
+                    using (writer.Block())
+                    {
+                        i = EmitStationIndexCases(writer, orderedBindings, i, chainId);
+                    }
+
+                    writer.AppendLine("break;");
+                }
+
+                writer.AppendLine();
+            }
+        }
+
+        private int EmitStationIndexCases(
+            CodegenWriter writer,
+            List<ChainSiteBinding> orderedBindings,
+            int startIndex,
+            string chainId)
+        {
+            var i = startIndex;
+            while (i < orderedBindings.Count
+                && string.Equals(orderedBindings[i].ChainId, chainId, StringComparison.Ordinal))
+            {
+                var binding = orderedBindings[i];
+                writer.AppendIndented("case ")
+                    .Append(binding.StationIndex)
+                    .Append(": return ")
+                    .Append(BuildBindingFieldName(_names.DelegateTypeId, binding))
+                    .Append(";");
+                writer.EndLine();
+                i++;
+            }
+
+            return i;
         }
 
         private static void EmitBindingConstant(

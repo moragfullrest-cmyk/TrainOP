@@ -6,8 +6,7 @@ namespace TrainOP.Generators.Parts
     /// First-class fragment of a route graph (seed, binding, station link, join arm, etc.).
     /// </summary>
     /// <remarks>
-    /// Identity for dedupe / dispatch is owned by the concrete part — callers must not
-    /// switch on legacy <c>RouteChainAnchorKind</c> outside part ports.
+    /// Identity for dedupe / dispatch is owned by the concrete part.
     /// </remarks>
     internal interface IRoutePart
     {
