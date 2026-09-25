@@ -1,4 +1,6 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TrainOP.Generators
 {
@@ -44,7 +46,108 @@ namespace TrainOP.Generators
         /// </summary>
         public static bool IsParams(IParameterSymbol parameter)
         {
-            return parameter.IsParams;
+            if (parameter == null)
+            {
+                return false;
+            }
+
+            if (parameter.IsParams || SyntaxHasParamsModifier(parameter.DeclaringSyntaxReferences, parameter.Name))
+            {
+                return true;
+            }
+
+            return parameter.ContainingSymbol != null
+                && SyntaxHasParamsModifier(parameter.ContainingSymbol.DeclaringSyntaxReferences, parameter.Name);
+        }
+
+        /// <summary>
+        /// True when a <c>params</c> parameter with this name is declared in the method that contains the handler expression.
+        /// Method-group symbols sometimes omit <see cref="IParameterSymbol.IsParams"/>.
+        /// </summary>
+        public static bool EnclosingMethodDeclaresParams(SyntaxNode handlerExpression, string parameterName)
+        {
+            if (handlerExpression == null || string.IsNullOrEmpty(parameterName))
+            {
+                return false;
+            }
+
+            for (var node = handlerExpression.Parent; node != null; node = node.Parent)
+            {
+                if (node is not MethodDeclarationSyntax
+                    && node is not LocalFunctionStatementSyntax
+                    && node is not ConstructorDeclarationSyntax)
+                {
+                    continue;
+                }
+
+                foreach (var descendant in node.DescendantNodes())
+                {
+                    if (descendant is ParameterSyntax parameterSyntax
+                        && string.Equals(parameterSyntax.Identifier.ValueText, parameterName, System.StringComparison.Ordinal)
+                        && parameterSyntax.Modifiers.Any(SyntaxKind.ParamsKeyword))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            return false;
+        }
+
+        private static bool SyntaxHasParamsModifier(
+            System.Collections.Immutable.ImmutableArray<SyntaxReference> references,
+            string parameterName)
+        {
+            if (references.IsDefaultOrEmpty)
+            {
+                return false;
+            }
+
+            foreach (var reference in references)
+            {
+                if (HasParamsModifier(reference.GetSyntax(), parameterName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasParamsModifier(SyntaxNode node, string parameterName)
+        {
+            if (node is ParameterSyntax parameterSyntax)
+            {
+                return string.Equals(parameterSyntax.Identifier.ValueText, parameterName, System.StringComparison.Ordinal)
+                    && parameterSyntax.Modifiers.Any(SyntaxKind.ParamsKeyword);
+            }
+
+            SeparatedSyntaxList<ParameterSyntax>? parameters = node switch
+            {
+                LocalFunctionStatementSyntax localFunction => localFunction.ParameterList?.Parameters,
+                MethodDeclarationSyntax method => method.ParameterList?.Parameters,
+                ParenthesizedLambdaExpressionSyntax lambda => lambda.ParameterList?.Parameters,
+                AnonymousMethodExpressionSyntax anonymous => anonymous.ParameterList?.Parameters,
+                _ => null
+            };
+
+            if (parameters == null)
+            {
+                return false;
+            }
+
+            foreach (var syntaxParameter in parameters.Value)
+            {
+                if (string.Equals(syntaxParameter.Identifier.ValueText, parameterName, System.StringComparison.Ordinal)
+                    && syntaxParameter.Modifiers.Any(SyntaxKind.ParamsKeyword))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>

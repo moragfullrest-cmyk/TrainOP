@@ -146,7 +146,7 @@ public static class TagRoute
 
             Assert.Contains("in global::System.String p0", generated);
             Assert.Contains("in paymentId", generated);
-            Assert.Contains("params global::System.String[] p2", generated);
+            Assert.Contains("params string[] p2", generated);
             Assert.Contains("new bool[] { true, false, false }", generated);
         }
 

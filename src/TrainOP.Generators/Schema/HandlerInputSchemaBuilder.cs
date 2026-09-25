@@ -117,7 +117,8 @@ namespace TrainOP.Generators
                 var isOut = WagonParameterMetadata.IsOut(parameter);
                 var isRefReadonly = WagonParameterMetadata.IsRefReadonly(parameter);
                 var isIn = WagonParameterMetadata.IsIn(parameter);
-                var isParams = WagonParameterMetadata.IsParams(parameter);
+                var isParams = WagonParameterMetadata.IsParams(parameter)
+                    || WagonParameterMetadata.EnclosingMethodDeclaresParams(handlerExpression, name);
 
                 var isOptional = WagonParameterMetadata.IsOptionalNullableValueType(parameterType, out var underlyingType);
                 var pullTypeDisplay = WagonParameterMetadata.GetPullTypeDisplay(parameterType, underlyingType, isOptional);

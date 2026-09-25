@@ -36,6 +36,7 @@ namespace TrainOP.Generators
                 TrainRouteDiagnostics.ServiceStationCargoManifestReplacement,
                 TrainRouteDiagnostics.OutWagonConflictsWithReturn,
                 TrainRouteDiagnostics.RefReadonlyWagonInReturn,
+                TrainRouteDiagnostics.ParamsWagonNotLast,
             ];
 
         /// <summary>
