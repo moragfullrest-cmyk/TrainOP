@@ -23,6 +23,7 @@ internal static class ExampleRunner
             new FrameworkParametersExample(),
             new CodeVolumeComparisonExample(),
             new CrossAssemblyRouteExample(),
+            new TerminalDecompositionExample(),
         };
 
         for (var i = 0; i < examples.Length; i++)

@@ -10,3 +10,53 @@ alwaysApply: true
 - Это **возможно только** если пользователь **явно** создаёт **уникального потомка** `TrainRoute` (отдельный derived-тип на цепочку / маршрут).
 - Сам факт использования `var` **исключает** прозрачную декомпозицию любым другим путём: без уникального типа на цепочку компилятору не из чего вывести уникальный `Deconstruct`.
 - Не рассчитывать на «починят в следующих версиях C#» — конфликт на общем terminal-типе / `RouteReport` языком, скорее всего, так и не закроют; обходные схемы на базовом типе не проектировать.
+
+Библиотека `Deconstruct` не генерирует. Две формы пишет пользователь (прогон: `samples/TrainOP.Samples/Examples/TerminalDecompositionExample.cs`).
+
+### Потомок на цепочку
+
+Статический тип переменной остаётся потомком. Результат `.Station` не присваивать обратно в `var`: выражение снова имеет тип `TrainRoute`, и `Travel()` возвращает общий `RouteReport`. Конструктор пробрасывает caller-атрибуты в базовый, иначе ключ chain-dispatch не совпадёт с `new`.
+
+```csharp
+sealed class PaymentRoute : TrainRoute
+{
+    public PaymentRoute(
+        [CallerFilePath] string filePath = null,
+        [CallerLineNumber] int lineNumber = 0,
+        [CallerMemberName] string memberName = null)
+        : base(filePath, lineNumber, memberName)
+    {
+    }
+
+    public new (string PaymentId, decimal Amount) Travel()
+    {
+        var report = base.Travel();
+        return (report.Get<string>("paymentId"), report.Get<decimal>("amount"));
+    }
+}
+
+var route = new PaymentRoute();
+route.Station("Seed", () => new { paymentId = "pay-1", amount = 100m });
+route.Station("Discount", (string paymentId, decimal amount) =>
+    new { paymentId, amount = amount * 0.9m });
+var (paymentId, amount) = route.Travel();
+```
+
+### Локальная функция на одну цепочку
+
+Цепочка остаётся `TrainRoute`. `var (a, b)` разбирает кортеж функции, не `RouteReport`.
+
+```csharp
+var route = new TrainRoute()
+    .Station("Seed", () => new { orderId = "ord-1", total = 40m })
+    .Station("Tax", (string orderId, decimal total) =>
+        new { orderId, total = total * 1.2m });
+
+var (orderId, total) = ReadOrder(route);
+
+(string orderId, decimal total) ReadOrder(TrainRoute chain)
+{
+    var report = chain.Travel();
+    return (report.Get<string>("orderId"), report.Get<decimal>("total"));
+}
+```

@@ -161,18 +161,21 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Determines whether a type symbol is TrainRoute.
+        /// Determines whether a type symbol is <c>TrainRoute</c> or a user-declared descendant.
         /// </summary>
         public static bool IsTrainRoute(ITypeSymbol typeSymbol)
         {
-            if (typeSymbol == null)
+            for (var current = typeSymbol as INamedTypeSymbol; current != null; current = current.BaseType)
             {
-                return false;
+                if (ReturnTypeDisplayHelper.EqualsTypeName(
+                        current.ToDisplayString(),
+                        ReturnTypeDisplayHelper.TrainRouteTypeName))
+                {
+                    return true;
+                }
             }
 
-            return ReturnTypeDisplayHelper.EqualsTypeName(
-                typeSymbol.ToDisplayString(),
-                ReturnTypeDisplayHelper.TrainRouteTypeName);
+            return false;
         }
 
         /// <summary>

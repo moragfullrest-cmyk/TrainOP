@@ -770,6 +770,8 @@ Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 
 `DataOrientedStationExample.cs` — seed → discount → validate → `report.Get<T>`.
 
+`TerminalDecompositionExample.cs` — потомок со своим `Travel()` и локальная функция на одну цепочку.
+
 ### B. Red + ServiceStation recovery
 
 `DataOrientedRedSignalExample.cs` — см. раздел ServiceStation выше.

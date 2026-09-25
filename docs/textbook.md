@@ -1193,7 +1193,7 @@ TOP001–TOP003 учат загрузке вагонов и осторожном
 | `SignalIssue` | `Code`, `Message`, `StationName` |
 | `StationVisit` | `StationName` + `IsGreen` в журнале |
 
-Typed deconstruct (`var (a, b) = …Travel()`) **не** используется: при C# 15 и ниже конфликты декомпозиции на общем terminal-типе языком не решаются. Читайте `report.Get<T>("name")`.
+`RouteReport` не декомпозируется. Это общий тип всех цепочек: при C# 15 и ниже компилятор не выбирает уникальный `Deconstruct` для `var (a, b) = route.Travel()`, если статический тип выражения — `TrainRoute` или `RouteReport`. Канон чтения — `report.Get<T>("name")`. Две формы, которые пишет сам пользователь, — в §17.1.
 
 ### CargoManifest
 
@@ -1218,6 +1218,54 @@ Typed deconstruct (`var (a, b) = …Travel()`) **не** используется
 - `TerminalSignal` — единственный полный сигнал.
 - `Visits` — slim-журнал шагов.
 - `Manifest` — манифест рейса на терминале.
+
+### 17.1. Декомпозиция терминала
+
+Библиотека `Deconstruct` на `RouteReport` не генерирует. Пользователь разбирает вагоны одной цепочки сам. Прогон: `samples/TrainOP.Samples/Examples/TerminalDecompositionExample.cs`.
+
+**Потомок на цепочку.** `TrainRoute` не `sealed`. Свой `Travel()` скрывает базовый и возвращает кортеж этой цепочки. Переменная остаётся потомком: результат `.Station` имеет тип `TrainRoute`, и если записать его в `var`, снова виден только общий `RouteReport`. Конструктор пробрасывает `[CallerFilePath]` / `[CallerLineNumber]` / `[CallerMemberName]` в базовый — иначе ключ chain-dispatch не совпадёт со строкой `new`.
+
+```csharp
+sealed class PaymentRoute : TrainRoute
+{
+    public PaymentRoute(
+        [CallerFilePath] string filePath = null,
+        [CallerLineNumber] int lineNumber = 0,
+        [CallerMemberName] string memberName = null)
+        : base(filePath, lineNumber, memberName)
+    {
+    }
+
+    public new (string PaymentId, decimal Amount) Travel()
+    {
+        var report = base.Travel();
+        return (report.Get<string>("paymentId"), report.Get<decimal>("amount"));
+    }
+}
+
+var route = new PaymentRoute();
+route.Station("Seed", () => new { paymentId = "pay-1", amount = 100m });
+route.Station("Discount", (string paymentId, decimal amount) =>
+    new { paymentId, amount = amount * 0.9m });
+var (paymentId, amount) = route.Travel();
+```
+
+**Локальная функция на одну цепочку.** Маршрут остаётся обычным `TrainRoute`. Функция знает вагоны только этой цепочки и возвращает кортеж; `var (a, b)` разбирает его, не отчёт.
+
+```csharp
+var route = new TrainRoute()
+    .Station("Seed", () => new { orderId = "ord-1", total = 40m })
+    .Station("Tax", (string orderId, decimal total) =>
+        new { orderId, total = total * 1.2m });
+
+var (orderId, total) = ReadOrder(route);
+
+(string orderId, decimal total) ReadOrder(TrainRoute chain)
+{
+    var report = chain.Travel();
+    return (report.Get<string>("orderId"), report.Get<decimal>("total"));
+}
+```
 
 ### Advanced surface (не для ручного API)
 
@@ -1298,6 +1346,7 @@ TrainOP.sln
 | `FrameworkParametersExample.cs` | Служебные параметры |
 | `NestedBranchingRouteExample.cs` | Вложенные ветки |
 | `CodeVolume/*` | Manual vs TrainOP |
+| `TerminalDecompositionExample.cs` | Потомок с своим `Travel()` и локальная функция на цепочку |
 
 ---
 
@@ -1347,7 +1396,7 @@ TrainOP.sln
 
 | Ограничение | Статус |
 |-------------|--------|
-| Typed `var (a, b) = Travel()` без уникального derived-типа маршрута | **Снято** (C# ≤15; прозрачная декомпозиция только при явном уникальном потомке `TrainRoute`) |
+| Typed `var (a, b) = Travel()` на общем `RouteReport` | Библиотека не генерирует (C# ≤15). Пользователь: потомок со своим `Travel()` или локальная функция на цепочку (§17.1) |
 | Динамическая сборка маршрута в runtime (`foreach` + `RegisterStation` руками) | Не-цель |
 | Plugin-станции из произвольных DLL без перекомпиляции | Не-цель |
 | Interceptors / reflection chain-dispatch / opt-in `[RouteUpstream]` | **Снято** |

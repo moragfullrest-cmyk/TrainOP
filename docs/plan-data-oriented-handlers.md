@@ -178,7 +178,7 @@ PoC: `tests/TrainOP.RouteLib.Tests/`, `tests/TrainOP.RouteConsumer.Tests/`.
 
 ### 3.6. Terminal-доступ — `RouteReport.Get<T>`
 
-Typed `var (a, b) = …Travel()` **не реализуется**: C# ≤15 не решает конфликты декомпозиции кортежей для общего `RouteReport`.
+Typed `var (a, b) = …Travel()` **библиотека не генерирует**: C# ≤15 не решает конфликты декомпозиции кортежей для общего `RouteReport`. Пользователь пишет это сам: уникальный потомок со своим `Travel()`, либо локальная функция на одну цепочку (учебник §17.1, `TerminalDecompositionExample`).
 
 Chain-dispatch (TOP007 при конфликте имён вне цепочки) — **caller-mode** (§4.3): `CallerChainKey` на `new TrainRoute()` + ordinal станции; interceptors и reflection удалены в 0.10.0.
 

@@ -163,7 +163,7 @@ var lightAsync = await route.TravelLightAsync(cancellationToken);
 **Правильно:** `() => new { paymentId, amount }`, `() => repo.Get(id)`, или несколько станций, пока analyzer видит произведённые вагоны.  
 **Неправильно:** читать вагон до его появления (TOP001).
 
-Доступ к терминальным вагонам — через `RouteReport` (`Get<T>` / индексатор). Typed deconstruct (`var (a, b) = …Travel()`) **не** используется: при C# 15 и ниже конфликты декомпозиции кортежей на общем terminal-типе не решаются языком.
+Доступ к терминальным вагонам — через `RouteReport` (`Get<T>` / индексатор). Общий `RouteReport` не декомпозируется: при C# 15 и ниже у `var (a, b) = route.Travel()` нет уникального `Deconstruct`, пока статический тип — `TrainRoute`. Две пользовательские формы (потомок со своим `Travel()`, локальная функция на одну цепочку) — в учебнике, §17.1; прогон — `TerminalDecompositionExample`.
 
 `TravelLight` / `TravelLightAsync` — opt-in без накопления `StationVisit`: `report.Visits` пустой (`Array.Empty`), терминальный результат и манифест те же, что у `Travel` / `TravelAsync`.
 
