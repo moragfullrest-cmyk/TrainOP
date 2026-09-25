@@ -154,5 +154,25 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal(90m, manifest.PullWagon<decimal>("amount"));
             Assert.Equal("discounted", manifest.PullWagon<string>("status"));
         }
+
+        /// <summary>
+        /// Verifies that in keeps a wagon and params round-trips one collection wagon.
+        /// </summary>
+        [Fact]
+        public void Route_InAndParams_KeepsIdAndUpdatesTags()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { paymentId = "pay-1", amount = 100m, tags = new[] { "a" } })
+                .Station("Keep", Keep);
+
+            var manifest = route.Travel().Manifest;
+
+            Assert.Equal("pay-1", manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(90m, manifest.PullWagon<decimal>("amount"));
+            Assert.Equal(new[] { "a", "b" }, manifest.PullWagon<string[]>("tags"));
+
+            static object Keep(in string paymentId, decimal amount, params string[] tags) =>
+                new { amount = amount * 0.9m, tags = new[] { tags[0], "b" } };
+        }
     }
 }

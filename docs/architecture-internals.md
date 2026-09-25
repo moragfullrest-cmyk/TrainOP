@@ -297,7 +297,7 @@ Handler schema строится **один раз** в discovery (`StationLink`)
 
 ##### HandlerInputSchemaBuilder.TryBuild
 
-**Входы:** Wagon / `CargoManifest` / `RedSignal` / `SignalIssue` / `CancellationToken`; `ref` → writeback (`RefKind.Ref`); `out` → тот же writeback без pull, вагон создаётся локалом `default` перед вызовом; `ref readonly` → pull, без writeback, слот не снимается (имя в возврате — TOP019); ServiceStation пишет только обновления существующих ключей (`out` нового имени — TOP015); optional nullable → `IsOptional`; слоты → `HandlerCallSlot[]`.
+**Входы:** Wagon / `CargoManifest` / `RedSignal` / `SignalIssue` / `CancellationToken`; `ref` → writeback (`RefKind.Ref`); `out` → тот же writeback без pull, вагон создаётся локалом `default` перед вызовом; `ref readonly` и `in` → pull, без writeback, слот не снимается (имя в возврате — TOP019); `params` → один вагон-коллекция по значению, только последний параметр делегата (иначе TOP020); ServiceStation пишет только обновления существующих ключей (`out` нового имени — TOP015); optional nullable → `IsOptional`; слоты → `HandlerCallSlot[]`.
 
 **Выход:** `HandlerReturnInference` — void, anonymous/record, tuple, `Task<T>`, Green/Red/White, `CargoManifest`, unknown; имена членов tuple/record (иначе позже TOP006).
 
@@ -756,7 +756,7 @@ Handler обычно не трогает манифест руками. Он в�
 - `CargoManifest` — читать лишнее без формального input;
 - `CancellationToken`;
 - для ServiceStation — `RedSignal` / `SignalIssue` (последний) / `IReadOnlyList<SignalIssue>` (цепочка);
-- `ref` параметры вагонов — обратная запись через `refLocalValues`. `out` использует тот же массив: локал `default` перед вызовом, без pull; отсутствующий ключ создаётся. `ref readonly` передаётся как `in`, в `refLocalValues` не пишется и не снимается частичным возвратом. Несовместимо с `async` (CS1988). На ServiceStation новый `out` — TOP015.
+- `ref` параметры вагонов — обратная запись через `refLocalValues`. `out` использует тот же массив: локал `default` перед вызовом, без pull; отсутствующий ключ создаётся. `ref readonly` и `in` передаются как `in`, в `refLocalValues` не пишутся и не снимаются частичным возвратом. `params` — объявление делегата, в вызов уходит один аргумент-коллекция. Несовместимо с `async` для `ref` / `in` / `out` / `ref readonly` (CS1988). На ServiceStation новый `out` — TOP015.
 
 Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 

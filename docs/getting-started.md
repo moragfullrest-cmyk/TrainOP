@@ -14,7 +14,7 @@ dotnet add package TrainOP
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.17.0" />
+  <PackageReference Include="TrainOP" Version="0.18.0" />
 </ItemGroup>
 ```
 
@@ -80,7 +80,7 @@ Handler станции — чистая функция над данными. И
 
 ## Модификаторы и возврат
 
-Как параметр (`ref`, `ref readonly`, `out`, по значению) и форма возврата меняют манифест — в [матрице основного API](core-api.md#модификаторы-и-манифест). `Red` и `White` манифест не трогают. На `ServiceStation` состав не меняется (**TOP015**–**TOP017**). `async` не совмещается с `ref` / `out` / `ref readonly` (CS1988).
+Как параметр (`ref`, `ref readonly`, `in`, `out`, `params`, по значению) и форма возврата меняют манифест — в [матрице основного API](core-api.md#модификаторы-и-манифест). `Red` и `White` манифест не трогают. На `ServiceStation` состав не меняется (**TOP015**–**TOP017**). `async` не совмещается с `ref` / `out` / `in` / `ref readonly` (CS1988).
 
 ## Следующие шаги
 

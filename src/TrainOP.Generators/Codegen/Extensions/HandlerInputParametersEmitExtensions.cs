@@ -57,7 +57,7 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Emits a <c>bool[]</c> literal that is true for <c>ref readonly</c> wagons.
+        /// Emits a <c>bool[]</c> literal that is true for <c>in</c> and <c>ref readonly</c> wagons.
         /// </summary>
         internal static void EmitRetainedFlagsArrayLiteral(this HandlerInputParameters input, CodegenWriter writer)
         {
@@ -69,7 +69,7 @@ namespace TrainOP.Generators
             writer.Append("new bool[] { ");
             for (var i = 0; i < input.Wagons.Length; i++)
             {
-                var flag = retainedOnly ? input.Wagons[i].IsRefReadonly : input.Wagons[i].WritesBack;
+                var flag = retainedOnly ? input.Wagons[i].IsReadOnlyPass : input.Wagons[i].WritesBack;
                 writer.Append(flag ? "true" : "false");
                 if (i < input.Wagons.Length - 1)
                 {

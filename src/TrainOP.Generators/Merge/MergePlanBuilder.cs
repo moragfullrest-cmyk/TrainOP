@@ -59,7 +59,7 @@ namespace TrainOP.Generators
                 var wagon = wagons[i];
                 string returnMemberName = null;
                 if (!wagon.IsOut
-                    && !wagon.IsRefReadonly
+                    && !wagon.IsReadOnlyPass
                     && memberByName.ContainsKey(wagon.Name)
                     && !ShouldAllocateDefaultItemMember(
                         allocateDefaultItemN,

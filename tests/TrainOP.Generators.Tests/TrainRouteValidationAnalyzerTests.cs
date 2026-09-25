@@ -1686,6 +1686,56 @@ public static class PayRoute
         }
 
         /// <summary>
+        /// Verifies that TOP019 is reported when an in parameter name is a return member.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop019_WhenInNameIsReturned()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class PayRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 10m })
+        .Station(""Keep"", (in string paymentId, decimal amount) =>
+            new { paymentId, amount });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP019");
+        }
+
+        /// <summary>
+        /// Verifies that TOP020 is reported when params is followed by a cancellation token in the delegate.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop020_WhenParamsIsNotLast()
+        {
+            const string source = @"
+using System.Threading;
+using TrainOP;
+
+public static class PayRoute
+{
+    public static TrainRoute Build()
+    {
+        return new TrainRoute()
+            .Station(""Seed"", () => new { paymentId = ""pay-1"", tags = new[] { ""a"" } })
+            .Station(""Tags"", Tags);
+
+        static object Tags(string paymentId, CancellationToken token, params string[] tags) =>
+            new { paymentId };
+    }
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP020");
+        }
+
+        /// <summary>
         /// Verifies that TOP016 is reported when ServiceStation omits a non-ref input wagon.
         /// </summary>
         [Fact]

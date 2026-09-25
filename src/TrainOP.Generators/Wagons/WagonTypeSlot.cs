@@ -14,7 +14,9 @@ namespace TrainOP.Generators
             bool isOptional,
             string pullTypeDisplay,
             bool isOut = false,
-            bool isRefReadonly = false)
+            bool isRefReadonly = false,
+            bool isIn = false,
+            bool isParams = false)
         {
             TypeDisplay = typeDisplay;
             IsByReference = isByReference;
@@ -22,6 +24,8 @@ namespace TrainOP.Generators
             PullTypeDisplay = pullTypeDisplay;
             IsOut = isOut;
             IsRefReadonly = isRefReadonly;
+            IsIn = isIn;
+            IsParams = isParams;
         }
 
         public string TypeDisplay { get; }
@@ -35,5 +39,9 @@ namespace TrainOP.Generators
         public bool IsOut { get; }
 
         public bool IsRefReadonly { get; }
+
+        public bool IsIn { get; }
+
+        public bool IsParams { get; }
     }
 }

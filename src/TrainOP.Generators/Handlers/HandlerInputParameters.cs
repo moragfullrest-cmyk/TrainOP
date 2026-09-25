@@ -29,8 +29,6 @@ namespace TrainOP.Generators.Handlers
             IncludeSignalIssue = includeSignalIssue;
             IncludeSignalIssues = includeSignalIssues;
             HasCancellationToken = hasCancellationToken;
-            HasRefWagons = ComputeHasWriteback(Wagons);
-            HasRefReadonlyWagons = ComputeHasRefReadonly(Wagons);
             CallOrder = BuildCallOrder(
                 Wagons,
                 stationKind,
@@ -39,6 +37,9 @@ namespace TrainOP.Generators.Handlers
                 includeSignalIssue,
                 includeSignalIssues,
                 hasCancellationToken);
+            HasRefWagons = ComputeHasWriteback(Wagons);
+            HasRefReadonlyWagons = ComputeHasReadOnlyPass(Wagons);
+            HasTrailingParams = ComputeHasTrailingParams(CallOrder);
         }
 
         /// <summary>Wagon inputs in declaration order.</summary>
@@ -68,8 +69,11 @@ namespace TrainOP.Generators.Handlers
         /// <summary>True when at least one wagon is written back (<c>ref</c> or <c>out</c>).</summary>
         public bool HasRefWagons { get; }
 
-        /// <summary>True when at least one wagon is <c>ref readonly</c>.</summary>
+        /// <summary>True when at least one wagon is <c>ref readonly</c> or <c>in</c>.</summary>
         public bool HasRefReadonlyWagons { get; }
+
+        /// <summary>True when the last delegate parameter is a <c>params</c> wagon.</summary>
+        public bool HasTrailingParams { get; }
 
         /// <summary>
         /// Parameters in the order used by generated delegates and handler invocations.
@@ -137,17 +141,28 @@ namespace TrainOP.Generators.Handlers
             return false;
         }
 
-        private static bool ComputeHasRefReadonly(ImmutableArray<WagonBinding> wagons)
+        private static bool ComputeHasReadOnlyPass(ImmutableArray<WagonBinding> wagons)
         {
             for (var i = 0; i < wagons.Length; i++)
             {
-                if (wagons[i].IsRefReadonly)
+                if (wagons[i].IsReadOnlyPass)
                 {
                     return true;
                 }
             }
 
             return false;
+        }
+
+        private static bool ComputeHasTrailingParams(ImmutableArray<HandlerCallSlot> callOrder)
+        {
+            if (callOrder.IsDefaultOrEmpty)
+            {
+                return false;
+            }
+
+            var last = callOrder[callOrder.Length - 1];
+            return last.Kind == HandlerInputKind.Wagon && last.Wagon.IsParams;
         }
 
         private static ImmutableArray<HandlerCallSlot> BuildCallOrder(

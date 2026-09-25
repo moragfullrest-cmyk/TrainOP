@@ -206,12 +206,23 @@ namespace TrainOP.Generators
             isEnabledByDefault: true);
 
         /// <summary>
-        /// Reported when a <c>ref readonly</c> parameter name is also a member of the handler return.
+        /// Reported when an <c>in</c> or <c>ref readonly</c> parameter name is also a member of the handler return.
         /// </summary>
         public static readonly DiagnosticDescriptor RefReadonlyWagonInReturn = new DiagnosticDescriptor(
             id: "TOP019",
-            title: "ref readonly parameter appears in the return",
-            messageFormat: "Station '{0}' ref readonly parameter '{1}' is also a return member; a ref readonly wagon must stay unchanged and cannot be returned",
+            title: "readonly reference parameter appears in the return",
+            messageFormat: "Station '{0}' readonly parameter '{1}' is also a return member; an in or ref readonly wagon must stay unchanged and cannot be returned",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when a <c>params</c> wagon is not the last parameter of the generated delegate.
+        /// </summary>
+        public static readonly DiagnosticDescriptor ParamsWagonNotLast = new DiagnosticDescriptor(
+            id: "TOP020",
+            title: "params wagon is not the last parameter",
+            messageFormat: "Station '{0}' params wagon '{1}' is not the last parameter; params must be last, so it cannot be followed by a cancellation token or by ServiceStation framework parameters",
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);

@@ -112,6 +112,7 @@ namespace TrainOP.Generators
                 var station = chain.Stations[i];
                 ProcessStationInputs(station, state);
                 ReportPassingConflicts(station, state);
+                ReportParamsNotLast(station, state);
 
                 if (TryHandleSpecialReturn(station, state))
                 {
@@ -529,7 +530,7 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Reports TOP018 and TOP019 when an <c>out</c> or <c>ref readonly</c> name is also a return member.
+        /// Reports TOP018 and TOP019 when an <c>out</c>, <c>in</c>, or <c>ref readonly</c> name is also a return member.
         /// </summary>
         private static void ReportPassingConflicts(StationLink station, SimulationState state)
         {
@@ -560,7 +561,7 @@ namespace TrainOP.Generators
                         station.StationName,
                         wagon.Name));
                 }
-                else if (wagon.IsRefReadonly)
+                else if (wagon.IsReadOnlyPass)
                 {
                     state.Diagnostics.Add(Diagnostic.Create(
                         TrainRouteDiagnostics.RefReadonlyWagonInReturn,
@@ -568,6 +569,28 @@ namespace TrainOP.Generators
                         station.StationName,
                         wagon.Name));
                 }
+            }
+        }
+
+        /// <summary>
+        /// Reports TOP020 when a <c>params</c> wagon is not the last delegate parameter.
+        /// </summary>
+        private static void ReportParamsNotLast(StationLink station, SimulationState state)
+        {
+            var callOrder = station.Handler.Input.CallOrder;
+            for (var i = 0; i < callOrder.Length; i++)
+            {
+                var slot = callOrder[i];
+                if (slot.Kind != HandlerInputKind.Wagon || !slot.Wagon.IsParams || i == callOrder.Length - 1)
+                {
+                    continue;
+                }
+
+                state.Diagnostics.Add(Diagnostic.Create(
+                    TrainRouteDiagnostics.ParamsWagonNotLast,
+                    slot.Wagon.Location ?? station.HandlerLocation,
+                    station.StationName,
+                    slot.Wagon.Name));
             }
         }
 
@@ -660,7 +683,9 @@ namespace TrainOP.Generators
                 member.IsOptional,
                 member.PullTypeDisplay,
                 member.IsOut,
-                member.IsRefReadonly);
+                member.IsRefReadonly,
+                member.IsIn,
+                member.IsParams);
         }
 
         /// <summary>

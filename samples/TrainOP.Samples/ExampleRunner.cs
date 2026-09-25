@@ -25,6 +25,7 @@ internal static class ExampleRunner
             new CrossAssemblyRouteExample(),
             new TerminalDecompositionExample(),
             new OutAndRefReadonlyExample(),
+            new InAndParamsExample(),
         };
 
         for (var i = 0; i < examples.Length; i++)

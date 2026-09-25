@@ -19,7 +19,9 @@ namespace TrainOP.Generators.Wagons
             bool isOptional = false,
             string pullTypeDisplay = null,
             bool isOut = false,
-            bool isRefReadonly = false)
+            bool isRefReadonly = false,
+            bool isIn = false,
+            bool isParams = false)
         {
             Name = name;
             TypeDisplay = typeDisplay;
@@ -30,6 +32,8 @@ namespace TrainOP.Generators.Wagons
             PullTypeDisplay = pullTypeDisplay ?? typeDisplay;
             IsOut = isOut;
             IsRefReadonly = isRefReadonly;
+            IsIn = isIn;
+            IsParams = isParams;
         }
 
         public string Name { get; }
@@ -53,11 +57,20 @@ namespace TrainOP.Generators.Wagons
         /// <summary><c>ref readonly</c> parameter: pulled, not written back, not unloaded.</summary>
         public bool IsRefReadonly { get; }
 
+        /// <summary><c>in</c> parameter: same manifest rules as <c>ref readonly</c>.</summary>
+        public bool IsIn { get; }
+
+        /// <summary><c>params</c> collection: one wagon, passed by value. Legal only as the last delegate parameter.</summary>
+        public bool IsParams { get; }
+
+        /// <summary>True for <c>ref readonly</c> and <c>in</c>.</summary>
+        public bool IsReadOnlyPass => IsRefReadonly || IsIn;
+
         /// <summary>True when the local is stored in <c>refLocalValues</c> and loaded after a successful return.</summary>
         public bool WritesBack => IsByReference || IsOut;
 
         /// <summary>True when a partial or void return must not unload this wagon.</summary>
-        public bool RetainsSlot => IsByReference || IsRefReadonly || IsOut;
+        public bool RetainsSlot => IsByReference || IsReadOnlyPass || IsOut;
 
         /// <summary>Delegate parameter prefix, including the trailing space.</summary>
         public string ParameterModifier
@@ -74,6 +87,11 @@ namespace TrainOP.Generators.Wagons
                     return "ref readonly ";
                 }
 
+                if (IsIn)
+                {
+                    return "in ";
+                }
+
                 if (IsByReference)
                 {
                     return "ref ";
@@ -83,7 +101,20 @@ namespace TrainOP.Generators.Wagons
             }
         }
 
-        /// <summary>Call-argument prefix. <c>ref readonly</c> is passed with <c>in</c>.</summary>
-        public string ArgumentModifier => IsRefReadonly ? "in " : ParameterModifier;
+        /// <summary>
+        /// Delegate declaration prefix. <c>params</c> is included only when this wagon is the last parameter.
+        /// </summary>
+        public string GetDeclarationModifier(bool emitParams)
+        {
+            if (emitParams && IsParams)
+            {
+                return "params " + ParameterModifier;
+            }
+
+            return ParameterModifier;
+        }
+
+        /// <summary>Call-argument prefix. <c>ref readonly</c> and <c>in</c> are passed with <c>in</c>.</summary>
+        public string ArgumentModifier => IsReadOnlyPass ? "in " : ParameterModifier;
     }
 }

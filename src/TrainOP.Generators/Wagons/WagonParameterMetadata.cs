@@ -32,6 +32,22 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
+        /// Determines whether the parameter is an <c>in</c> wagon.
+        /// </summary>
+        public static bool IsIn(IParameterSymbol parameter)
+        {
+            return parameter.RefKind == RefKind.In;
+        }
+
+        /// <summary>
+        /// Determines whether the parameter is a <c>params</c> collection wagon.
+        /// </summary>
+        public static bool IsParams(IParameterSymbol parameter)
+        {
+            return parameter.IsParams;
+        }
+
+        /// <summary>
         /// Determines whether the parameter is an optional nullable value type and extracts its underlying type.
         /// </summary>
         public static bool IsOptionalNullableValueType(ITypeSymbol parameterType, out ITypeSymbol underlyingType)

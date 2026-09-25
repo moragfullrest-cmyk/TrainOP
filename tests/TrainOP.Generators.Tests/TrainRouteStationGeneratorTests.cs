@@ -121,6 +121,36 @@ public static class KeepRoute
         }
 
         /// <summary>
+        /// Verifies that an in wagon is pulled and passed with in, and that params stays on the delegate.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsInAndParams_ForReadonlyAndCollectionWagons()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class TagRoute
+{
+        public static TrainRoute Build()
+        {
+            return new TrainRoute()
+                .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m, tags = new[] { ""a"" } })
+                .Station(""Keep"", Keep);
+
+            static object Keep(in string paymentId, decimal amount, params string[] tags) =>
+                new { amount = amount * 0.9m, tags };
+        }
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("in global::System.String p0", generated);
+            Assert.Contains("in paymentId", generated);
+            Assert.Contains("params global::System.String[] p2", generated);
+            Assert.Contains("new bool[] { true, false, false }", generated);
+        }
+
+        /// <summary>
         /// Verifies that the generator emits a void delegate for handlers without a return value.
         /// </summary>
         [Fact]

@@ -58,12 +58,12 @@ TrainOP воплощает эту идею для .NET (`netstandard2.0`). Вы 
 ```bash
 dotnet add package TrainOP
 # или явно:
-dotnet add package TrainOP --version 0.17.0
+dotnet add package TrainOP --version 0.18.0
 ```
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.17.0" />
+  <PackageReference Include="TrainOP" Version="0.18.0" />
 </ItemGroup>
 ```
 
@@ -210,6 +210,8 @@ else
 | по значению | из манифеста | только одноимённое поле возврата | снять на `.Station` | ключ не создаёт. На `.ServiceStation` снятие — **TOP016** |
 | `ref` | из манифеста | локал пишется обратно | оставить и записать локал | ключ не создаёт. `async` — CS1988 |
 | `ref readonly` | из манифеста | нет | оставить как было | ключ не создаёт. Имя в возврате — **TOP019**. `async` — CS1988 |
+| `in` | из манифеста | нет | оставить как было | то же, что `ref readonly`. Имя в возврате — **TOP019**. `async` — CS1988 |
+| `params` | из манифеста, один вагон-коллекция | только одноимённое поле возврата | снять на `.Station` | последний параметр делегата, иначе **TOP020** |
 | `out` | нет: локал `default` перед вызовом | локал пишется обратно | не вход, не снимается | создать или перезаписать. Новое имя на `.ServiceStation` — **TOP015**. То же имя в возврате — **TOP018**. `async` — CS1988 |
 
 | Форма возврата | Эффект на манифест |
@@ -221,7 +223,7 @@ else
 | `RailwaySignals.Red(...)` | запись не выполняется; дальше красная ветка |
 | `CargoManifest` | замена целиком: `.Station` — TOP004, `.ServiceStation` — **TOP017** |
 
-На `.ServiceStation` состав не расширяется и не сужается: обновляются только уже существующие ключи (**TOP015** / **TOP016** / **TOP017**). Параметр `in` библиотека не использует. Вагон, который станция не принимает, эта станция не трогает.
+На `.ServiceStation` состав не расширяется и не сужается: обновляются только уже существующие ключи (**TOP015** / **TOP016** / **TOP017**). `this` на лямбде станции не компилируется. `scoped` манифест не меняет. Вагон, который станция не принимает, эта станция не трогает.
 
 ```csharp
 (string paymentId, ref decimal amount) => { amount *= 0.9m; }
@@ -1019,7 +1021,8 @@ public static class AppRoute
 | TOP016 | Error | ServiceStation опускает входной non-`ref` вагон | Analyzer |
 | TOP017 | Error | ServiceStation возвращает `CargoManifest` | Analyzer |
 | TOP018 | Error | `out` и поле возврата — одно имя | Analyzer |
-| TOP019 | Error | `ref readonly` присутствует в возврате | Analyzer |
+| TOP019 | Error | `in` или `ref readonly` присутствует в возврате | Analyzer |
+| TOP020 | Error | `params` не последний параметр делегата | Analyzer |
 
 Описания в коде: `src/TrainOP.Generators/Diagnostics/TrainRouteDiagnostics.cs` (и `AnalyzerReleases.Shipped.md`). TOP001–TOP013 shipped с 0.7.0; TOP014–TOP017 — с 0.13.0.
 
@@ -1277,7 +1280,7 @@ TrainOP.sln
 
 ### Готовность к релизу (срез)
 
-Пакет ориентирован на **NuGet Preview 0.x** (версия в csproj — см. `CHANGELOG.md`, на момент среза docs — **0.17.0**). Фундамент продукта сильный; до публичного preview главный разрыв — publish workflow on tag; до стабильного 1.0 — SourceLink/snupkg, nullable policy, API freeze advanced surface, samples smoke в CI. Живой чеклист: [release-readiness.md](release-readiness.md).
+Пакет ориентирован на **NuGet Preview 0.x** (версия в csproj — см. `CHANGELOG.md`, на момент среза docs — **0.18.0**). Фундамент продукта сильный; до публичного preview главный разрыв — publish workflow on tag; до стабильного 1.0 — SourceLink/snupkg, nullable policy, API freeze advanced surface, samples smoke в CI. Живой чеклист: [release-readiness.md](release-readiness.md).
 
 ---
 

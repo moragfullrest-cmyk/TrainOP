@@ -10,7 +10,7 @@ namespace TrainOP.Generators
         /// </summary>
         internal static bool RequiresCustomDelegate(this StationHandlerBinding schema)
         {
-            return schema.HasRefWagons || schema.HasRefReadonlyWagons || schema.IsAsync;
+            return schema.HasRefWagons || schema.HasRefReadonlyWagons || schema.Input.HasTrailingParams || schema.IsAsync;
         }
 
         /// <summary>
@@ -117,7 +117,8 @@ namespace TrainOP.Generators
                 var slot = callOrder[i];
                 var typeDisplay = slot.Kind switch
                 {
-                    HandlerInputKind.Wagon => slot.Wagon.ParameterModifier + slot.Wagon.TypeDisplay,
+                    HandlerInputKind.Wagon => slot.Wagon.GetDeclarationModifier(emitParams: i == callOrder.Length - 1)
+                        + slot.Wagon.TypeDisplay,
                     HandlerInputKind.RedSignal => ReturnTypeDisplayHelper.RedSignalReturnTypeDisplay,
                     HandlerInputKind.SignalIssue => ReturnTypeDisplayHelper.SignalIssueReturnTypeDisplay,
                     HandlerInputKind.SignalIssues => ReturnTypeDisplayHelper.SignalIssuesListReturnTypeDisplay,
@@ -150,7 +151,7 @@ namespace TrainOP.Generators
                 var slot = callOrder[i];
                 writer.Append(slot.Kind switch
                 {
-                    HandlerInputKind.Wagon => slot.Wagon.ParameterModifier
+                    HandlerInputKind.Wagon => slot.Wagon.GetDeclarationModifier(emitParams: i == callOrder.Length - 1)
                         + slot.Wagon.TypeDisplay
                         + " "
                         + (useNeutralParameterNames ? "p" + slot.WagonIndex : slot.Wagon.Name),

@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-25
+
+### Added
+
+- **Handler `in` parameters:** same manifest rules as `ref readonly` (pull, no writeback, slot kept, name in the return is **TOP019**). The generated delegate keeps the `in` modifier.
+- **Handler `params` parameters:** one collection wagon with by-value merge. The parameter must be last on the generated delegate (**TOP020** when a token or ServiceStation framework parameter follows it).
+- **Sample** `InAndParamsExample`: `in` keeps a wagon, `params` collects a tag array.
+
+### Documentation
+
+- **nuget / getting-started / README / textbook / release-readiness:** version snippets bumped to 0.18.0.
+
 ## [0.17.0] - 2026-09-25
 
 ### Added

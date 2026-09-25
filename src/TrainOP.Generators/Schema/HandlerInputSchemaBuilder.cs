@@ -116,6 +116,8 @@ namespace TrainOP.Generators
                 var isByReference = WagonParameterMetadata.IsByReference(parameter);
                 var isOut = WagonParameterMetadata.IsOut(parameter);
                 var isRefReadonly = WagonParameterMetadata.IsRefReadonly(parameter);
+                var isIn = WagonParameterMetadata.IsIn(parameter);
+                var isParams = WagonParameterMetadata.IsParams(parameter);
 
                 var isOptional = WagonParameterMetadata.IsOptionalNullableValueType(parameterType, out var underlyingType);
                 var pullTypeDisplay = WagonParameterMetadata.GetPullTypeDisplay(parameterType, underlyingType, isOptional);
@@ -136,7 +138,9 @@ namespace TrainOP.Generators
                     isOptional,
                     pullTypeDisplay,
                     isOut,
-                    isRefReadonly));
+                    isRefReadonly,
+                    isIn,
+                    isParams));
             }
 
             if (stationKind.IsServiceStation())
