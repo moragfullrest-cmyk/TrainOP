@@ -13,9 +13,9 @@ namespace TrainOP.Generators
 
             if (wagon.IsOptional)
             {
-                writer.AppendIndented("var ").Append(context.LocalVariableName).Append(" = ").Append(manifest).Append(".HasWagon(")
+                writer.AppendIndented("var ").Append(context.LocalVariableName).Append(" = ").Append(manifest).Append(".HasWagonUnchecked(")
                     .Append(context.NameExpression)
-                    .Append(") ? ").Append(manifest).Append(".PullWagon<")
+                    .Append(") ? ").Append(manifest).Append(".PullWagonUnchecked<")
                     .Append(wagon.PullTypeDisplay)
                     .Append(">(")
                     .Append(context.NameExpression)
@@ -26,7 +26,7 @@ namespace TrainOP.Generators
                 return;
             }
 
-            writer.AppendIndented("var ").Append(context.LocalVariableName).Append(" = ").Append(manifest).Append(".PullWagon<")
+            writer.AppendIndented("var ").Append(context.LocalVariableName).Append(" = ").Append(manifest).Append(".PullWagonUnchecked<")
                 .Append(wagon.PullTypeDisplay)
                 .Append(">(")
                 .Append(context.NameExpression)

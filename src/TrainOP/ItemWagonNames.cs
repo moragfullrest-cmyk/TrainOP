@@ -50,7 +50,7 @@ namespace TrainOP
         /// </summary>
         public static CargoManifest LoadNextItemWagon(CargoManifest manifest, object value)
         {
-            return manifest.LoadWagon(NextItemName(manifest), value);
+            return manifest.LoadWagonUnchecked(NextItemName(manifest), value);
         }
 
         /// <summary>

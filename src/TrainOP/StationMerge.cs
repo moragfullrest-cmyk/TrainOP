@@ -346,7 +346,7 @@ namespace TrainOP
                 }
                 else if (!preserveManifestComposition && removeOmittedRegularInputs)
                 {
-                    manifest.UnloadWagon(wagonName);
+                    manifest.UnloadWagonUnchecked(wagonName);
                 }
             }
 
@@ -665,7 +665,7 @@ namespace TrainOP
             {
                 if (byReferenceWagons[i])
                 {
-                    manifest.LoadWagon(wagonNames[i], refLocalValues[i]);
+                    manifest.LoadWagonUnchecked(wagonNames[i], refLocalValues[i]);
                 }
             }
         }
@@ -739,12 +739,12 @@ namespace TrainOP
             object wagonValue,
             bool preserveManifestComposition)
         {
-            if (preserveManifestComposition && !manifest.HasWagon(wagonName))
+            if (preserveManifestComposition && !manifest.HasWagonUnchecked(wagonName))
             {
                 return;
             }
 
-            manifest.LoadWagon(wagonName, wagonValue);
+            manifest.LoadWagonUnchecked(wagonName, wagonValue);
         }
 
         /// <summary>
@@ -768,9 +768,9 @@ namespace TrainOP
             for (var i = 0; i < names.Length; i++)
             {
                 var name = names[i];
-                if (source.TryGetWagon(name, out var value))
+                if (source.TryGetWagonUnchecked(name, out var value))
                 {
-                    target.LoadWagon(name, value);
+                    target.LoadWagonUnchecked(name, value);
                 }
             }
         }
@@ -791,14 +791,14 @@ namespace TrainOP
             var memberNames = returnMemberNames ?? WagonStationReturn.GetMemberNames(stationReturn);
             foreach (var memberName in memberNames)
             {
-                if (manifest.HasWagon(memberName)
+                if (manifest.HasWagonUnchecked(memberName)
                     && WagonStationReturn.TryGetMemberValue(
                         stationReturn,
                         memberName,
                         returnMemberNames,
                         out var value))
                 {
-                    manifest.LoadWagon(memberName, value);
+                    manifest.LoadWagonUnchecked(memberName, value);
                 }
             }
 
@@ -844,7 +844,7 @@ namespace TrainOP
                 }
                 else
                 {
-                    manifest.LoadWagon(memberName, value);
+                    manifest.LoadWagonUnchecked(memberName, value);
                 }
             }
 

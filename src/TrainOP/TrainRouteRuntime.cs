@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -19,7 +19,7 @@ namespace TrainOP
         /// </summary>
         public CargoManifest()
         {
-            _wagons = new Dictionary<string, object>(StringComparer.Ordinal);
+            _wagons = new Dictionary<string, object>();
         }
 
         /// <summary>
@@ -32,6 +32,15 @@ namespace TrainOP
                 throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
             }
 
+            return HasWagonUnchecked(wagonName);
+        }
+
+        /// <summary>
+        /// Checks whether a wagon exists. Names from generated adapters are already non-empty.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public bool HasWagonUnchecked(string wagonName)
+        {
             return _wagons.ContainsKey(wagonName);
         }
 
@@ -45,6 +54,15 @@ namespace TrainOP
                 throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
             }
 
+            return TryGetWagonUnchecked(wagonName, out cargo);
+        }
+
+        /// <summary>
+        /// Tries to read a wagon value. Names from generated adapters are already non-empty.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public bool TryGetWagonUnchecked(string wagonName, out object cargo)
+        {
             return _wagons.TryGetValue(wagonName, out cargo);
         }
 
@@ -58,7 +76,16 @@ namespace TrainOP
                 throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
             }
 
-            if (!_wagons.TryGetValue(wagonName, out var value))
+            return PullWagonUnchecked<T>(wagonName);
+        }
+
+        /// <summary>
+        /// Reads a typed wagon value. Names from generated adapters are already non-empty.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public T PullWagonUnchecked<T>(string wagonName)
+        {
+            if (!TryGetWagonUnchecked(wagonName, out var value))
             {
                 throw new KeyNotFoundException($"Wagon '{wagonName}' was not found in the manifest.");
             }
@@ -101,6 +128,15 @@ namespace TrainOP
                 throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
             }
 
+            return LoadWagonUnchecked(wagonName, cargo);
+        }
+
+        /// <summary>
+        /// Adds or replaces a wagon value. Names from generated adapters are already non-empty.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public CargoManifest LoadWagonUnchecked(string wagonName, object cargo)
+        {
             _wagons[wagonName] = cargo;
             return this;
         }
@@ -115,6 +151,15 @@ namespace TrainOP
                 throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
             }
 
+            return UnloadWagonUnchecked(wagonName);
+        }
+
+        /// <summary>
+        /// Removes a wagon by name. Names from generated adapters are already non-empty.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public CargoManifest UnloadWagonUnchecked(string wagonName)
+        {
             _wagons.Remove(wagonName);
             return this;
         }
@@ -483,11 +528,15 @@ namespace TrainOP
     /// <summary>
     /// Builder for a route made of stations.
     /// Use generated <see cref="Station"/> extensions for data-oriented handlers.
+    /// Unsealed so a chain can declare its own descendant and hide <see cref="Travel()"/>
+    /// with a chain-specific tuple. Forward <c>[CallerFilePath]</c>, <c>[CallerLineNumber]</c>,
+    /// and <c>[CallerMemberName]</c> into this constructor so chain-dispatch matches <c>new</c>.
     /// </summary>
-    public sealed class TrainRoute
+    public class TrainRoute
     {
         private readonly List<StationPlan> _route = new List<StationPlan>();
         private readonly string _callerChainKey;
+        private Func<bool, RouteReport> _straightTravel;
         private int _chainRegistrationOrdinal;
 
         private static string BuildCallerChainKey(string filePath, int lineNumber, string memberName)
@@ -512,6 +561,15 @@ namespace TrainOP
         /// </summary>
         [EditorBrowsable(EditorBrowsableState.Never)]
         public string CallerChainKey => _callerChainKey;
+
+        /// <summary>
+        /// Attaches a generated straight-chain runner. Later stations replace an earlier runner.
+        /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public void AttachStraightTravel(Func<bool, RouteReport> runner)
+        {
+            _straightTravel = runner;
+        }
 
         /// <summary>
         /// Returns the next chain registration ordinal (used as chainStationIndex).
@@ -899,14 +957,23 @@ namespace TrainOP
         /// </summary>
         private RouteReport TravelCore(CancellationToken cancellationToken, bool recordVisits)
         {
+            if (_straightTravel != null && !cancellationToken.CanBeCanceled)
+            {
+                return _straightTravel(recordVisits);
+            }
+
             var route = new List<StationPlan>(_route);
             var current = new CargoManifest();
             var visits = recordVisits ? new List<StationVisit>(route.Count) : null;
             Signal previous = RailwaySignals.Green();
+            var canCancel = cancellationToken.CanBeCanceled;
 
             for (var i = 0; i < route.Count; i++)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                if (canCancel)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
 
                 var plan = route[i];
                 if (!ShouldEnterHop(plan, previous))
@@ -936,10 +1003,14 @@ namespace TrainOP
             var manifest = new ManifestHolder(new CargoManifest());
             var visits = recordVisits ? new List<StationVisit>(route.Count) : null;
             Signal previous = RailwaySignals.Green();
+            var canCancel = cancellationToken.CanBeCanceled;
 
             for (var i = 0; i < route.Count; i++)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                if (canCancel)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
 
                 var plan = route[i];
                 if (!ShouldEnterHop(plan, previous))
@@ -1022,9 +1093,11 @@ namespace TrainOP
         {
             try
             {
-                if (plan.ThroughAsyncStation != null)
+                if (plan.Kind == StationInvokeKind.ThroughAsync)
                 {
-                    var nextManifest = await plan.ThroughAsyncStation(manifest.Current, cancellationToken)
+                    var nextManifest = await ((Func<CargoManifest, CancellationToken, Task<CargoManifest>>)plan.Handler)(
+                            manifest.Current,
+                            cancellationToken)
                         .ConfigureAwait(false);
                     if (nextManifest != null)
                     {
@@ -1034,9 +1107,12 @@ namespace TrainOP
                     return RailwaySignals.Green();
                 }
 
-                if (plan.AsyncStation != null)
+                if (plan.Kind == StationInvokeKind.SignalAsync)
                 {
-                    return await plan.AsyncStation(manifest.Current, cancellationToken).ConfigureAwait(false);
+                    return await ((Func<CargoManifest, CancellationToken, Task<Signal>>)plan.Handler)(
+                            manifest.Current,
+                            cancellationToken)
+                        .ConfigureAwait(false);
                 }
 
                 var current = manifest.Current;
@@ -1062,34 +1138,42 @@ namespace TrainOP
             ref CargoManifest current,
             CancellationToken cancellationToken)
         {
-            if (plan.ThroughStationWithToken != null)
+            switch (plan.Kind)
             {
-                var nextManifest = plan.ThroughStationWithToken(current, cancellationToken);
-                if (nextManifest != null)
+                case StationInvokeKind.ThroughWithToken:
                 {
-                    current = nextManifest;
+                    var nextManifest = ((Func<CargoManifest, CancellationToken, CargoManifest>)plan.Handler)(
+                        current,
+                        cancellationToken);
+                    if (nextManifest != null)
+                    {
+                        current = nextManifest;
+                    }
+
+                    return RailwaySignals.Green();
                 }
 
-                return RailwaySignals.Green();
-            }
-
-            if (plan.ThroughStation != null)
-            {
-                var nextManifest = plan.ThroughStation(current);
-                if (nextManifest != null)
+                case StationInvokeKind.Through:
                 {
-                    current = nextManifest;
+                    var nextManifest = ((Func<CargoManifest, CargoManifest>)plan.Handler)(current);
+                    if (nextManifest != null)
+                    {
+                        current = nextManifest;
+                    }
+
+                    return RailwaySignals.Green();
                 }
 
-                return RailwaySignals.Green();
-            }
+                case StationInvokeKind.SignalWithToken:
+                    return ((Func<CargoManifest, CancellationToken, Signal>)plan.Handler)(current, cancellationToken);
 
-            if (plan.StationWithToken != null)
-            {
-                return plan.StationWithToken(current, cancellationToken);
-            }
+                case StationInvokeKind.Signal:
+                    return ((Func<CargoManifest, Signal>)plan.Handler)(current);
 
-            return plan.Station(current);
+                default:
+                    throw new InvalidOperationException(
+                        $"Station '{plan.StationName}' has invoke kind '{plan.Kind}', which is not a synchronous station.");
+            }
         }
 
         /// <summary>
@@ -1187,6 +1271,11 @@ namespace TrainOP
         /// </summary>
         private static Signal NormalizeRequestSignal(Signal signal, string stationName)
         {
+            if (ReferenceEquals(signal, GreenSignal.Instance))
+            {
+                return signal;
+            }
+
             if (signal is WhitePass)
             {
                 return RailwaySignals.Green();

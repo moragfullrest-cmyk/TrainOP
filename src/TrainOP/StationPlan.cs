@@ -5,6 +5,33 @@ using System.Threading.Tasks;
 namespace TrainOP
 {
     /// <summary>
+    /// Which single handler a <see cref="StationPlan"/> invokes. Set once at registration.
+    /// </summary>
+    internal enum StationInvokeKind
+    {
+        /// <summary>Synchronous signal-returning station.</summary>
+        Signal,
+
+        /// <summary>Synchronous signal-returning station with a cancellation token.</summary>
+        SignalWithToken,
+
+        /// <summary>Synchronous manifest-returning station.</summary>
+        Through,
+
+        /// <summary>Synchronous manifest-returning station with a cancellation token.</summary>
+        ThroughWithToken,
+
+        /// <summary>Asynchronous signal-returning station.</summary>
+        SignalAsync,
+
+        /// <summary>Asynchronous manifest-returning station.</summary>
+        ThroughAsync,
+
+        /// <summary>Service station entered only after a red signal.</summary>
+        Service,
+    }
+
+    /// <summary>
     /// Describes one station or service-station hop attached to a route and how it is invoked.
     /// </summary>
     internal sealed class StationPlan
@@ -15,7 +42,8 @@ namespace TrainOP
         public StationPlan(string stationName, Func<CargoManifest, Signal> station)
         {
             StationName = stationName;
-            Station = station;
+            Kind = StationInvokeKind.Signal;
+            Handler = station;
         }
 
         /// <summary>
@@ -24,7 +52,8 @@ namespace TrainOP
         public StationPlan(string stationName, Func<CargoManifest, CancellationToken, Task<Signal>> asyncStation)
         {
             StationName = stationName;
-            AsyncStation = asyncStation;
+            Kind = StationInvokeKind.SignalAsync;
+            Handler = asyncStation;
         }
 
         /// <summary>
@@ -33,7 +62,8 @@ namespace TrainOP
         public StationPlan(string stationName, Func<CargoManifest, CargoManifest> throughStation)
         {
             StationName = stationName;
-            ThroughStation = throughStation;
+            Kind = StationInvokeKind.Through;
+            Handler = throughStation;
         }
 
         /// <summary>
@@ -42,7 +72,8 @@ namespace TrainOP
         public StationPlan(string stationName, Func<CargoManifest, CancellationToken, Task<CargoManifest>> throughAsyncStation)
         {
             StationName = stationName;
-            ThroughAsyncStation = throughAsyncStation;
+            Kind = StationInvokeKind.ThroughAsync;
+            Handler = throughAsyncStation;
         }
 
         /// <summary>
@@ -51,7 +82,8 @@ namespace TrainOP
         public StationPlan(string stationName, Func<CargoManifest, CancellationToken, Signal> stationWithToken)
         {
             StationName = stationName;
-            StationWithToken = stationWithToken;
+            Kind = StationInvokeKind.SignalWithToken;
+            Handler = stationWithToken;
         }
 
         /// <summary>
@@ -60,7 +92,8 @@ namespace TrainOP
         public StationPlan(string stationName, Func<CargoManifest, CancellationToken, CargoManifest> throughStationWithToken)
         {
             StationName = stationName;
-            ThroughStationWithToken = throughStationWithToken;
+            Kind = StationInvokeKind.ThroughWithToken;
+            Handler = throughStationWithToken;
         }
 
         /// <summary>
@@ -74,6 +107,7 @@ namespace TrainOP
             }
 
             StationName = servicePlan.StationName;
+            Kind = StationInvokeKind.Service;
             ServicePlan = servicePlan;
         }
 
@@ -83,9 +117,19 @@ namespace TrainOP
         public string StationName { get; }
 
         /// <summary>
+        /// Gets the invoke kind chosen at registration.
+        /// </summary>
+        public StationInvokeKind Kind { get; }
+
+        /// <summary>
+        /// Gets the single station handler for this hop, or null for a service station.
+        /// </summary>
+        public Delegate Handler { get; }
+
+        /// <summary>
         /// Gets whether this hop is a service station (entered only after a red signal).
         /// </summary>
-        public bool IsServiceStation => ServicePlan != null;
+        public bool IsServiceStation => Kind == StationInvokeKind.Service;
 
         /// <summary>
         /// Gets the service-station plan when this hop is recovery, otherwise null.
@@ -93,41 +137,11 @@ namespace TrainOP
         public ServiceStationPlan ServicePlan { get; }
 
         /// <summary>
-        /// Gets the synchronous signal-returning handler, if configured.
-        /// </summary>
-        public Func<CargoManifest, Signal> Station { get; }
-
-        /// <summary>
-        /// Gets the synchronous signal-returning handler with cancellation support, if configured.
-        /// </summary>
-        public Func<CargoManifest, CancellationToken, Signal> StationWithToken { get; }
-
-        /// <summary>
-        /// Gets the synchronous manifest-returning handler, if configured.
-        /// </summary>
-        public Func<CargoManifest, CargoManifest> ThroughStation { get; }
-
-        /// <summary>
-        /// Gets the synchronous manifest-returning handler with cancellation support, if configured.
-        /// </summary>
-        public Func<CargoManifest, CancellationToken, CargoManifest> ThroughStationWithToken { get; }
-
-        /// <summary>
-        /// Gets the asynchronous signal-returning handler, if configured.
-        /// </summary>
-        public Func<CargoManifest, CancellationToken, Task<Signal>> AsyncStation { get; }
-
-        /// <summary>
-        /// Gets the asynchronous manifest-returning handler, if configured.
-        /// </summary>
-        public Func<CargoManifest, CancellationToken, Task<CargoManifest>> ThroughAsyncStation { get; }
-
-        /// <summary>
         /// Gets whether this hop requires asynchronous execution.
         /// </summary>
         public bool IsAsync =>
-            AsyncStation != null
-            || ThroughAsyncStation != null
+            Kind == StationInvokeKind.SignalAsync
+            || Kind == StationInvokeKind.ThroughAsync
             || (ServicePlan != null && ServicePlan.AsyncHandler != null);
     }
 }

@@ -75,6 +75,8 @@ namespace TrainOP.Generators
 
             writer.AppendLine();
             EmitResolver(writer, orderedBindings);
+            writer.AppendLine();
+            EmitStraightAttach(writer, orderedBindings);
         }
 
         /// <summary>
@@ -238,6 +240,167 @@ namespace TrainOP.Generators
             }
 
             writer.Append(" }");
+        }
+
+        private void EmitStraightAttach(CodegenWriter writer, List<ChainSiteBinding> orderedBindings)
+        {
+            var straightChains = new List<(int Start, int Count, string MethodName, string ChainId, int LastIndex)>();
+            for (var i = 0; i < orderedBindings.Count;)
+            {
+                var chainId = orderedBindings[i].ChainId;
+                var start = i;
+                while (i < orderedBindings.Count
+                    && string.Equals(orderedBindings[i].ChainId, chainId, StringComparison.Ordinal))
+                {
+                    i++;
+                }
+
+                var count = i - start;
+                if (!CanEmitStraightChain(orderedBindings, start, count))
+                {
+                    continue;
+                }
+
+                var methodName = "StraightTravel_" + _names.DelegateTypeId + "_" + StringHelpers.SanitizeIdentifier(chainId);
+                straightChains.Add((start, count, methodName, chainId, orderedBindings[start + count - 1].StationIndex));
+                EmitStraightMethod(writer, methodName, orderedBindings, start, count);
+                writer.AppendLine();
+            }
+
+            writer.AppendIndented("private static TrainRoute AttachStraight_")
+                .Append(_names.DelegateTypeId)
+                .Append("(TrainRoute route, string chainKey, int chainStationIndex)");
+            writer.EndLine();
+            using (writer.Block())
+            {
+                for (var i = 0; i < straightChains.Count; i++)
+                {
+                    var chain = straightChains[i];
+                    writer.AppendIndented("if (string.Equals(chainKey, \"")
+                        .Append(StringHelpers.Escape(chain.ChainId))
+                        .Append("\", System.StringComparison.Ordinal) && chainStationIndex == ")
+                        .Append(chain.LastIndex.ToString())
+                        .Append(") route.AttachStraightTravel(recordVisits => ")
+                        .Append(chain.MethodName)
+                        .Append("(recordVisits));");
+                    writer.EndLine();
+                }
+
+                writer.AppendLine("return route;");
+            }
+        }
+
+        private static bool CanEmitStraightChain(List<ChainSiteBinding> bindings, int start, int count)
+        {
+            if (count < 2)
+            {
+                return false;
+            }
+
+            var declared = new HashSet<string>(StringComparer.Ordinal);
+            for (var i = 0; i < count; i++)
+            {
+                var schema = bindings[start + i].Schema;
+                if (schema == null
+                    || schema.StraightExpression == null
+                    || schema.IsAsync
+                    || schema.IsServiceStation
+                    || schema.HasCancellationToken
+                    || schema.HasRefWagons
+                    || schema.IncludeManifest
+                    || schema.IncludeRedSignal
+                    || schema.ReturnShape == null
+                    || bindings[start + i].ReturnMembers == null
+                    || bindings[start + i].ReturnMembers.Length == 0)
+                {
+                    return false;
+                }
+
+                if (i == 0 && schema.Wagons.Length != 0)
+                {
+                    return false;
+                }
+
+                var wagons = schema.Wagons;
+                for (var w = 0; w < wagons.Length; w++)
+                {
+                    if (!declared.Contains(wagons[w].Name))
+                    {
+                        return false;
+                    }
+                }
+
+                var members = bindings[start + i].ReturnMembers;
+                for (var m = 0; m < members.Length; m++)
+                {
+                    declared.Add(members[m]);
+                }
+            }
+
+            return true;
+        }
+
+        private static void EmitStraightMethod(
+            CodegenWriter writer,
+            string methodName,
+            List<ChainSiteBinding> bindings,
+            int start,
+            int count)
+        {
+            writer.AppendIndented("private static RouteReport ")
+                .Append(methodName)
+                .Append("(bool recordVisits)");
+            writer.EndLine();
+            using (writer.Block())
+            {
+                var declared = new HashSet<string>(StringComparer.Ordinal);
+                for (var i = 0; i < count; i++)
+                {
+                    var binding = bindings[start + i];
+                    writer.AppendIndented("var step").Append(i.ToString()).Append(" = ")
+                        .Append(binding.Schema.StraightExpression)
+                        .Append(";");
+                    writer.EndLine();
+                    var members = binding.ReturnMembers;
+                    for (var m = 0; m < members.Length; m++)
+                    {
+                        var name = members[m];
+                        var first = declared.Add(name);
+                        writer.AppendIndented(first ? "var " : string.Empty)
+                            .Append(name)
+                            .Append(" = step")
+                            .Append(i.ToString())
+                            .Append(".")
+                            .Append(name)
+                            .Append(";");
+                        writer.EndLine();
+                    }
+                }
+
+                writer.AppendLine("var manifest = new CargoManifest();");
+                var terminal = bindings[start + count - 1].ReturnMembers;
+                for (var m = 0; m < terminal.Length; m++)
+                {
+                    var name = terminal[m];
+                    writer.AppendIndented("manifest.LoadWagonUnchecked(\"")
+                        .Append(StringHelpers.Escape(name))
+                        .Append("\", ")
+                        .Append(name)
+                        .Append(");");
+                    writer.EndLine();
+                }
+
+                writer.AppendLine("var visits = recordVisits ? new System.Collections.Generic.List<StationVisit>() : null;");
+                for (var i = 0; i < count; i++)
+                {
+                    writer.AppendIndented("if (visits != null) visits.Add(new StationVisit(\"")
+                        .Append(StringHelpers.Escape(bindings[start + i].StationName))
+                        .Append("\", true));");
+                    writer.EndLine();
+                }
+
+                writer.AppendLine("return new RouteReport(visits ?? (System.Collections.Generic.IReadOnlyList<StationVisit>)System.Array.Empty<StationVisit>(), RailwaySignals.Green(), manifest);");
+            }
         }
     }
 }

@@ -15,11 +15,13 @@ namespace TrainOP.Generators.Handlers
         public StationHandlerBinding(
             HandlerInputParameters input,
             HandlerOutputParameters output,
-            bool isAsync)
+            bool isAsync,
+            string straightExpression = null)
         {
             Input = input;
             Output = output;
             IsAsync = isAsync;
+            StraightExpression = straightExpression;
         }
 
         /// <summary>Handler inputs (wagons + framework slots) and call order.</summary>
@@ -35,6 +37,11 @@ namespace TrainOP.Generators.Handlers
         public bool IncludeManifest => Input.IncludeManifest;
 
         public bool IsAsync { get; }
+
+        /// <summary>
+        /// Handler expression text for a straight-chain spike, or null when the body is not a single expression.
+        /// </summary>
+        public string StraightExpression { get; }
 
         public bool HasCancellationToken => Input.HasCancellationToken;
 

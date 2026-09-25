@@ -37,8 +37,8 @@ public static class ConstNameRoute
 
             Assert.Contains("public static class TrainRouteStationExtensions", generated);
             Assert.Contains("Func<global::System.String, global::System.Decimal,", generated);
-            Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
-            Assert.Contains("manifest.PullWagon<global::System.Decimal>(\"amount\")", generated);
+            Assert.Contains("manifest.PullWagonUnchecked<global::System.String>(\"paymentId\")", generated);
+            Assert.Contains("manifest.PullWagonUnchecked<global::System.Decimal>(\"amount\")", generated);
             Assert.Contains("StationMerge.ToSignal", generated);
         }
 
@@ -116,7 +116,7 @@ public static class OptionalRoute
 
             var generated = RunGenerators(source);
 
-            Assert.Contains("manifest.HasWagon(\"amount\")", generated);
+            Assert.Contains("manifest.HasWagonUnchecked(\"amount\")", generated);
             Assert.Contains("default(", generated);
             Assert.Contains("global::System.Decimal?", generated);
         }
@@ -191,8 +191,8 @@ public static class MethodGroupRoute
             Assert.Contains("public static TrainRoute Station(this TrainRoute route", generated);
             Assert.Contains("Func<global::System.Object>", generated);
             Assert.Contains("Func<global::System.String, global::System.Decimal, global::System.Object>", generated);
-            Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
-            Assert.Contains("manifest.PullWagon<global::System.Decimal>(\"amount\")", generated);
+            Assert.Contains("manifest.PullWagonUnchecked<global::System.String>(\"paymentId\")", generated);
+            Assert.Contains("manifest.PullWagonUnchecked<global::System.Decimal>(\"amount\")", generated);
         }
 
         /// <summary>
@@ -220,7 +220,7 @@ public sealed class InstanceMethodRoute
 
             Assert.Contains("public static TrainRoute Station(this TrainRoute route", generated);
             Assert.Contains("Func<global::System.String, global::System.Decimal, global::System.Object>", generated);
-            Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
+            Assert.Contains("manifest.PullWagonUnchecked<global::System.String>(\"paymentId\")", generated);
         }
 
         /// <summary>
@@ -250,7 +250,7 @@ public static class LocalFunctionRoute
 
             Assert.Contains("public static TrainRoute Station(this TrainRoute route", generated);
             Assert.Contains("Func<global::System.String, global::System.Decimal, global::System.Object>", generated);
-            Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
+            Assert.Contains("manifest.PullWagonUnchecked<global::System.String>(\"paymentId\")", generated);
         }
 
         /// <summary>
@@ -276,7 +276,7 @@ public static class AnonymousMethodRoute
 
             Assert.Contains("public static TrainRoute Station(this TrainRoute route", generated);
             Assert.Contains("Func<global::System.String, global::System.Decimal, global::System.Object>", generated);
-            Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
+            Assert.Contains("manifest.PullWagonUnchecked<global::System.String>(\"paymentId\")", generated);
         }
 
         /// <summary>
@@ -437,7 +437,7 @@ public static class RecoveryRoute
             Assert.Contains("public static TrainRoute ServiceStation(this TrainRoute route", generated);
             Assert.Contains("Func<global::System.Int32, global::TrainOP.SignalIssue", generated);
             Assert.DoesNotContain("ref global::System.Int32", generated);
-            Assert.Contains("HasWagon(", generated);
+            Assert.Contains("HasWagonUnchecked(", generated);
             Assert.DoesNotContain("UnloadWagon(", generated);
         }
 
@@ -618,8 +618,8 @@ public static class PaymentRoute
             Assert.Contains("Func<global::System.String, global::System.Decimal, (", generated);
             Assert.Contains("stationReturn.", generated);
             Assert.Contains("public static TrainRoute Station(this TrainRoute route", generated);
-            Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
-            Assert.Contains("manifest.PullWagon<global::System.Decimal>(\"amount\")", generated);
+            Assert.Contains("manifest.PullWagonUnchecked<global::System.String>(\"paymentId\")", generated);
+            Assert.Contains("manifest.PullWagonUnchecked<global::System.Decimal>(\"amount\")", generated);
             Assert.Contains("StationMerge.ToSignal", generated);
             Assert.Contains("ReturnMembers_", generated);
         }
@@ -671,7 +671,7 @@ public static class PaymentRoute
             Assert.Contains("stationReturn.Item1", discountBlock);
             Assert.Contains("stationReturn.Item2", discountBlock);
             Assert.Contains("ItemWagonNames.LoadNextItemWagon", discountBlock);
-            Assert.Contains("UnloadWagon(WagonNames_", discountBlock);
+            Assert.Contains("UnloadWagonUnchecked(WagonNames_", discountBlock);
             Assert.DoesNotContain("switch (wagonName)", discountBlock);
             Assert.DoesNotContain("for (var i = 0; i < WagonNames_", discountBlock);
         }
@@ -822,7 +822,7 @@ public static class ConflictingNameRoute
             Assert.Contains("var returnMembers = binding.ReturnMembers;", generated);
             Assert.Contains("internal readonly struct ChainStationBinding", generated);
             Assert.DoesNotContain("binding.InputNames[0]", generated);
-            Assert.Contains("manifest.PullWagon<global::System.String>(inputNames[0])", generated);
+            Assert.Contains("manifest.PullWagonUnchecked<global::System.String>(inputNames[0])", generated);
         }
 
         /// <summary>
@@ -1054,7 +1054,7 @@ public static class MixedReturnRoute
             var generated = RunGenerators(source);
 
             Assert.Equal(3, CountStationOverloads(generated));
-            Assert.Contains("manifest.PullWagon<global::System.String>(\"paymentId\")", generated);
+            Assert.Contains("manifest.PullWagonUnchecked<global::System.String>(\"paymentId\")", generated);
             Assert.Contains("StationMerge.ToSignal(manifest, stationReturn, stationName, ", generated);
             Assert.DoesNotContain(", true, null);", generated);
         }

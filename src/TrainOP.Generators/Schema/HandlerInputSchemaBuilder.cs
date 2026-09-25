@@ -173,7 +173,37 @@ namespace TrainOP.Generators
             return new StationHandlerBinding(
                 input,
                 HandlerOutputParameters.From(returnShape),
-                IsAsyncHandler(handlerSymbol, handlerExpression));
+                IsAsyncHandler(handlerSymbol, handlerExpression),
+                TryGetStraightExpression(body));
+        }
+
+        /// <summary>
+        /// Returns the expression text when the handler body is a single expression without route signals.
+        /// </summary>
+        private static string TryGetStraightExpression(CSharpSyntaxNode body)
+        {
+            ExpressionSyntax expression = null;
+            if (body is ArrowExpressionClauseSyntax arrow)
+            {
+                expression = arrow.Expression;
+            }
+            else if (body is ExpressionSyntax node)
+            {
+                expression = node;
+            }
+
+            if (expression == null)
+            {
+                return null;
+            }
+
+            var text = expression.ToFullString();
+            if (string.IsNullOrWhiteSpace(text) || text.IndexOf("RailwaySignals", StringComparison.Ordinal) >= 0)
+            {
+                return null;
+            }
+
+            return text.Trim();
         }
 
         /// <summary>

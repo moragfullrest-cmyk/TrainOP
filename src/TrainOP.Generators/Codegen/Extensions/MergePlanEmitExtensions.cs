@@ -85,7 +85,7 @@ namespace TrainOP.Generators
                     writer.AppendLine("else");
                     using (writer.Block())
                     {
-                        writer.AppendIndented("merged = merged.UnloadWagon(")
+                        writer.AppendIndented("merged = merged.UnloadWagonUnchecked(")
                             .Append(wagonNameExpression)
                             .Append(");");
                         writer.EndLine();
@@ -94,7 +94,7 @@ namespace TrainOP.Generators
             }
             else if (context.RemoveOmittedRegularInputs)
             {
-                writer.AppendIndented("merged = merged.UnloadWagon(")
+                writer.AppendIndented("merged = merged.UnloadWagonUnchecked(")
                     .Append(wagonNameExpression)
                     .Append(");");
                 writer.EndLine();
@@ -168,7 +168,7 @@ namespace TrainOP.Generators
                 var memberLiteral = "\"" + StringHelpers.Escape(memberName) + "\"";
                 if (context.PreserveManifestComposition)
                 {
-                    writer.AppendIndented("if (merged.HasWagon(")
+                    writer.AppendIndented("if (merged.HasWagonUnchecked(")
                         .Append(wagonNameExpression)
                         .Append(") && WagonStationReturn.TryGetMemberValue(")
                         .Append(context.DataVariable)
@@ -176,7 +176,7 @@ namespace TrainOP.Generators
                         .Append(memberLiteral)
                         .Append(", out var ")
                         .Append(overlayLocalName)
-                        .Append(")) merged = merged.LoadWagon(")
+                        .Append(")) merged = merged.LoadWagonUnchecked(")
                         .Append(wagonNameExpression)
                         .Append(", ")
                         .Append(overlayLocalName)
@@ -191,7 +191,7 @@ namespace TrainOP.Generators
                     .Append(memberLiteral)
                     .Append(", out var ")
                     .Append(overlayLocalName)
-                    .Append(")) merged = merged.LoadWagon(")
+                    .Append(")) merged = merged.LoadWagonUnchecked(")
                     .Append(wagonNameExpression)
                     .Append(", ")
                     .Append(overlayLocalName)
@@ -215,9 +215,9 @@ namespace TrainOP.Generators
         {
             if (preserveManifestComposition)
             {
-                writer.AppendIndented("if (merged.HasWagon(")
+                writer.AppendIndented("if (merged.HasWagonUnchecked(")
                     .Append(wagonNameExpression)
-                    .Append(")) merged = merged.LoadWagon(")
+                    .Append(")) merged = merged.LoadWagonUnchecked(")
                     .Append(wagonNameExpression)
                     .Append(", ")
                     .Append(valueExpression)
@@ -226,7 +226,7 @@ namespace TrainOP.Generators
                 return;
             }
 
-            writer.AppendIndented("merged = merged.LoadWagon(")
+            writer.AppendIndented("merged = merged.LoadWagonUnchecked(")
                 .Append(wagonNameExpression)
                 .Append(", ")
                 .Append(valueExpression)

@@ -41,7 +41,15 @@
 
 ## 2. Baseline
 
-Источник: `BenchmarkDotNet.Artifacts/results/TrainOP.Benchmarks.LibraryVsManualBenchmarks-report-github.md` (.NET 10, Release, caller adapter).
+Источник: ShortRun `LibraryVsManual*` (.NET 10, Release, caller adapter, 2026-09-25, до P7). Исторические цифры полного прогона (до P4) оставлены второй таблицей.
+
+| Сценарий | Manual | TravelOnly | Ratio | Alloc | TravelLight | Light ratio | Light alloc |
+|----------|--------|------------|-------|-------|-------------|-------------|-------------|
+| Payment (2 ст.) | 4.8 ns | 400 ns | **83×** | 760 B | 388 ns | 80× | 672 B |
+| LongPayment (5 ст.) | 16.2 ns | 931 ns | **57×** | 1576 B | 1042 ns | 64× | 1440 B |
+| Checkout (7 ст.) | 17.2 ns | 1871 ns | **109×** | 3968 B | 1971 ns | 115× | 3744 B |
+
+Исторический полный прогон (до P4, `BenchmarkDotNet.Artifacts`):
 
 | Сценарий | Manual | TrainOP TravelOnly | Ratio | Alloc (TrainOP) |
 |----------|--------|--------------------|-------|-----------------|
@@ -215,7 +223,7 @@ P5 и P6 сняты. Курс вперёд: **P7** опционально (по�
 
 ### P7 — Slim диспетчер hop
 
-**Статус:** не начато.
+**Статус:** сделано (2026-09-25), вместе с unchecked Load/Pull, словарём без явного `StringComparer.Ordinal`, коротким путём `GreenSignal.Instance` и `CanBeCanceled` перед циклом.
 
 В `ExecuteStation` / `ExecuteStationAsync` — цепочка `if (plan.X != null)` по нескольким делегатам ([`StationPlan.cs`](../src/TrainOP/StationPlan.cs)).
 
@@ -285,3 +293,7 @@ P5 и P6 сняты. Курс вперёд: **P7** опционально (по�
 | 2026-09-16 | **Объединение** с `plan-acceleration.md`: P4 уточнён (`TravelLight`); добавлены **P6** freeze и **P7** slim `ExecuteStation`; файл `plan-acceleration.md` удалён |
 | 2026-09-16 | **P4 сделано:** `TravelLight` / `TravelLightAsync` (+ CT); empty `Visits`; бенч `TravelLightOnly_*` |
 | 2026-09-22 | **P6 снято:** `Freeze` удалён после бенча (Alloc −112…160 B, Mean −4…18%; Ratio к Manual почти без сдвига) |
+| 2026-09-25 | Свежий ShortRun baseline до P7: Payment TravelOnly 400 ns / 83× / 760 B; LongPayment 931 ns / 57× / 1576 B; Checkout 1871 ns / 109× / 3968 B |
+| 2026-09-25 | **P7 + unchecked Load/Pull + словарь без Ordinal + быстрый Green + CanBeCanceled.** ShortRun TravelOnly: Payment 367 ns / 79× / 760 B; LongPayment 972 ns / 59× / 1576 B; Checkout 1810 ns / 106× / 3968 B. Alloc без сдвига; CPU чуть лучше на Payment и Checkout |
+| 2026-09-25 | **Слоты `object[]` откат.** ShortRun TravelOnly: Payment 2174 ns / 451× / 1312 B; LongPayment 2199 ns / 140× / 1384 B; Checkout 1944 ns / 108× / 4000 B. Хуже P7 и по Mean, и по Alloc на коротких маршрутах |
+| 2026-09-25 | **Spike прямой цепочки:** `AttachStraightTravel` + генерация локалов только если все станции одной сигнатуры, первая без входов, дальше входы уже объявлены. Payment/LongPayment/Checkout этим путём не идут (seed и следующие станции — разные сигнатуры). ShortRun после spike совпал с P7: Payment TravelOnly 359 ns / 76× / 760 B |

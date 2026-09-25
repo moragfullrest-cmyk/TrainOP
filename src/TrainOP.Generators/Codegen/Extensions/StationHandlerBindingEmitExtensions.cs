@@ -98,11 +98,15 @@ namespace TrainOP.Generators
             writer.EndLine();
             using (writer.Block())
             {
-                writer.AppendIndented("return ")
+                writer.AppendIndented("var registered = ")
                     .Append(names.CoreMethodName)
                     .Append("(route, stationName, handler, ")
                     .Append(names.ResolveChainBindingMethod)
                     .Append("(chainKey, chainStationIndex));");
+                writer.EndLine();
+                writer.AppendIndented("return AttachStraight_")
+                    .Append(names.DelegateTypeId)
+                    .Append("(registered, chainKey, chainStationIndex);");
                 writer.EndLine();
             }
 
