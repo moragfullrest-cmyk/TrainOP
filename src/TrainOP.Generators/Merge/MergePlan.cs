@@ -27,12 +27,14 @@ namespace TrainOP.Generators
             int wagonIndex,
             string wagonName,
             string returnMemberName,
-            bool isByReference)
+            bool isByReference,
+            bool retainsSlot = false)
         {
             WagonIndex = wagonIndex;
             WagonName = wagonName;
             ReturnMemberName = returnMemberName;
             IsByReference = isByReference;
+            RetainsSlot = retainsSlot;
         }
 
         public int WagonIndex { get; }
@@ -45,6 +47,9 @@ namespace TrainOP.Generators
         public bool IsMapped => ReturnMemberName != null;
 
         public bool IsByReference { get; }
+
+        /// <summary>When true, a partial or void return must not unload this wagon.</summary>
+        public bool RetainsSlot { get; }
     }
 
     /// <summary>

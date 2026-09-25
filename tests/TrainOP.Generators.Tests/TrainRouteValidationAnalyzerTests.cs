@@ -1615,6 +1615,77 @@ public static class RecoveryRoute
         }
 
         /// <summary>
+        /// Verifies that TOP015 is reported when a ServiceStation out parameter names a new wagon.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop015_WhenServiceStationOutAddsWagon()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class RecoveryRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { amount = -1m })
+        .Station(""Validate"", (decimal amount) => RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", (decimal amount, out string status, SignalIssue issue) =>
+        {
+            status = ""recovered"";
+        });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP015");
+        }
+
+        /// <summary>
+        /// Verifies that TOP018 is reported when an out parameter name is also a return member.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop018_WhenOutNameIsReturned()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class PayRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Stamp"", (out string status) =>
+        {
+            status = ""ok"";
+            return new { status };
+        });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP018");
+        }
+
+        /// <summary>
+        /// Verifies that TOP019 is reported when a ref readonly name is a return member.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop019_WhenRefReadonlyNameIsReturned()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class PayRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 10m })
+        .Station(""Keep"", (ref readonly string paymentId, decimal amount) =>
+            new { paymentId, amount });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP019");
+        }
+
+        /// <summary>
         /// Verifies that TOP016 is reported when ServiceStation omits a non-ref input wagon.
         /// </summary>
         [Fact]

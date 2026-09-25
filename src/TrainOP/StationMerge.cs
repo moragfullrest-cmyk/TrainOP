@@ -110,7 +110,8 @@ namespace TrainOP
             string[] returnMemberNames,
             bool[] byReferenceWagons,
             object[] refLocalValues,
-            bool allocateDefaultItemNElements)
+            bool allocateDefaultItemNElements,
+            bool[] retainedWagons = null)
         {
             if (manifest == null)
             {
@@ -131,7 +132,8 @@ namespace TrainOP
                 byReferenceWagons,
                 refLocalValues,
                 preserveManifestComposition: false,
-                allocateDefaultItemNElements);
+                allocateDefaultItemNElements,
+                retainedWagons);
         }
 
         /// <summary>
@@ -167,7 +169,8 @@ namespace TrainOP
             string[] returnMemberNames,
             bool[] byReferenceWagons,
             object[] refLocalValues,
-            bool allocateDefaultItemNElements)
+            bool allocateDefaultItemNElements,
+            bool[] retainedWagons = null)
         {
             if (manifest == null)
             {
@@ -188,7 +191,8 @@ namespace TrainOP
                 byReferenceWagons,
                 refLocalValues,
                 preserveManifestComposition: true,
-                allocateDefaultItemNElements);
+                allocateDefaultItemNElements,
+                retainedWagons);
         }
 
         private static CargoManifest ApplyCore(
@@ -200,7 +204,8 @@ namespace TrainOP
             bool[] byReferenceWagons,
             object[] refLocalValues,
             bool preserveManifestComposition,
-            bool allocateDefaultItemNElements)
+            bool allocateDefaultItemNElements,
+            bool[] retainedWagons = null)
         {
             stationReturn = WagonStationReturn.UnwrapGreenPayloadReturn(stationReturn);
 
@@ -229,7 +234,8 @@ namespace TrainOP
                 byReferenceWagons,
                 refLocalValues,
                 preserveManifestComposition,
-                allocateDefaultItemNElements);
+                allocateDefaultItemNElements,
+                retainedWagons);
 
             ApplyExtraReturnMembers(
                 manifest,
@@ -308,13 +314,15 @@ namespace TrainOP
             bool[] byReferenceWagons,
             object[] refLocalValues,
             bool preserveManifestComposition,
-            bool allocateDefaultItemNElements)
+            bool allocateDefaultItemNElements,
+            bool[] retainedWagons)
         {
             var consumedReturnMembers = new HashSet<string>(StringComparer.Ordinal);
 
             for (var i = 0; i < wagonNames.Length; i++)
             {
                 var wagonName = wagonNames[i];
+                var retained = retainedWagons != null && retainedWagons[i];
                 object wagonValue;
                 string consumedMemberName;
                 var found = TryResolveWagonValueByName(
@@ -323,6 +331,11 @@ namespace TrainOP
                     returnMemberNames,
                     out wagonValue,
                     out consumedMemberName);
+                if (retained)
+                {
+                    found = false;
+                    consumedMemberName = null;
+                }
                 if (found
                     && allocateDefaultItemNElements
                     && ShouldAllocateDefaultItemMember(consumedMemberName, IndexOfMember(returnMemberNames, consumedMemberName)))
@@ -344,7 +357,7 @@ namespace TrainOP
                 {
                     TryLoadWagon(manifest, wagonName, refLocalValues[i], preserveManifestComposition);
                 }
-                else if (!preserveManifestComposition && removeOmittedRegularInputs)
+                else if (!retained && !preserveManifestComposition && removeOmittedRegularInputs)
                 {
                     manifest.UnloadWagonUnchecked(wagonName);
                 }
@@ -541,7 +554,8 @@ namespace TrainOP
             string[] returnMemberNames,
             bool[] byReferenceWagons,
             object[] refLocalValues,
-            bool allocateDefaultItemNElements)
+            bool allocateDefaultItemNElements,
+            bool[] retainedWagons = null)
         {
             return StationAdapter.ToSignal(
                 manifest,
@@ -552,7 +566,8 @@ namespace TrainOP
                 returnMemberNames,
                 byReferenceWagons,
                 refLocalValues,
-                allocateDefaultItemNElements);
+                allocateDefaultItemNElements,
+                retainedWagons);
         }
 
         /// <summary>
@@ -634,7 +649,8 @@ namespace TrainOP
             string[] returnMemberNames,
             bool[] byReferenceWagons,
             object[] refLocalValues,
-            bool allocateDefaultItemNElements)
+            bool allocateDefaultItemNElements,
+            bool[] retainedWagons = null)
         {
             return StationAdapter.ToServiceSignal(
                 manifest,
@@ -644,7 +660,8 @@ namespace TrainOP
                 returnMemberNames,
                 byReferenceWagons,
                 refLocalValues,
-                allocateDefaultItemNElements);
+                allocateDefaultItemNElements,
+                retainedWagons);
         }
 
         /// <summary>

@@ -80,7 +80,7 @@ namespace TrainOP.Generators
                         context.PreserveManifestComposition);
                 }
 
-                if (context.RemoveOmittedRegularInputs)
+                if (context.RemoveOmittedRegularInputs && !slot.RetainsSlot)
                 {
                     writer.AppendLine("else");
                     using (writer.Block())
@@ -92,7 +92,7 @@ namespace TrainOP.Generators
                     }
                 }
             }
-            else if (context.RemoveOmittedRegularInputs)
+            else if (context.RemoveOmittedRegularInputs && !slot.RetainsSlot)
             {
                 writer.AppendIndented("merged = merged.UnloadWagonUnchecked(")
                     .Append(wagonNameExpression)

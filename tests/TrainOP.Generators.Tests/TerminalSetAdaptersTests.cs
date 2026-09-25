@@ -105,23 +105,26 @@ namespace TrainOP.Generators.Tests
         }
 
         [Fact]
-        public void ToWagons_Unknown_ReturnsEmpty()
+        public void Constructor_UnknownReturn_DropsSuppliedWagons()
         {
-            var wagons = TerminalSetAdapters.ToWagons(TerminalSet.Unknown(TerminalSet.Origin.Linear));
+            var set = new TerminalSet(
+                ImmutableArray.Create(Wagon("ghost")),
+                TerminalSet.Origin.Linear,
+                hasUnknownReturn: true);
 
-            Assert.Empty(wagons);
+            Assert.True(set.HasUnknownReturn);
+            Assert.Empty(set.Wagons);
         }
 
         [Fact]
-        public void ToWagons_Known_ReturnsSameBindings()
+        public void Constructor_Known_KeepsBindings()
         {
             var set = new TerminalSet(ImmutableArray.Create(Wagon("a"), Wagon("b")), TerminalSet.Origin.Join);
 
-            var wagons = TerminalSetAdapters.ToWagons(set);
-
-            Assert.Equal(2, wagons.Length);
-            Assert.Equal("a", wagons[0].Name);
-            Assert.Equal("b", wagons[1].Name);
+            Assert.False(set.HasUnknownReturn);
+            Assert.Equal(2, set.Wagons.Length);
+            Assert.Equal("a", set.Wagons[0].Name);
+            Assert.Equal("b", set.Wagons[1].Name);
         }
 
         private static WagonBinding Wagon(string name)

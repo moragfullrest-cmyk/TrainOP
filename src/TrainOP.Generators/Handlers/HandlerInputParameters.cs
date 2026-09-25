@@ -29,7 +29,8 @@ namespace TrainOP.Generators.Handlers
             IncludeSignalIssue = includeSignalIssue;
             IncludeSignalIssues = includeSignalIssues;
             HasCancellationToken = hasCancellationToken;
-            HasRefWagons = ComputeHasRefWagons(Wagons);
+            HasRefWagons = ComputeHasWriteback(Wagons);
+            HasRefReadonlyWagons = ComputeHasRefReadonly(Wagons);
             CallOrder = BuildCallOrder(
                 Wagons,
                 stationKind,
@@ -64,8 +65,11 @@ namespace TrainOP.Generators.Handlers
         /// <summary>Handler accepts <c>CancellationToken</c>.</summary>
         public bool HasCancellationToken { get; }
 
-        /// <summary>True when at least one wagon is by-ref.</summary>
+        /// <summary>True when at least one wagon is written back (<c>ref</c> or <c>out</c>).</summary>
         public bool HasRefWagons { get; }
+
+        /// <summary>True when at least one wagon is <c>ref readonly</c>.</summary>
+        public bool HasRefReadonlyWagons { get; }
 
         /// <summary>
         /// Parameters in the order used by generated delegates and handler invocations.
@@ -120,11 +124,24 @@ namespace TrainOP.Generators.Handlers
             return string.Join(", ", names);
         }
 
-        private static bool ComputeHasRefWagons(ImmutableArray<WagonBinding> wagons)
+        private static bool ComputeHasWriteback(ImmutableArray<WagonBinding> wagons)
         {
             for (var i = 0; i < wagons.Length; i++)
             {
-                if (wagons[i].IsByReference)
+                if (wagons[i].WritesBack)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ComputeHasRefReadonly(ImmutableArray<WagonBinding> wagons)
+        {
+            for (var i = 0; i < wagons.Length; i++)
+            {
+                if (wagons[i].IsRefReadonly)
                 {
                     return true;
                 }

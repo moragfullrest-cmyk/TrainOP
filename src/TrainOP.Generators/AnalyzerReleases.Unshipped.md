@@ -2,6 +2,8 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
+TOP018 | TrainOP.Generators | Error | out parameter name duplicates a return member
+TOP019 | TrainOP.Generators | Error | ref readonly parameter name is also a return member
 
 ### Removed Rules
 

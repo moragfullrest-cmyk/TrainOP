@@ -30,15 +30,18 @@ namespace TrainOP.Generators
 
         /// <summary>
         /// Creates a terminal set with wagons, provenance, and unknown-return flag.
+        /// When <paramref name="hasUnknownReturn"/> is true, stored wagons are empty.
         /// </summary>
         public TerminalSet(
             ImmutableArray<WagonBinding> wagons,
             Origin origin,
             bool hasUnknownReturn = false)
         {
-            Wagons = wagons.IsDefault ? ImmutableArray<WagonBinding>.Empty : wagons;
-            Provenance = origin;
             HasUnknownReturn = hasUnknownReturn;
+            Wagons = hasUnknownReturn || wagons.IsDefault
+                ? ImmutableArray<WagonBinding>.Empty
+                : wagons;
+            Provenance = origin;
         }
 
         /// <summary>Terminal wagons in live / merge order (empty when unknown).</summary>
@@ -48,7 +51,7 @@ namespace TrainOP.Generators
         public Origin Provenance { get; }
 
         /// <summary>
-        /// When true, <see cref="Wagons"/> must not be trusted for merge / schema export.
+        /// When true, <see cref="Wagons"/> is empty and the set is not a known empty terminal.
         /// </summary>
         public bool HasUnknownReturn { get; }
 
@@ -133,19 +136,6 @@ namespace TrainOP.Generators
             }
 
             return new TerminalSet(initialWagons, TerminalSet.Origin.AnchorSeed, hasUnknownReturn: false);
-        }
-
-        /// <summary>
-        /// Extracts wagon bindings for legacy consumers (diagnostics / schema paths).
-        /// </summary>
-        public static ImmutableArray<WagonBinding> ToWagons(TerminalSet terminals)
-        {
-            if (terminals.HasUnknownReturn)
-            {
-                return ImmutableArray<WagonBinding>.Empty;
-            }
-
-            return terminals.Wagons;
         }
     }
 }

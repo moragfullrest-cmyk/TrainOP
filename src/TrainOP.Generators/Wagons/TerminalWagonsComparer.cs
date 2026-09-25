@@ -138,9 +138,7 @@ namespace TrainOP.Generators
         /// </summary>
         public static string DescribeDifference(TerminalSet left, TerminalSet right)
         {
-            return DescribeDifference(
-                TerminalSetAdapters.ToWagons(left),
-                TerminalSetAdapters.ToWagons(right));
+            return DescribeDifference(left.Wagons, right.Wagons);
         }
 
         /// <summary>

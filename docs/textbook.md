@@ -58,12 +58,12 @@ TrainOP воплощает эту идею для .NET (`netstandard2.0`). Вы 
 ```bash
 dotnet add package TrainOP
 # или явно:
-dotnet add package TrainOP --version 0.16.0
+dotnet add package TrainOP --version 0.17.0
 ```
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.16.0" />
+  <PackageReference Include="TrainOP" Version="0.17.0" />
 </ItemGroup>
 ```
 
@@ -151,7 +151,7 @@ else
 
 `new TrainRoute()` создаёт пустой план. Каждое `.Station(имя, handler)` добавляет шаг. Имя станции попадает в отчёт и в `SignalIssue.StationName` при ошибке.
 
-Канон один: вагоны появляются только из возвратов станций. Поэтому в примерах часто ставят первую станцию без параметров и называют её `"Seed"`: лямбда замыкает внешние переменные или просто кладёт константы (`() => new { paymentId, amount }`). Это **обычный сценарий**, а не особый вид станции. Для библиотеки `"Seed"` — такое же строковое имя, как `"Discount"` или `"Validate"`.
+Канон один: вагоны появляются из станций — из возврата или из параметра `out` (тот же новый вагон, записанный обратным ходом, как `ref`, но без чтения из манифеста). Поэтому в примерах часто ставят первую станцию без входных параметров и называют её `"Seed"`: `() => new { paymentId, amount }` или `(out string paymentId, out decimal amount) => { paymentId = …; amount = …; }`. Это **обычный сценарий**, а не особый вид станции.
 
 Стартовые данные можно набрать и иначе. Первая станция может вызвать метод и вернуть его результат:
 
@@ -203,176 +203,31 @@ else
 
 Запись возврата handler'а в манифест делает библиотека во время выполнения, а не ваш код. Правила стоит запомнить сразу — без них поведение «пропавшего» вагона выглядит магией.
 
-Кратко по виду возврата:
+Эффект на манифест задаёт модификатор параметра и форма возврата. Запись выполняется только на зелёном проходе с данными. `RailwaySignals.Red` и `RailwaySignals.White` манифест не меняют — в том числе не пишут `ref` и `out`.
 
-| Что вернул handler | Что происходит |
-|--------------------|----------------|
-| Анонимный тип / record / именованный tuple | Поля записываются в манифест; дальше идёт зелёный сигнал |
-| `RailwaySignals.Green(...)` с данными | То же: данные из аргумента записываются в манифест, затем зелёный |
-| `RailwaySignals.Red(code, msg)` | Красный сигнал; успешная запись возврата не выполняется |
-| `RailwaySignals.White` | Манифест **не меняется** (даже если в handler меняли `ref`-параметры) |
-| `void` / `new { }` | Частичный возврат: значения `ref`-вагонов записываются; обычные входные вагоны, которых нет в возврате, **снимаются** с манифеста |
-| `CargoManifest` | Манифест заменяется целиком (анализатор предупредит TOP004) |
+| Модификатор | Чтение | Запись на зелёном проходе | Если имени нет в возврате | Состав |
+|-------------|---------|---------------------------|---------------------------|--------|
+| по значению | из манифеста | только одноимённое поле возврата | снять на `.Station` | ключ не создаёт. На `.ServiceStation` снятие — **TOP016** |
+| `ref` | из манифеста | локал пишется обратно | оставить и записать локал | ключ не создаёт. `async` — CS1988 |
+| `ref readonly` | из манифеста | нет | оставить как было | ключ не создаёт. Имя в возврате — **TOP019**. `async` — CS1988 |
+| `out` | нет: локал `default` перед вызовом | локал пишется обратно | не вход, не снимается | создать или перезаписать. Новое имя на `.ServiceStation` — **TOP015**. То же имя в возврате — **TOP018**. `async` — CS1988 |
 
-Ниже — развёрнутые варианты на одной и той же исходной картине.
+| Форма возврата | Эффект на манифест |
+|----------------|--------------------|
+| анонимный тип / record / именованный tuple | поля записываются, затем строка модификатора для каждого параметра |
+| `RailwaySignals.Green(...)` с данными | то же, данные берутся из аргумента |
+| `void` / `new { }` | полей нет: writeback `ref` и `out`, параметры по значению снимаются |
+| `RailwaySignals.White` | без изменений |
+| `RailwaySignals.Red(...)` | запись не выполняется; дальше красная ветка |
+| `CargoManifest` | замена целиком: `.Station` — TOP004, `.ServiceStation` — **TOP017** |
 
-### Исходный манифест для примеров
-
-Перед станцией в манифесте уже есть:
-
-- `paymentId` = `"pay-1"`
-- `amount` = `100m`
-- `note` = `"keep"` — вагон, который станция **не** принимает (лежит «сбоку»)
-
-Если не сказано иное, handler обычной `.Station` объявлен так: `(string paymentId, decimal amount) => …`.
-
-### Обычная станция: варианты возврата
-
-**1. Полный возврат обоих входов**
-
-```csharp
-(string paymentId, decimal amount) => new { paymentId, amount = amount * 0.9m }
-```
-
-После: `paymentId` = `"pay-1"`, `amount` = `90m`, `note` = `"keep"`.  
-Оба входа обновлены/сохранены; посторонний `note` не тронут.
-
-**2. То же через `Green`**
-
-```csharp
-(string paymentId, decimal amount) =>
-    RailwaySignals.Green(new { paymentId, amount = amount * 0.9m })
-```
-
-После: как в п.1. `Green` только оборачивает те же данные.
-
-**3. Частичный возврат — вернули только `amount`**
-
-```csharp
-(string paymentId, decimal amount) => new { amount = amount * 0.9m }
-```
-
-После: `amount` = `90m`, `note` = `"keep"`. Вагона `paymentId` **больше нет**: обычный вход, которого нет в возврате, снимается.  
-Именно поэтому частичный возврат опасен, если хвост снова ждёт снятый вагон (TOP003).
-
-**4. Добавили новое поле**
-
-```csharp
-(string paymentId, decimal amount) =>
-    new { paymentId, amount, status = "discounted" }
-```
-
-После: `paymentId`, `amount` = `100m`, `status` = `"discounted"`, `note` = `"keep"`.  
-Новый ключ появляется; `note` по-прежнему на месте.
-
-**5. `White` — ничего не писать**
-
-```csharp
-(string paymentId, decimal amount) => RailwaySignals.White
-```
-
-После: как было — `paymentId`, `amount` = `100m`, `note`.  
-Даже если внутри handler'а меняли локальные переменные или `ref`, в манифест это не попадёт.
-
-**6. Пустой возврат / `void`**
-
-```csharp
-(string paymentId, decimal amount) => { /* side effect */ }
-// или: => new { }
-```
-
-После: остаётся только `note` = `"keep"`.  
-Обычные входы `paymentId` и `amount` сняты (их нет в возврате), `ref` здесь не было.
-
-**7. `ref` вместо возврата поля (сахар)**
+На `.ServiceStation` состав не расширяется и не сужается: обновляются только уже существующие ключи (**TOP015** / **TOP016** / **TOP017**). Параметр `in` библиотека не использует. Вагон, который станция не принимает, эта станция не трогает.
 
 ```csharp
 (string paymentId, ref decimal amount) => { amount *= 0.9m; }
 ```
 
-После: `amount` = `90m`, `note` = `"keep"`. Вагона `paymentId` **нет**.  
-`amount` записан из `ref`; `paymentId` — обычный вход без поля в возврате, поэтому снят. Эквивалент по смыслу для `amount`: вернуть `new { amount = amount * 0.9m }` без `ref`, но тогда нужно явно решить судьбу `paymentId` (вернуть его или осознанно снять).
-
-**8. `ref` + явный возврат другого входа**
-
-```csharp
-(string paymentId, ref decimal amount) =>
-{
-    amount *= 0.9m;
-    return new { paymentId = paymentId + "-x" };
-}
-```
-
-После: `paymentId` = `"pay-1-x"`, `amount` = `90m`, `note` = `"keep"`.  
-`paymentId` из возврата, `amount` из `ref`.
-
-**9. `ref` + `White`**
-
-```csharp
-(ref decimal amount) =>
-{
-    amount = 1m;
-    return RailwaySignals.White;
-}
-```
-
-После: `amount` по-прежнему `100m` (и остальные вагоны как были).  
-`White` отменяет любую запись, в том числе обратную запись `ref`.
-
-**10. Красный сигнал**
-
-```csharp
-(string paymentId, decimal amount) =>
-    RailwaySignals.Red("INVALID", "bad amount")
-```
-
-Манифест для успешной записи возврата не обновляется этим handler'ом: рейс уходит в красную ветку обхода (сервисные станции дальше по плану). Состав на момент ошибки — тот, что был **до** этой станции.
-
-### Станция техобслуживания: те же возвраты, другие правила
-
-На `.ServiceStation` состав манифеста **нельзя** расширить или сузить. Разрешено только обновить значения уже существующих ключей. Возьмём тот же исходный манифест и handler `(decimal amount, SignalIssue issue) => …` (вход один — `amount`).
-
-**11. Обновили существующий ключ**
-
-```csharp
-(decimal amount, SignalIssue issue) => RailwaySignals.Green(new { amount = 1m })
-```
-
-После: `paymentId` = `"pay-1"`, `amount` = `1m`, `note` = `"keep"`.  
-`amount` обновлён; остальные вагоны на месте.
-
-**12. Попытались добавить новый ключ**
-
-```csharp
-(decimal amount, SignalIssue issue) => new { amount = 1m, status = "recovered" }
-```
-
-Анализатор: **TOP015** — сервисная станция не может расширить состав манифеста.
-
-**13. Опустили входной вагон**
-
-```csharp
-(string paymentId, decimal amount, SignalIssue issue) => new { amount = 1m }
-```
-
-Анализатор: **TOP016** — опуск non-`ref` входа изменил бы состав (на обычной станции `paymentId` снялся бы).  
-Обновление только уже существующих ключей (в том числе невходных, если они уже в манифесте) — допустимо:
-
-```csharp
-(decimal amount, SignalIssue issue) => new { amount = 1m } // OK: единственный вход возвращён
-```
-
-**14. `White` / красный на техобслуживании**
-
-`RailwaySignals.White` — манифест как был.  
-`RailwaySignals.Red(...)` — снова красный, запись успешного возврата не делается.
-
-### Как этим пользоваться
-
-- Нужны те же вагоны дальше — верните их явно (или обновите через `ref` и верните остальные входы).
-- Хотите убрать вагон на обычной станции — не включайте его в возврат (частичный возврат).
-- Хотите «только посмотреть / залогировать» без изменений — `RailwaySignals.White`.
-- На техобслуживании не рассчитывайте добавить или снять вагон: только правка существующих значений.
+`amount` записан из `ref`. `paymentId` — параметр по значению без поля в возврате, поэтому на обычной станции снят.
 
 Имена вагонов сравниваются как обычные строки и **чувствительны к регистру**. Типы должны согласовываться вдоль цепочки: нельзя на одной станции положить `string id`, а на следующей читать его как `int` — будет TOP002 ещё до запуска.
 
@@ -575,7 +430,23 @@ var report = await route.TravelAsync();
 
 `CancellationToken` — служебный параметр: его подставляет библиотека при выполнении, это не вагон. Тот же токен можно передать в `Travel(ct)` / `TravelAsync(ct)`.
 
-Параметр `ref` на вагоне — по сути синтаксический сахар вместо явного возврата нового значения обычным способом. Вместо «принять `amount`, посчитать, вернуть `new { amount = … }`» можно написать `(ref decimal amount) => { amount *= 0.9m; }`: библиотека после вызова запишет изменённое значение обратно в манифест, даже если поля нет в анонимном возврате. По смыслу это тот же результат, что у стандартного возврата обновлённого вагона; меняется только форма записи. На обычной станции и на `ServiceStation` `ref` необязателен. Но **`async` + `ref` запрещены языком C# (CS1988)**: машина состояний не может безопасно удержать ссылку между `await`. Поэтому асинхронные handler'ы принимают вагоны по значению и возвращают новые данные обычным возвратом. Параметры `in` / `out` библиотека для обратной записи не использует.
+Модификаторы параметров и формы возврата и то, как они меняют манифест, — в [матрице §5](#5-как-текут-данные). `async` вместе с `ref`, `out` или `ref readonly` запрещён языком (**CS1988**).
+
+```csharp
+var route = new TrainRoute()
+    .Station("Seed", (out string paymentId, out decimal amount) =>
+    {
+        paymentId = "pay-1";
+        amount = 100m;
+    })
+    .Station("Discount", (ref readonly string paymentId, decimal amount, out string status) =>
+    {
+        status = "discounted";
+        return new { amount = amount * 0.9m };
+    });
+```
+
+После `Discount`: `paymentId` остаётся `"pay-1"`, `amount` = `90m`, `status` = `"discounted"`.
 
 **Правильно:**
 
@@ -1064,15 +935,7 @@ foreach (var visit in report.Visits)
 
 ### Как возврат попадает в манифест (runtime)
 
-| Возврат | Поведение |
-|---------|-----------|
-| anonymous / record / named tuple | поля → манифест → Green |
-| `RailwaySignals.Green(...)` | данные из аргумента → манифест → Green |
-| `RailwaySignals.Red(...)` | Red + `SignalIssue`, без успешной записи возврата |
-| `RailwaySignals.White` | манифест без изменений (**без** записи `ref`) |
-| `void` / `new { }` | Station: partial — `ref` пишутся, обычные входы снимаются; ServiceStation: опуск non-`ref` → TOP016 |
-| `CargoManifest` | Station: полная замена (TOP004); ServiceStation: TOP017 |
-| `GreenSignal` / `RedSignal` | запрещено — TOP010 |
+Эффект модификаторов и форм возврата — матрица в [§5](#5-как-текут-данные). `GreenSignal` / `RedSignal` в возврате handler'а запрещены (**TOP010**).
 
 Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 
@@ -1155,6 +1018,8 @@ public static class AppRoute
 | TOP015 | Error | ServiceStation добавляет вагон | Analyzer |
 | TOP016 | Error | ServiceStation опускает входной non-`ref` вагон | Analyzer |
 | TOP017 | Error | ServiceStation возвращает `CargoManifest` | Analyzer |
+| TOP018 | Error | `out` и поле возврата — одно имя | Analyzer |
+| TOP019 | Error | `ref readonly` присутствует в возврате | Analyzer |
 
 Описания в коде: `src/TrainOP.Generators/Diagnostics/TrainRouteDiagnostics.cs` (и `AnalyzerReleases.Shipped.md`). TOP001–TOP013 shipped с 0.7.0; TOP014–TOP017 — с 0.13.0.
 
@@ -1412,7 +1277,7 @@ TrainOP.sln
 
 ### Готовность к релизу (срез)
 
-Пакет ориентирован на **NuGet Preview 0.x** (версия в csproj — см. `CHANGELOG.md`, на момент среза docs — **0.16.0**). Фундамент продукта сильный; до публичного preview главный разрыв — publish workflow on tag; до стабильного 1.0 — SourceLink/snupkg, nullable policy, API freeze advanced surface, samples smoke в CI. Живой чеклист: [release-readiness.md](release-readiness.md).
+Пакет ориентирован на **NuGet Preview 0.x** (версия в csproj — см. `CHANGELOG.md`, на момент среза docs — **0.17.0**). Фундамент продукта сильный; до публичного preview главный разрыв — publish workflow on tag; до стабильного 1.0 — SourceLink/snupkg, nullable policy, API freeze advanced surface, samples smoke в CI. Живой чеклист: [release-readiness.md](release-readiness.md).
 
 ---
 

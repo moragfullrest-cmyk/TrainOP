@@ -12,12 +12,16 @@ namespace TrainOP.Generators
             string typeDisplay,
             bool isByReference,
             bool isOptional,
-            string pullTypeDisplay)
+            string pullTypeDisplay,
+            bool isOut = false,
+            bool isRefReadonly = false)
         {
             TypeDisplay = typeDisplay;
             IsByReference = isByReference;
             IsOptional = isOptional;
             PullTypeDisplay = pullTypeDisplay;
+            IsOut = isOut;
+            IsRefReadonly = isRefReadonly;
         }
 
         public string TypeDisplay { get; }
@@ -27,5 +31,9 @@ namespace TrainOP.Generators
         public bool IsOptional { get; }
 
         public string PullTypeDisplay { get; }
+
+        public bool IsOut { get; }
+
+        public bool IsRefReadonly { get; }
     }
 }

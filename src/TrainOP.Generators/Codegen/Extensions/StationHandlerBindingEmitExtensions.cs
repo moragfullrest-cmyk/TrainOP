@@ -385,8 +385,9 @@ namespace TrainOP.Generators
                     .Append(", ")
                     .Append(refLocalValuesExpression ?? "null")
                     .Append(", ")
-                    .Append(allocateExpression)
-                    .Append(");");
+                    .Append(allocateExpression);
+                AppendRetainedFlags(writer, schema);
+                writer.Append(");");
                 writer.EndLine();
                 return;
             }
@@ -400,15 +401,16 @@ namespace TrainOP.Generators
                 .Append(", ")
                 .Append(returnMembersField ?? "null");
 
-            if (refFlagsField != null)
+            if (refFlagsField != null || schema.HasRefReadonlyWagons)
             {
                 writer.Append(", ")
-                    .Append(refFlagsField)
+                    .Append(refFlagsField ?? "null")
                     .Append(", ")
-                    .Append(refLocalValuesExpression)
+                    .Append(refLocalValuesExpression ?? "null")
                     .Append(", ")
-                    .Append(allocateExpression)
-                    .Append(");");
+                    .Append(allocateExpression);
+                AppendRetainedFlags(writer, schema);
+                writer.Append(");");
                 writer.EndLine();
             }
             else
@@ -418,6 +420,17 @@ namespace TrainOP.Generators
                     .Append(");");
                 writer.EndLine();
             }
+        }
+
+        private static void AppendRetainedFlags(CodegenWriter writer, StationHandlerBinding schema)
+        {
+            if (!schema.HasRefReadonlyWagons)
+            {
+                return;
+            }
+
+            writer.Append(", ");
+            schema.Input.EmitRetainedFlagsArrayLiteral(writer);
         }
 
         private static string GetStationReturnTypeDisplay(StationHandlerBinding schema)

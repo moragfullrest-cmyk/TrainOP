@@ -34,6 +34,8 @@ namespace TrainOP.Generators
                 TrainRouteDiagnostics.ServiceStationAddsWagon,
                 TrainRouteDiagnostics.ServiceStationRemovesWagon,
                 TrainRouteDiagnostics.ServiceStationCargoManifestReplacement,
+                TrainRouteDiagnostics.OutWagonConflictsWithReturn,
+                TrainRouteDiagnostics.RefReadonlyWagonInReturn,
             ];
 
         /// <summary>
@@ -153,7 +155,7 @@ namespace TrainOP.Generators
 
                 var seed = TerminalSetAdapters.FromAnchorSeed(chain.InitialWagons);
                 foreach (var diagnostic in ChainGraphSimulator
-                    .Simulate(chain, TerminalSetAdapters.ToWagons(seed))
+                    .Simulate(chain, seed.Wagons)
                     .Diagnostics)
                 {
                     modelContext.ReportDiagnostic(diagnostic);
@@ -186,7 +188,7 @@ namespace TrainOP.Generators
                 }
 
                 foreach (var diagnostic in ChainGraphSimulator
-                    .Simulate(downstreamChain, TerminalSetAdapters.ToWagons(joined.MergedTerminals))
+                    .Simulate(downstreamChain, joined.MergedTerminals.Wagons)
                     .Diagnostics)
                 {
                     modelContext.ReportDiagnostic(diagnostic);

@@ -111,6 +111,7 @@ namespace TrainOP.Generators
             {
                 var station = chain.Stations[i];
                 ProcessStationInputs(station, state);
+                ReportPassingConflicts(station, state);
 
                 if (TryHandleSpecialReturn(station, state))
                 {
@@ -165,6 +166,10 @@ namespace TrainOP.Generators
 
             foreach (var input in station.Handler.InputWagons)
             {
+                if (input.IsOut)
+                {
+                    continue;
+                }
                 if (state.Removed.TryGetValue(input.Name, out var removedInfo))
                 {
                     state.Diagnostics.Add(Diagnostic.Create(
@@ -259,7 +264,7 @@ namespace TrainOP.Generators
 
             if (handler.ReturnShape.IsVoid)
             {
-                ApplyVoidReturn(station, handler, state.Live, state.Removed);
+                ApplyVoidReturn(station, handler, state.Live, state.LiveOrder, state.Removed);
                 state.HasUnknownReturn = false;
                 return true;
             }
@@ -310,6 +315,7 @@ namespace TrainOP.Generators
             if (handler.ReturnShape.IsVoid)
             {
                 ReportServiceStationOmittedInputs(station, handler, state, returnedNames: null);
+                ReportServiceStationOutWagons(station, handler, state);
                 return;
             }
 
@@ -375,6 +381,8 @@ namespace TrainOP.Generators
                     station.StationName,
                     extra.ReturnMemberName));
             }
+
+            ReportServiceStationOutWagons(station, handler, state);
         }
 
         /// <summary>
@@ -388,7 +396,7 @@ namespace TrainOP.Generators
         {
             foreach (var input in handler.InputWagons)
             {
-                if (input.IsByReference)
+                if (input.RetainsSlot)
                 {
                     continue;
                 }
@@ -407,17 +415,18 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Applies void-return semantics: non-ref inputs are removed and no wagons are produced.
+        /// Applies void-return semantics: inputs that are not retained are removed, then <c>out</c> wagons are loaded.
         /// </summary>
         private static void ApplyVoidReturn(
             StationLink station,
             StationHandlerBinding handler,
             Dictionary<string, LiveWagon> live,
+            List<string> liveOrder,
             Dictionary<string, RemovedWagon> removed)
         {
             foreach (var input in handler.InputWagons)
             {
-                if (input.IsByReference)
+                if (input.RetainsSlot)
                 {
                     continue;
                 }
@@ -425,6 +434,8 @@ namespace TrainOP.Generators
                 live.Remove(input.Name);
                 removed[input.Name] = new RemovedWagon(station.StationName);
             }
+
+            ApplyOutWagons(station, handler, live, liveOrder, removed);
         }
 
         /// <summary>
@@ -464,7 +475,7 @@ namespace TrainOP.Generators
             {
                 if (!returnedNames.Contains(input.Name))
                 {
-                    if (input.IsByReference)
+                    if (input.RetainsSlot)
                     {
                         continue;
                     }
@@ -513,6 +524,101 @@ namespace TrainOP.Generators
                 live[wagonName] = new LiveWagon(binding, station.StationName);
                 removed.Remove(wagonName);
             }
+
+            ApplyOutWagons(station, handler, live, liveOrder, removed);
+        }
+
+        /// <summary>
+        /// Reports TOP018 and TOP019 when an <c>out</c> or <c>ref readonly</c> name is also a return member.
+        /// </summary>
+        private static void ReportPassingConflicts(StationLink station, SimulationState state)
+        {
+            var members = station.Handler.ReturnShape.Members;
+            if (members.IsDefaultOrEmpty)
+            {
+                return;
+            }
+
+            var memberNames = new HashSet<string>(StringComparer.Ordinal);
+            for (var i = 0; i < members.Length; i++)
+            {
+                memberNames.Add(members[i].Name);
+            }
+
+            foreach (var wagon in station.Handler.InputWagons)
+            {
+                if (!memberNames.Contains(wagon.Name))
+                {
+                    continue;
+                }
+
+                if (wagon.IsOut)
+                {
+                    state.Diagnostics.Add(Diagnostic.Create(
+                        TrainRouteDiagnostics.OutWagonConflictsWithReturn,
+                        wagon.Location ?? station.HandlerLocation,
+                        station.StationName,
+                        wagon.Name));
+                }
+                else if (wagon.IsRefReadonly)
+                {
+                    state.Diagnostics.Add(Diagnostic.Create(
+                        TrainRouteDiagnostics.RefReadonlyWagonInReturn,
+                        wagon.Location ?? station.HandlerLocation,
+                        station.StationName,
+                        wagon.Name));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Reports TOP015 when an <c>out</c> wagon is not already in the live manifest.
+        /// </summary>
+        private static void ReportServiceStationOutWagons(
+            StationLink station,
+            StationHandlerBinding handler,
+            SimulationState state)
+        {
+            foreach (var wagon in handler.InputWagons)
+            {
+                if (!wagon.IsOut || state.Live.ContainsKey(wagon.Name))
+                {
+                    continue;
+                }
+
+                state.Diagnostics.Add(Diagnostic.Create(
+                    TrainRouteDiagnostics.ServiceStationAddsWagon,
+                    wagon.Location ?? station.HandlerLocation,
+                    station.StationName,
+                    wagon.Name));
+            }
+        }
+
+        /// <summary>
+        /// Loads <c>out</c> wagons into the live set. A missing key is created.
+        /// </summary>
+        private static void ApplyOutWagons(
+            StationLink station,
+            StationHandlerBinding handler,
+            Dictionary<string, LiveWagon> live,
+            List<string> liveOrder,
+            Dictionary<string, RemovedWagon> removed)
+        {
+            foreach (var wagon in handler.InputWagons)
+            {
+                if (!wagon.IsOut)
+                {
+                    continue;
+                }
+
+                if (!live.ContainsKey(wagon.Name))
+                {
+                    liveOrder.Add(wagon.Name);
+                }
+
+                live[wagon.Name] = new LiveWagon(wagon, station.StationName);
+                removed.Remove(wagon.Name);
+            }
         }
 
         /// <summary>
@@ -552,7 +658,9 @@ namespace TrainOP.Generators
                 member.Location,
                 member.IsByReference,
                 member.IsOptional,
-                member.PullTypeDisplay);
+                member.PullTypeDisplay,
+                member.IsOut,
+                member.IsRefReadonly);
         }
 
         /// <summary>

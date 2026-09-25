@@ -30,14 +30,14 @@ dotnet add package TrainOP
 Указать версию явно:
 
 ```bash
-dotnet add package TrainOP --version 0.16.0
+dotnet add package TrainOP --version 0.17.0
 ```
 
 ### PackageReference в `.csproj`
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.16.0" />
+  <PackageReference Include="TrainOP" Version="0.17.0" />
 </ItemGroup>
 ```
 
@@ -95,7 +95,7 @@ dotnet add package TrainOP --source trainop-local
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="TrainOP" Version="0.16.0" />
+    <PackageReference Include="TrainOP" Version="0.17.0" />
   </ItemGroup>
 </Project>
 ```

@@ -273,12 +273,12 @@ namespace TrainOP.Generators
                 var seed = TerminalSetAdapters.FromAnchorSeed(chain.InitialWagons);
                 var simulation = ChainGraphSimulator.Simulate(
                     chain,
-                    TerminalSetAdapters.ToWagons(seed));
+                    seed.Wagons);
                 var terminals = TerminalSetAdapters.FromSimulation(
                     simulation,
                     TerminalSet.Origin.FactoryPath);
                 return new FactoryPathSimulation(
-                    TerminalSetAdapters.ToWagons(terminals),
+                    terminals.Wagons,
                     terminals.HasUnknownReturn,
                     location);
             }
@@ -301,12 +301,12 @@ namespace TrainOP.Generators
                 var seed = TerminalSetAdapters.FromAnchorSeed(extensionChain.InitialWagons);
                 var simulation = ChainGraphSimulator.Simulate(
                     extensionChain,
-                    TerminalSetAdapters.ToWagons(seed));
+                    seed.Wagons);
                 var terminals = TerminalSetAdapters.FromSimulation(
                     simulation,
                     TerminalSet.Origin.FactoryPath);
                 return new FactoryPathSimulation(
-                    TerminalSetAdapters.ToWagons(terminals),
+                    terminals.Wagons,
                     terminals.HasUnknownReturn,
                     location);
             }
@@ -370,7 +370,7 @@ namespace TrainOP.Generators
                 TerminalSet.Origin.FactoryPath,
                 hasUnknownReturn: false);
             simulation = new FactoryPathSimulation(
-                TerminalSetAdapters.ToWagons(terminals),
+                terminals.Wagons,
                 terminals.HasUnknownReturn,
                 location);
             return true;

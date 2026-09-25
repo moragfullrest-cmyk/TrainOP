@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-25
+
+### Added
+
+- **Handler `out` parameters:** create or overwrite a wagon the same way `ref` writes a local back, without pulling it first. A station that only has `out` parameters can seed the manifest. A new name on `ServiceStation` is **TOP015**. The same name as a return member is **TOP018**.
+- **Handler `ref readonly` parameters:** read an existing wagon, keep it when the return omits the name, and do not write it back. The name must not appear in the return (**TOP019**).
+- **Sample** `OutAndRefReadonlyExample`: seed via `out`, then `ref readonly` plus a new `out` wagon.
+
+### Documentation
+
+- **textbook / core-api / getting-started:** parameter and return effects are a modifier matrix (read, write, omit, composition).
+- **nuget / getting-started / README / textbook / release-readiness:** version snippets bumped to 0.17.0.
+
+### Changed
+
+- **Terminal sets:** unknown-return sets store an empty wagon list, so callers read `TerminalSet.Wagons` directly.
+
 ## [0.16.0] - 2026-09-22
 
 ### Changed

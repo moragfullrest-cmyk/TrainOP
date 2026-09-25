@@ -58,7 +58,9 @@ namespace TrainOP.Generators
             {
                 var wagon = wagons[i];
                 string returnMemberName = null;
-                if (memberByName.ContainsKey(wagon.Name)
+                if (!wagon.IsOut
+                    && !wagon.IsRefReadonly
+                    && memberByName.ContainsKey(wagon.Name)
                     && !ShouldAllocateDefaultItemMember(
                         allocateDefaultItemN,
                         wagon.Name,
@@ -72,7 +74,8 @@ namespace TrainOP.Generators
                     i,
                     wagon.Name,
                     returnMemberName,
-                    wagon.IsByReference));
+                    wagon.IsByReference,
+                    wagon.RetainsSlot));
             }
 
             var extraSlots = ImmutableArray.CreateBuilder<MergeExtraSlot>();

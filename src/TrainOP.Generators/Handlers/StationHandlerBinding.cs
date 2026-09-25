@@ -47,6 +47,8 @@ namespace TrainOP.Generators.Handlers
 
         public bool HasRefWagons => Input.HasRefWagons;
 
+        public bool HasRefReadonlyWagons => Input.HasRefReadonlyWagons;
+
         public ReturnShape ReturnShape => Output.Shape;
 
         public bool IsServiceStation => Input.IsServiceStation;

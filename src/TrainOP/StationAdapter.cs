@@ -44,7 +44,8 @@ namespace TrainOP
             string[] returnMemberNames,
             bool[] byReferenceWagons,
             object[] refLocalValues,
-            bool allocateDefaultItemNElements)
+            bool allocateDefaultItemNElements,
+            bool[] retainedWagons = null)
         {
             if (TryConvertPassthroughSignal(stationReturn, stationName, out var passthrough))
             {
@@ -67,7 +68,8 @@ namespace TrainOP
                 returnMemberNames,
                 byReferenceWagons,
                 refLocalValues,
-                allocateDefaultItemNElements);
+                allocateDefaultItemNElements,
+                retainedWagons);
             if (!ReferenceEquals(merged, manifest))
             {
                 manifest.ReplaceWith(merged);
@@ -110,7 +112,8 @@ namespace TrainOP
             string[] returnMemberNames,
             bool[] byReferenceWagons,
             object[] refLocalValues,
-            bool allocateDefaultItemNElements)
+            bool allocateDefaultItemNElements,
+            bool[] retainedWagons = null)
         {
             if (TryConvertPassthroughSignal(stationReturn, stationName, out var passthrough))
             {
@@ -124,7 +127,8 @@ namespace TrainOP
                 returnMemberNames,
                 byReferenceWagons,
                 refLocalValues,
-                allocateDefaultItemNElements);
+                allocateDefaultItemNElements,
+                retainedWagons);
             if (!ReferenceEquals(merged, manifest))
             {
                 manifest.ReplaceWith(merged);

@@ -68,7 +68,7 @@ dotnet add package TrainOP
 
 Генератор нужен для `.Station` data-oriented handlers (в NuGet он уже внутри `TrainOP`).
 
-Лицензия: [MIT](LICENSE). Текущая версия пакета: **0.16.0** — см. [CHANGELOG.md](CHANGELOG.md).
+Лицензия: [MIT](LICENSE). Текущая версия пакета: **0.17.0** — см. [CHANGELOG.md](CHANGELOG.md).
 
 ### Локальная сборка пакета
 

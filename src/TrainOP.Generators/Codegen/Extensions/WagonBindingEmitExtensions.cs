@@ -9,6 +9,16 @@ namespace TrainOP.Generators
         /// </summary>
         internal static void EmitPull(this WagonBinding wagon, CodegenWriter writer, PullContext context)
         {
+            if (wagon.IsOut)
+            {
+                writer.AppendIndented(wagon.TypeDisplay)
+                    .Append(' ')
+                    .Append(context.LocalVariableName)
+                    .Append(" = default;");
+                writer.EndLine();
+                return;
+            }
+
             var manifest = context.ManifestVariable;
 
             if (wagon.IsOptional)

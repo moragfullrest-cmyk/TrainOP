@@ -40,7 +40,7 @@ namespace TrainOP.Generators
         /// <summary>
         /// Terminal wagon bindings for emit (empty when <see cref="TerminalSet.HasUnknownReturn"/>).
         /// </summary>
-        public ImmutableArray<WagonBinding> TerminalWagons => TerminalSetAdapters.ToWagons(Terminals);
+        public ImmutableArray<WagonBinding> TerminalWagons => Terminals.Wagons;
 
         /// <summary>Fully qualified owner type for <c>typeof(...)</c> in <c>RouteSchemaFor</c>.</summary>
         public string OwnerTypeDisplay { get; }

@@ -77,7 +77,9 @@ namespace TrainOP.Generators
                     wagon.TypeDisplay,
                     wagon.IsByReference,
                     wagon.IsOptional,
-                    wagon.PullTypeDisplay));
+                    wagon.PullTypeDisplay,
+                    wagon.IsOut,
+                    wagon.IsRefReadonly));
             }
 
             return new DelegateTypeSignature(
@@ -142,6 +144,8 @@ namespace TrainOP.Generators
                 var wagon = signature.WagonTypes[i];
                 builder.Append('|').Append(wagon.TypeDisplay);
                 builder.Append(':').Append(wagon.IsByReference ? "R1" : "R0");
+                builder.Append(':').Append(wagon.IsOut ? "U1" : "U0");
+                builder.Append(':').Append(wagon.IsRefReadonly ? "Q1" : "Q0");
                 builder.Append(':').Append(wagon.IsOptional ? "O1" : "O0");
                 builder.Append(':').Append(wagon.PullTypeDisplay);
             }

@@ -193,5 +193,27 @@ namespace TrainOP.Generators
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when an <c>out</c> parameter name is also a member of the handler return.
+        /// </summary>
+        public static readonly DiagnosticDescriptor OutWagonConflictsWithReturn = new DiagnosticDescriptor(
+            id: "TOP018",
+            title: "out parameter duplicates a return member",
+            messageFormat: "Station '{0}' out parameter '{1}' duplicates a return member; an out wagon and a return field cannot both supply the same wagon",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when a <c>ref readonly</c> parameter name is also a member of the handler return.
+        /// </summary>
+        public static readonly DiagnosticDescriptor RefReadonlyWagonInReturn = new DiagnosticDescriptor(
+            id: "TOP019",
+            title: "ref readonly parameter appears in the return",
+            messageFormat: "Station '{0}' ref readonly parameter '{1}' is also a return member; a ref readonly wagon must stay unchanged and cannot be returned",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }

@@ -150,12 +150,12 @@ namespace TrainOP.Generators
                 var branchTerminals = TerminalSetAdapters.FromSimulation(branch.Simulation);
                 var simulation = ChainGraphSimulator.Simulate(
                     downstreamChain,
-                    TerminalSetAdapters.ToWagons(branchTerminals));
+                    branchTerminals.Wagons);
                 var pathTerminals = TerminalSetAdapters.FromSimulation(
                     simulation,
                     TerminalSet.Origin.FactoryPath);
                 builder.Add(new FactoryPathSimulation(
-                    TerminalSetAdapters.ToWagons(pathTerminals),
+                    pathTerminals.Wagons,
                     pathTerminals.HasUnknownReturn,
                     location));
             }

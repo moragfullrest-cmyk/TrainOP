@@ -11,7 +11,7 @@ namespace TrainOP.Generators
         {
             writer.Append(slot.Kind switch
             {
-                HandlerInputKind.Wagon => (slot.Wagon.IsByReference ? "ref " : string.Empty)
+                HandlerInputKind.Wagon => slot.Wagon.ArgumentModifier
                     + (context.UseNeutralWagonNames
                         ? "wagon" + slot.WagonIndex.ToString(System.Globalization.CultureInfo.InvariantCulture)
                         : slot.Wagon.Name),

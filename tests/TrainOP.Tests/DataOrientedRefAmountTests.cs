@@ -129,5 +129,30 @@ namespace TrainOP.Tests.DataOriented
             Assert.Equal("pay-optional", manifest.PullWagon<string>("paymentId"));
             Assert.Equal(3m, manifest.PullWagon<decimal>("amount"));
         }
+
+        /// <summary>
+        /// Verifies that out parameters seed wagons and a later out adds a wagon while ref readonly keeps one.
+        /// </summary>
+        [Fact]
+        public void Route_OutSeedAndRefReadonly_KeepsIdAndAddsStatus()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", (out string paymentId, out decimal amount) =>
+                {
+                    paymentId = "pay-1";
+                    amount = 100m;
+                })
+                .Station("Discount", (ref readonly string paymentId, decimal amount, out string status) =>
+                {
+                    status = "discounted";
+                    return new { amount = amount * 0.9m };
+                });
+
+            var manifest = route.Travel().Manifest;
+
+            Assert.Equal("pay-1", manifest.PullWagon<string>("paymentId"));
+            Assert.Equal(90m, manifest.PullWagon<decimal>("amount"));
+            Assert.Equal("discounted", manifest.PullWagon<string>("status"));
+        }
     }
 }

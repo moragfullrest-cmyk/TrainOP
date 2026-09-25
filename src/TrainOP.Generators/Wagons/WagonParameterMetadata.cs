@@ -16,6 +16,22 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
+        /// Determines whether the parameter is an <c>out</c> wagon.
+        /// </summary>
+        public static bool IsOut(IParameterSymbol parameter)
+        {
+            return parameter.RefKind == RefKind.Out;
+        }
+
+        /// <summary>
+        /// Determines whether the parameter is a <c>ref readonly</c> wagon.
+        /// </summary>
+        public static bool IsRefReadonly(IParameterSymbol parameter)
+        {
+            return parameter.RefKind == RefKind.RefReadOnlyParameter;
+        }
+
+        /// <summary>
         /// Determines whether the parameter is an optional nullable value type and extracts its underlying type.
         /// </summary>
         public static bool IsOptionalNullableValueType(ITypeSymbol parameterType, out ITypeSymbol underlyingType)

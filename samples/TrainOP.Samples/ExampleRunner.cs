@@ -24,6 +24,7 @@ internal static class ExampleRunner
             new CodeVolumeComparisonExample(),
             new CrossAssemblyRouteExample(),
             new TerminalDecompositionExample(),
+            new OutAndRefReadonlyExample(),
         };
 
         for (var i = 0; i < examples.Length; i++)

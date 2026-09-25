@@ -69,6 +69,58 @@ public static class RefRoute
         }
 
         /// <summary>
+        /// Verifies that an out parameter is a default local passed as out and written back.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsOutLocal_ForOutWagon()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class OutRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", (out string paymentId, out decimal amount) =>
+        {
+            paymentId = ""pay-1"";
+            amount = 100m;
+        });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("out global::System.String p0", generated);
+            Assert.Contains("out global::System.Decimal p1", generated);
+            Assert.Contains("= default;", generated);
+            Assert.Contains("out paymentId", generated);
+            Assert.Contains("refLocalValues", generated);
+        }
+
+        /// <summary>
+        /// Verifies that a ref readonly wagon is pulled and passed with in, without a writeback flag.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsInArgument_ForRefReadonlyWagon()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class KeepRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = 100m })
+        .Station(""Discount"", (ref readonly string paymentId, decimal amount) =>
+            new { amount = amount * 0.9m });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("ref readonly global::System.String p0", generated);
+            Assert.Contains("in paymentId", generated);
+            Assert.Contains("new bool[] { true, false }", generated);
+        }
+
+        /// <summary>
         /// Verifies that the generator emits a void delegate for handlers without a return value.
         /// </summary>
         [Fact]

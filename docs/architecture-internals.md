@@ -297,7 +297,7 @@ Handler schema строится **один раз** в discovery (`StationLink`)
 
 ##### HandlerInputSchemaBuilder.TryBuild
 
-**Входы:** Wagon / `CargoManifest` / `RedSignal` / `SignalIssue` / `CancellationToken`; `ref` → `IsByRef` (только `RefKind.Ref`); ServiceStation пишет только обновления существующих ключей; optional nullable → `IsOptional`; слоты → `HandlerCallSlot[]`.
+**Входы:** Wagon / `CargoManifest` / `RedSignal` / `SignalIssue` / `CancellationToken`; `ref` → writeback (`RefKind.Ref`); `out` → тот же writeback без pull, вагон создаётся локалом `default` перед вызовом; `ref readonly` → pull, без writeback, слот не снимается (имя в возврате — TOP019); ServiceStation пишет только обновления существующих ключей (`out` нового имени — TOP015); optional nullable → `IsOptional`; слоты → `HandlerCallSlot[]`.
 
 **Выход:** `HandlerReturnInference` — void, anonymous/record, tuple, `Task<T>`, Green/Red/White, `CargoManifest`, unknown; имена членов tuple/record (иначе позже TOP006).
 
@@ -694,7 +694,7 @@ var report = await route.TravelAsync();
 
 Шаг в общем плане маршрута. Вход только после красного предыдущего шага; после зелёного — пропуск. На входе получает `RedSignal` (и при необходимости вагоны, `SignalIssue` / цепочку). Успешное восстановление (зелёный / `White`) снова открывает обычные станции дальше по плану.
 
-Data-oriented ServiceStation работает как обычная станция (по значению или `ref`, `Green` / `Red` / `White` / данные), но запись возврата **не меняет состав** манифеста: только обновление уже существующих ключей. Добавление вагона (**TOP015**), опуск входного non-`ref` (**TOP016**) или `CargoManifest` (**TOP017**) — ошибки analyzer'а. Хвост маршрута уже проверен на исходный набор вагонов, а техобслуживание вызывается только на красном. C# запрещает `async` + `ref`/`in`/`out` (**CS1988**); асинхронное восстановление с вагонами — по значению. Запасной вариант без вагонов — `(RedSignal red, CargoManifest manifest)` / `(RedSignal red, CargoManifest manifest, CancellationToken token)` и правки через `manifest.LoadWagon`. Пользовательский контракт — [core-api.md → параметры `ref`](core-api.md#параметры-ref).
+Data-oriented ServiceStation работает как обычная станция (по значению или `ref`, `Green` / `Red` / `White` / данные), но запись возврата **не меняет состав** манифеста: только обновление уже существующих ключей. Добавление вагона (**TOP015**), опуск входного non-`ref` (**TOP016**) или `CargoManifest` (**TOP017**) — ошибки analyzer'а. Хвост маршрута уже проверен на исходный набор вагонов, а техобслуживание вызывается только на красном. C# запрещает `async` + `ref`/`in`/`out` (**CS1988**); асинхронное восстановление с вагонами — по значению. Запасной вариант без вагонов — `(RedSignal red, CargoManifest manifest)` / `(RedSignal red, CargoManifest manifest, CancellationToken token)` и правки через `manifest.LoadWagon`. Пользовательский контракт — [core-api.md → модификаторы и манифест](core-api.md#модификаторы-и-манифест).
 
 ```csharp
 var route = new TrainRoute()
@@ -756,7 +756,7 @@ Handler обычно не трогает манифест руками. Он в�
 - `CargoManifest` — читать лишнее без формального input;
 - `CancellationToken`;
 - для ServiceStation — `RedSignal` / `SignalIssue` (последний) / `IReadOnlyList<SignalIssue>` (цепочка);
-- `ref` параметры вагонов — обратная запись через сгенерированные `refLocalValues` (только `RefKind.Ref`; несовместимо с `async` из‑за CS1988). На ServiceStation `ref` необязателен.
+- `ref` параметры вагонов — обратная запись через `refLocalValues`. `out` использует тот же массив: локал `default` перед вызовом, без pull; отсутствующий ключ создаётся. `ref readonly` передаётся как `in`, в `refLocalValues` не пишется и не снимается частичным возвратом. Несовместимо с `async` (CS1988). На ServiceStation новый `out` — TOP015.
 
 Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 
