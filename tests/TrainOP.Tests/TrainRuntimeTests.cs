@@ -469,20 +469,18 @@ namespace TrainOP.Tests
         }
 
         /// <summary>
-        /// Verifies that the first Travel seals the plan, so a later RegisterStation throws and the next Travel repeats the sealed list.
+        /// Verifies that a station registered after Travel is absent from that report and present on the next run.
         /// </summary>
         [Fact]
-        public void Travel_SealsPlan_LaterRegisterStationThrows()
+        public void Travel_LaterRegisterStation_JoinsNextRun()
         {
             var route = new TrainRoute()
                 .RegisterStation("Only", manifest => manifest.LoadWagon("id", "ok"));
 
             var first = route.Travel();
-            var exception = Assert.Throws<InvalidOperationException>(() =>
-                route.RegisterStation("Extra", manifest => manifest.LoadWagon("extra", "seen")));
+            route.RegisterStation("Extra", manifest => manifest.LoadWagon("extra", "seen"));
             var second = route.Travel();
 
-            Assert.Contains("sealed", exception.Message);
             Assert.True(first.ReachedDestination);
             Assert.Equal(1, first.Visits.Count);
             Assert.Equal("Only", first.Visits[0].StationName);
@@ -490,10 +488,11 @@ namespace TrainOP.Tests
             Assert.False(first.Manifest.HasWagon("extra"));
 
             Assert.True(second.ReachedDestination);
-            Assert.Equal(1, second.Visits.Count);
+            Assert.Equal(2, second.Visits.Count);
             Assert.Equal("Only", second.Visits[0].StationName);
+            Assert.Equal("Extra", second.Visits[1].StationName);
             Assert.Equal("ok", second.Manifest.PullWagon<string>("id"));
-            Assert.False(second.Manifest.HasWagon("extra"));
+            Assert.Equal("seen", second.Manifest.PullWagon<string>("extra"));
         }
 
         /// <summary>
@@ -695,10 +694,10 @@ namespace TrainOP.Tests
         }
 
         /// <summary>
-        /// Verifies that Travel and Travel(token) share one sealed plan, including a later pure step.
+        /// Verifies that Travel and Travel(token) walk the same plan until a later station is registered.
         /// </summary>
         [Fact]
-        public void Train_Travel_SealsPlan_SecondTravelReusesIt()
+        public void Train_Travel_SecondTravelReadsSamePlan_LaterStationJoinsNext()
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { amount = 10m })
@@ -716,42 +715,13 @@ namespace TrainOP.Tests
             Assert.Equal(1, first.Visits[1].Index);
             Assert.Equal(2, second.Visits.Count);
 
-            var exception = Assert.Throws<InvalidOperationException>(() =>
-                route.Station("Later", (decimal amount) => new { amount }));
-            Assert.Contains("sealed", exception.Message);
-        }
+            route.Station("Later", (decimal amount) => new { amount = amount + 1m });
+            var third = route.Travel();
 
-        /// <summary>
-        /// Verifies that TravelLight seals the plan against a later service station.
-        /// </summary>
-        [Fact]
-        public void Train_TravelLight_SealsPlan()
-        {
-            var route = new TrainRoute()
-                .Station("Seed", () => new { amount = 1m });
-
-            var report = route.TravelLight();
-
-            Assert.Equal(1m, report.Get<decimal>("amount"));
-            Assert.Throws<InvalidOperationException>(() =>
-                route.ServiceStation("Fix", (Func<RedSignal, Signal>)(red => RailwaySignals.Green())));
-        }
-
-        /// <summary>
-        /// Verifies that TravelAsync seals the plan against a later registration.
-        /// </summary>
-        [Fact]
-        public async Task Train_TravelAsync_SealsPlan()
-        {
-            var route = new TrainRoute()
-                .Station("Seed", () => new { amount = 1m });
-
-            await route.TravelAsync();
-
-            Assert.Throws<InvalidOperationException>(() =>
-                route.RegisterStation(
-                    "Later",
-                    (Func<CargoManifest, CargoManifest>)(manifest => manifest)));
+            Assert.Equal(13m, third.Get<decimal>("amount"));
+            Assert.Equal(3, third.Visits.Count);
+            Assert.Equal("Later", third.Visits[2].StationName);
+            Assert.Equal(2, third.Visits[2].Index);
         }
 
         /// <summary>

@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+### Changed
+
+- **Open plan:** `Travel`, `TravelAsync`, and `TravelLight*` walk the live station list. A later `RegisterStation`, `Station`, or `ServiceStation` extends that list for the next run. The first-travel copy and the `InvalidOperationException` that rejected registration after the first run are removed. Each run still starts from an empty manifest.
+
 ## [0.19.0] - 2026-10-02
 
 ### Added

@@ -754,8 +754,6 @@ namespace TrainOP
     {
         private readonly List<StationPlan> _route = new List<StationPlan>();
         private readonly string _callerChainKey;
-        private List<StationPlan> _sealedRoute;
-        private bool _planSealed;
         private int _chainRegistrationOrdinal;
 
         private static string BuildCallerChainKey(string filePath, int lineNumber, string memberName)
@@ -793,7 +791,6 @@ namespace TrainOP
             int length,
             Func<CargoManifest, CancellationToken, SegmentVisitLog, int, Signal> runner)
         {
-            EnsurePlanOpen();
             if (runner == null)
             {
                 throw new ArgumentNullException(nameof(runner));
@@ -992,7 +989,6 @@ namespace TrainOP
 
         /// <summary>
         /// Executes the route from an empty manifest.
-        /// Snapshots the station list so later builder mutations do not affect this run.
         /// </summary>
         public RouteReport Travel()
         {
@@ -1001,7 +997,6 @@ namespace TrainOP
 
         /// <summary>
         /// Executes the route from an empty manifest with cancellation support.
-        /// Snapshots the station list so later builder mutations do not affect this run.
         /// </summary>
         public RouteReport Travel(CancellationToken cancellationToken)
         {
@@ -1028,7 +1023,6 @@ namespace TrainOP
 
         /// <summary>
         /// Asynchronously executes the route from an empty manifest.
-        /// Snapshots the station list so later builder mutations do not affect this run.
         /// </summary>
         public Task<RouteReport> TravelAsync()
         {
@@ -1037,7 +1031,6 @@ namespace TrainOP
 
         /// <summary>
         /// Asynchronously executes the route from an empty manifest with cancellation support.
-        /// Snapshots the station list so later builder mutations do not affect this run.
         /// </summary>
         public Task<RouteReport> TravelAsync(CancellationToken cancellationToken)
         {
@@ -1241,20 +1234,19 @@ namespace TrainOP
         /// </summary>
         private RouteReport TravelCore(CancellationToken cancellationToken, bool recordVisits)
         {
-            var route = SealPlan();
             var current = new CargoManifest();
-            var visits = recordVisits ? new List<StationVisit>(route.Count) : null;
+            var visits = recordVisits ? new List<StationVisit>(_route.Count) : null;
             Signal previous = RailwaySignals.Green();
             var canCancel = cancellationToken.CanBeCanceled;
 
-            for (var i = 0; i < route.Count; i++)
+            for (var i = 0; i < _route.Count; i++)
             {
                 if (canCancel)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                 }
 
-                var plan = route[i];
+                var plan = _route[i];
                 if (TryRunSegment(plan, i, ref i, current, visits, cancellationToken, ref previous))
                 {
                     continue;
@@ -1290,20 +1282,19 @@ namespace TrainOP
         /// </summary>
         private async Task<RouteReport> TravelCoreAsync(CancellationToken cancellationToken, bool recordVisits)
         {
-            var route = SealPlan();
             var manifest = new ManifestHolder(new CargoManifest());
-            var visits = recordVisits ? new List<StationVisit>(route.Count) : null;
+            var visits = recordVisits ? new List<StationVisit>(_route.Count) : null;
             Signal previous = RailwaySignals.Green();
             var canCancel = cancellationToken.CanBeCanceled;
 
-            for (var i = 0; i < route.Count; i++)
+            for (var i = 0; i < _route.Count; i++)
             {
                 if (canCancel)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                 }
 
-                var plan = route[i];
+                var plan = _route[i];
                 if (TryRunSegment(plan, i, ref i, manifest.Current, visits, cancellationToken, ref previous))
                 {
                     continue;
@@ -1351,38 +1342,10 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Copies the plan on the first travel and rejects later registration.
-        /// </summary>
-        private List<StationPlan> SealPlan()
-        {
-            if (_planSealed)
-            {
-                return _sealedRoute;
-            }
-
-            _sealedRoute = new List<StationPlan>(_route);
-            _planSealed = true;
-            return _sealedRoute;
-        }
-
-        /// <summary>
-        /// Throws when the plan was already copied by a travel.
-        /// </summary>
-        private void EnsurePlanOpen()
-        {
-            if (_planSealed)
-            {
-                throw new InvalidOperationException(
-                    "The route plan is sealed after the first travel. Pass request data in a wagon, or create a new TrainRoute for another plan.");
-            }
-        }
-
-        /// <summary>
-        /// Appends a hop while the plan is still open.
+        /// Appends a hop to the plan.
         /// </summary>
         private void AddPlan(StationPlan plan)
         {
-            EnsurePlanOpen();
             _route.Add(plan);
         }
 
