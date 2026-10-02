@@ -16,6 +16,8 @@ namespace TrainOP.Generators
         public const string SignalIssueReturnTypeDisplay = "global::TrainOP.SignalIssue";
         public const string SignalIssuesListReturnTypeDisplay =
             "global::System.Collections.Generic.IReadOnlyList<global::TrainOP.SignalIssue>";
+        public const string VisitJournalReturnTypeDisplay =
+            "global::System.Collections.Generic.IReadOnlyList<global::TrainOP.StationVisit>";
 
         public const string TrainRouteTypeName = "TrainOP.TrainRoute";
         public const string SignalTypeName = "TrainOP.Signal";

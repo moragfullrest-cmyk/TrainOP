@@ -318,8 +318,8 @@ namespace TrainOP.Tests
                 byReferenceWagons: new[] { true },
                 refLocalValues: new object[] { 1 });
 
-            var green = Assert.IsType<GreenSignal>(signal);
-            Assert.Same(GreenSignal.Instance, green);
+            var green = Assert.IsType<WhitePass>(signal);
+            Assert.Same(WhitePass.Instance, green);
             Assert.Equal(0, manifest.PullWagon<int>("value"));
         }
 

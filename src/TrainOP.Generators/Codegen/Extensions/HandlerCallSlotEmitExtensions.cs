@@ -18,6 +18,7 @@ namespace TrainOP.Generators
                 HandlerInputKind.RedSignal => context.RedVariable ?? "red",
                 HandlerInputKind.SignalIssue => context.SignalIssueExpression,
                 HandlerInputKind.SignalIssues => context.SignalIssuesExpression,
+                HandlerInputKind.VisitJournal => context.VisitJournalExpression,
                 HandlerInputKind.CargoManifest => "manifest",
                 HandlerInputKind.CancellationToken => context.TokenVariable ?? "default",
                 _ => string.Empty

@@ -113,6 +113,7 @@ namespace TrainOP.Generators
                 ProcessStationInputs(station, state);
                 ReportPassingConflicts(station, state);
                 ReportParamsNotLast(station, state);
+                ReportServiceStationWriteback(station, state);
 
                 if (TryHandleSpecialReturn(station, state))
                 {
@@ -160,6 +161,20 @@ namespace TrainOP.Generators
             StationLink station,
             SimulationState state)
         {
+            foreach (var input in station.Handler.InputWagons)
+            {
+                if (!input.HasNonConstantDefault)
+                {
+                    continue;
+                }
+
+                state.Diagnostics.Add(Diagnostic.Create(
+                    TrainRouteDiagnostics.NonConstantWagonDefault,
+                    input.Location,
+                    station.StationName,
+                    input.Name));
+            }
+
             if (state.HasUnknownReturn)
             {
                 return;
@@ -573,6 +588,32 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
+        /// Reports TOP023 when a ServiceStation wagon is <c>ref</c> or <c>out</c>.
+        /// <c>ref readonly</c> and <c>in</c> stay, because they do not write the slot back.
+        /// </summary>
+        private static void ReportServiceStationWriteback(StationLink station, SimulationState state)
+        {
+            if (station.Kind != StationLinkKind.ServiceStation)
+            {
+                return;
+            }
+
+            foreach (var wagon in station.Handler.InputWagons)
+            {
+                if (!wagon.WritesBack)
+                {
+                    continue;
+                }
+
+                state.Diagnostics.Add(Diagnostic.Create(
+                    TrainRouteDiagnostics.ServiceStationWriteback,
+                    wagon.Location ?? station.HandlerLocation,
+                    station.StationName,
+                    wagon.Name));
+            }
+        }
+
+        /// <summary>
         /// Reports TOP020 when a <c>params</c> wagon is not the last delegate parameter.
         /// </summary>
         private static void ReportParamsNotLast(StationLink station, SimulationState state)
@@ -685,7 +726,9 @@ namespace TrainOP.Generators
                 member.IsOut,
                 member.IsRefReadonly,
                 member.IsIn,
-                member.IsParams);
+                member.IsParams,
+                member.OptionalFallback,
+                member.HasNonConstantDefault);
         }
 
         /// <summary>

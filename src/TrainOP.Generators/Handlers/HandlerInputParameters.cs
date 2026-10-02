@@ -20,6 +20,7 @@ namespace TrainOP.Generators.Handlers
             bool includeRedSignal,
             bool includeSignalIssue,
             bool includeSignalIssues,
+            bool includeVisitJournal,
             bool hasCancellationToken)
         {
             Wagons = wagons.IsDefault ? ImmutableArray<WagonBinding>.Empty : wagons;
@@ -28,6 +29,7 @@ namespace TrainOP.Generators.Handlers
             IncludeRedSignal = includeRedSignal;
             IncludeSignalIssue = includeSignalIssue;
             IncludeSignalIssues = includeSignalIssues;
+            IncludeVisitJournal = includeVisitJournal;
             HasCancellationToken = hasCancellationToken;
             CallOrder = BuildCallOrder(
                 Wagons,
@@ -36,6 +38,7 @@ namespace TrainOP.Generators.Handlers
                 includeRedSignal,
                 includeSignalIssue,
                 includeSignalIssues,
+                includeVisitJournal,
                 hasCancellationToken);
             HasRefWagons = ComputeHasWriteback(Wagons);
             HasRefReadonlyWagons = ComputeHasReadOnlyPass(Wagons);
@@ -57,11 +60,14 @@ namespace TrainOP.Generators.Handlers
         /// <summary>Handler accepts <c>RedSignal</c>.</summary>
         public bool IncludeRedSignal { get; }
 
-        /// <summary>Handler accepts <c>SignalIssue</c> (last / immediate stop).</summary>
+        /// <summary>Handler accepts <c>SignalIssue</c> (first issue of the stop).</summary>
         public bool IncludeSignalIssue { get; }
 
-        /// <summary>Handler accepts <c>IReadOnlyList&lt;SignalIssue&gt;</c> (full chain).</summary>
+        /// <summary>Handler accepts <c>IReadOnlyList&lt;SignalIssue&gt;</c> (every issue of the stop).</summary>
         public bool IncludeSignalIssues { get; }
+
+        /// <summary>Handler accepts <c>IReadOnlyList&lt;StationVisit&gt;</c> (visits recorded before this hop).</summary>
+        public bool IncludeVisitJournal { get; }
 
         /// <summary>Handler accepts <c>CancellationToken</c>.</summary>
         public bool HasCancellationToken { get; }
@@ -77,7 +83,7 @@ namespace TrainOP.Generators.Handlers
 
         /// <summary>
         /// Parameters in the order used by generated delegates and handler invocations.
-        /// ServiceStation: wagons, RedSignal, SignalIssue, SignalIssues, CargoManifest, token.
+        /// ServiceStation: wagons, RedSignal, SignalIssue, SignalIssues, visit journal, CargoManifest, token.
         /// Station: RedSignal (rare), CargoManifest, wagons, token.
         /// </summary>
         public ImmutableArray<HandlerCallSlot> CallOrder { get; }
@@ -172,10 +178,11 @@ namespace TrainOP.Generators.Handlers
             bool includeRedSignal,
             bool includeSignalIssue,
             bool includeSignalIssues,
+            bool includeVisitJournal,
             bool hasCancellationToken)
         {
             var slots = ImmutableArray.CreateBuilder<HandlerCallSlot>(
-                wagons.Length + 5);
+                wagons.Length + 6);
 
             if (stationKind.IsServiceStation())
             {
@@ -194,6 +201,11 @@ namespace TrainOP.Generators.Handlers
                 if (includeSignalIssues)
                 {
                     slots.Add(HandlerCallSlot.Special(HandlerInputKind.SignalIssues));
+                }
+
+                if (includeVisitJournal)
+                {
+                    slots.Add(HandlerCallSlot.Special(HandlerInputKind.VisitJournal));
                 }
 
                 if (includeManifest)

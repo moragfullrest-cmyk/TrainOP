@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -137,11 +139,50 @@ namespace TrainOP
         public ServiceStationPlan ServicePlan { get; }
 
         /// <summary>
+        /// Runs this hop and the following <see cref="SegmentLength"/> - 1 hops as one pure segment.
+        /// Null when the hop is ordinary.
+        /// </summary>
+        internal Func<CargoManifest, CancellationToken, SegmentVisitLog, int, Signal> SegmentRunner { get; set; }
+
+        /// <summary>
+        /// How many plan entries this segment covers, including this hop. One when there is no segment.
+        /// </summary>
+        internal int SegmentLength { get; set; } = 1;
+
+        /// <summary>
         /// Gets whether this hop requires asynchronous execution.
         /// </summary>
         public bool IsAsync =>
             Kind == StationInvokeKind.SignalAsync
             || Kind == StationInvokeKind.ThroughAsync
             || (ServicePlan != null && ServicePlan.AsyncHandler != null);
+    }
+
+    /// <summary>
+    /// Visit journal handed to a pure segment. Generated code calls <see cref="Record"/>
+    /// and does not name <c>List&lt;T&gt;</c>, which lives in <c>System.Collections</c>.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public sealed class SegmentVisitLog
+    {
+        private readonly List<StationVisit> _visits;
+
+        internal SegmentVisitLog(List<StationVisit> visits)
+        {
+            _visits = visits;
+        }
+
+        /// <summary>
+        /// Appends one visit when the journal is enabled.
+        /// </summary>
+        public void Record(string stationName, HopOutcome outcome, int index, TimeSpan elapsed)
+        {
+            if (_visits == null)
+            {
+                return;
+            }
+
+            _visits.Add(new StationVisit(stationName, outcome, index, elapsed));
+        }
     }
 }

@@ -6,6 +6,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-02
+
+### Added
+
+- **Optional wagons:** a parameter is optional in three forms. `Nullable<T>` / `T?` and an annotated `string?` (`NullableAnnotation.Annotated`) substitute `null` when the key is missing. A constant default (`int amount = 0`, `string note = ""`, `string note = null`, `decimal? tip = 5`) substitutes that constant, and the constant wins over the null of `Nullable<T>` or `string?`. A present key wins over the substitute. A bare `string` and a bare value type stay required. A non-constant default is **TOP022**. TrainOP projects keep `<Nullable>disable</Nullable>`; `string?` is read from the user's compilation.
+- **TOP021:** `Travel` and `TravelLight` on a chain the analyzer already resolved are an error when that chain contains an async station. A call on a parameter, field, or method whose chain is not visible stays silent, and `InvalidOperationException` remains the runtime fallback.
+- **TOP023:** `ref` and `out` on `ServiceStation` are an error. An existing wagon is updated by a field of a green return. `ref readonly` and `in` stay. Red and white do not write keys. A reference wagon's contents change in place, and the caller owns any `IDisposable` stored in a wagon.
+- **Service station visit journal:** a `ServiceStation` handler may take `IReadOnlyList<StationVisit>`. The list is a snapshot of visits recorded before that hop, and it is empty when the journal is off. Handlers that omit the parameter stay valid. There is no terminal station; audit and disposal stay with the caller after `Travel` and in `catch` for `RouteAbortException`.
+
+### Changed
+
+- **Report manifest:** `RouteReport.Manifest` is a `ReadOnlyManifest`. The constructor still accepts the trip `CargoManifest` and copies its keys. Reference values stay shared. `HasWagon`, `TryGetWagon`, `PullWagon<T>`, and `InspectWagons` read the snapshot. `InspectWagons()` cannot be cast to `Dictionary<string, object>`. `LoadWagon` and `UnloadWagon` are not on the report. `TryGet<T>(string, out T)` sits beside `Get<T>`. Stations still receive a mutable `CargoManifest` during the run.
+
+- **Sealed plan:** the first `Travel`, `TravelAsync`, or `TravelLight*` copies the station list and seals it. A later `RegisterStation` or `ServiceStation` throws `InvalidOperationException`. `Travel()` and `Travel(token)` walk that same list. A run of capture-free data expressions executes inside the walk and writes the manifest at the segment boundary. The separate `_straightTravel` path is removed.
+
+- **Visit journal:** `StationVisit` stores `HopOutcome` (`Green`, `White`, `Red`, `Skipped`), the plan `Index`, and `Elapsed` from `Stopwatch.GetTimestamp`. `IsGreen` is true for `Green` and `White`. A bypassed step is recorded only when the journal is enabled, so `TravelLight` still returns an empty list. `White` stays `White` in the journal and still continues the route. The constructor `(name, isGreen)` remains and yields `Green` or `Red` at index 0 with zero elapsed time. Duplicate station names are not rejected; `Index` distinguishes them.
+
+- **Flat red issues:** `Red(code, message, priorIssues)` and `RedFailure.PriorIssues` are removed. Issues of one stop sit side by side. `Red(code, message, details)` carries one issue (`null` details is an empty dictionary). `Red(SignalIssue[])` carries one or more issues in array order and rejects an empty array. `Issue`, `FailureCode`, and `FailureMessage` read the first issue. `SignalIssue.Details` holds application data. The adapter fills an empty station name and leaves `Exception` as supplied. A red service-station return replaces the incoming issues; a green return drops them.
+
+- **Service station exceptions:** a throw from `ServiceStation`, other than cancellation, aborts `Travel` / `TravelAsync` with `RouteAbortException`. The exception carries the station name, the original exception, and a `RouteReport` of completed visits, the manifest as it was, and the red signal the station was entered with. The throwing hop is not recorded. A green return still repairs the route, including after `STATION_EXCEPTION`.
+
+### Documentation
+
+- **nuget / getting-started / README / textbook / release-readiness:** version snippets bumped to 0.19.0.
+
 ## [0.18.0] - 2026-09-25
 
 ### Added

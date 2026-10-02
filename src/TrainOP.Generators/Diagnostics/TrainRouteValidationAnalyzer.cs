@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using TrainOP.Generators.Parts;
 using TrainOP.Generators.Route;
 namespace TrainOP.Generators
 {
@@ -37,6 +38,9 @@ namespace TrainOP.Generators
                 TrainRouteDiagnostics.OutWagonConflictsWithReturn,
                 TrainRouteDiagnostics.RefReadonlyWagonInReturn,
                 TrainRouteDiagnostics.ParamsWagonNotLast,
+                TrainRouteDiagnostics.SyncTravelOnAsyncChain,
+                TrainRouteDiagnostics.NonConstantWagonDefault,
+                TrainRouteDiagnostics.ServiceStationWriteback,
             ];
 
         /// <summary>
@@ -83,6 +87,7 @@ namespace TrainOP.Generators
 
                 ReportMultipleTrainRouteCreationsOnSameLine(modelContext, tree, semanticModel);
                 ReportChainValidationDiagnostics(modelContext, graph, tree, semanticModel.Compilation);
+                ReportSyncTravelOnAsyncChain(modelContext, graph, tree, semanticModel);
                 ReportBranchJoinDiagnostics(modelContext, graph, joinSets, semanticModel);
                 ReportOrphanHandlers(modelContext, graph, tree, semanticModel, joinSets);
                 ReportUnsupportedHandlers(modelContext, tree, semanticModel);
@@ -254,6 +259,212 @@ namespace TrainOP.Generators
                         invocation.ArgumentList.Arguments[1].GetLocation()));
                 }
             }
+        }
+
+        /// <summary>
+        /// Reports TOP021 when <c>Travel</c> or <c>TravelLight</c> runs a chain the graph already resolved and that chain has an async station.
+        /// A parameter, field, or method the graph did not open stays silent; runtime still rejects it.
+        /// </summary>
+        private static void ReportSyncTravelOnAsyncChain(
+            SemanticModelAnalysisContext modelContext,
+            RouteGraph graph,
+            SyntaxTree tree,
+            SemanticModel semanticModel)
+        {
+            foreach (var invocation in tree.GetRoot()
+                .DescendantNodes()
+                .OfType<InvocationExpressionSyntax>())
+            {
+                if (!TryGetSyncTravelName(invocation, semanticModel, out var travelName, out var receiver))
+                {
+                    continue;
+                }
+
+                if (!ReceiverRunsKnownAsyncChain(receiver, graph, semanticModel))
+                {
+                    continue;
+                }
+
+                modelContext.ReportDiagnostic(Diagnostic.Create(
+                    TrainRouteDiagnostics.SyncTravelOnAsyncChain,
+                    invocation.GetLocation(),
+                    travelName));
+            }
+        }
+
+        private static bool TryGetSyncTravelName(
+            InvocationExpressionSyntax invocation,
+            SemanticModel semanticModel,
+            out string travelName,
+            out ExpressionSyntax receiver)
+        {
+            travelName = null;
+            receiver = null;
+            if (invocation?.Expression is not MemberAccessExpressionSyntax memberAccess)
+            {
+                return false;
+            }
+
+            var name = memberAccess.Name.Identifier.ValueText;
+            if (name != "Travel" && name != "TravelLight")
+            {
+                return false;
+            }
+
+            if (!IsSyncTravelOnRoute(invocation, memberAccess, semanticModel))
+            {
+                return false;
+            }
+
+            travelName = name;
+            receiver = ReceiverExpressionSyntaxPeel.UnwrapTransparent(memberAccess.Expression);
+            return receiver != null;
+        }
+
+        /// <summary>
+        /// A bound <c>TrainRoute.Travel</c> / <c>TravelLight</c>, or the same names on a route receiver
+        /// whose type is still an error because generated <c>Station</c> stubs are absent.
+        /// </summary>
+        private static bool IsSyncTravelOnRoute(
+            InvocationExpressionSyntax invocation,
+            MemberAccessExpressionSyntax memberAccess,
+            SemanticModel semanticModel)
+        {
+            if (semanticModel.GetSymbolInfo(invocation).Symbol is IMethodSymbol method)
+            {
+                return StationSyntaxHelper.IsTrainRoute(method.ContainingType);
+            }
+
+            var typeInfo = semanticModel.GetTypeInfo(memberAccess.Expression);
+            return StationSyntaxHelper.IsTrainRouteReceiver(
+                memberAccess.Expression,
+                typeInfo.Type ?? typeInfo.ConvertedType,
+                semanticModel);
+        }
+
+        private static bool ReceiverRunsKnownAsyncChain(
+            ExpressionSyntax receiver,
+            RouteGraph graph,
+            SemanticModel semanticModel)
+        {
+            if (receiver is InvocationExpressionSyntax invocation)
+            {
+                if (graph.TryGetChainForInvocation(invocation, out var stationChain)
+                    && RouteHasAsyncStation(stationChain, graph))
+                {
+                    return true;
+                }
+
+                return semanticModel.GetSymbolInfo(invocation).Symbol is IMethodSymbol method
+                    && MethodHasAsyncChain(method, graph);
+            }
+
+            if (receiver is not IdentifierNameSyntax identifier)
+            {
+                return false;
+            }
+
+            if (semanticModel.GetSymbolInfo(identifier).Symbol is not ILocalSymbol local)
+            {
+                return false;
+            }
+
+            if (LocalHasAsyncChain(local, graph, semanticModel))
+            {
+                return true;
+            }
+
+            return LocalBindingMaterializer.TryMaterialize(identifier, semanticModel, out var binding)
+                && binding.FactoryMethod != null
+                && MethodHasAsyncChain(binding.FactoryMethod, graph);
+        }
+
+        private static bool LocalHasAsyncChain(
+            ILocalSymbol local,
+            RouteGraph graph,
+            SemanticModel semanticModel)
+        {
+            foreach (var chain in graph.Chains)
+            {
+                if (chain.Origin is not LocalBinding binding
+                    || binding.Identifier == null
+                    || binding.Identifier.SyntaxTree != semanticModel.SyntaxTree)
+                {
+                    continue;
+                }
+
+                if (semanticModel.GetSymbolInfo(binding.Identifier).Symbol is not ILocalSymbol boundLocal
+                    || !SymbolEqualityComparer.Default.Equals(boundLocal, local))
+                {
+                    continue;
+                }
+
+                if (RouteHasAsyncStation(chain, graph))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool RouteHasAsyncStation(RouteChain chain, RouteGraph graph)
+        {
+            if (ChainHasAsyncStation(chain))
+            {
+                return true;
+            }
+
+            return chain.FactoryMethod != null && MethodHasAsyncChain(chain.FactoryMethod, graph);
+        }
+
+        private static bool MethodHasAsyncChain(IMethodSymbol method, RouteGraph graph)
+        {
+            if (method == null)
+            {
+                return false;
+            }
+
+            var target = method.OriginalDefinition ?? method;
+            foreach (var chain in graph.Chains)
+            {
+                var containing = chain.ContainingMethod;
+                if (containing == null)
+                {
+                    continue;
+                }
+
+                var candidate = containing.OriginalDefinition ?? containing;
+                if (!SymbolEqualityComparer.Default.Equals(candidate, target))
+                {
+                    continue;
+                }
+
+                if (ChainHasAsyncStation(chain))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ChainHasAsyncStation(RouteChain chain)
+        {
+            if (chain == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < chain.Stations.Length; i++)
+            {
+                if (chain.Stations[i].Handler != null && chain.Stations[i].Handler.IsAsync)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void ReportUnsupportedHandlers(

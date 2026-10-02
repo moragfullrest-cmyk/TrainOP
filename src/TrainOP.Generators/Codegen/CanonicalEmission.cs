@@ -24,7 +24,8 @@ namespace TrainOP.Generators
             var names = NamingScope.ForDelegate(merged.DelegateTypeId, handlerBinding, metadata.ReturnMembers);
             var context = CodegenContext.ForCanonical(
                 names,
-                handlerBinding.ReturnShape.HasDefaultItemNTupleElements);
+                handlerBinding.ReturnShape.HasDefaultItemNTupleElements,
+                OptionalFallbackSites.WhenTheyDiffer(handlerBinding, merged.ChainBindings));
             if (emitMetadata)
             {
                 handlerBinding.Input.EmitMetadataFields(writer, names, metadata.ReturnMembers);

@@ -125,6 +125,7 @@ namespace TrainOP.Generators.Tests
                 includeRedSignal: false,
                 includeSignalIssue: false,
                 includeSignalIssues: false,
+                includeVisitJournal: false,
                 hasCancellationToken: false);
             var output = HandlerOutputParameters.From(returnShape);
             return new StationHandlerBinding(input, output, isAsync: false);

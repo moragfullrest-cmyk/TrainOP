@@ -152,9 +152,9 @@ namespace TrainOP
                 return true;
             }
 
-            if (stationReturn is WhitePass)
+            if (stationReturn is WhitePass white)
             {
-                signal = RailwaySignals.Green();
+                signal = white;
                 return true;
             }
 
@@ -173,8 +173,7 @@ namespace TrainOP
         /// </summary>
         private static Signal MapRedFailure(RedFailure fail, string stationName)
         {
-            var issue = new SignalIssue(fail.Code, fail.Message, stationName);
-            return RailwaySignals.Red(issue, fail.PriorIssues);
+            return fail.ToRedSignal(stationName);
         }
 
     }

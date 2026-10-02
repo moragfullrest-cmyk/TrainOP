@@ -42,6 +42,7 @@ namespace TrainOP.Generators
                 emittedCount++;
             }
 
+            RouteSegmentEmitter.Emit(writer, schemas);
             writer.EmitExtensionFileFooter();
             return writer.ToString();
         }

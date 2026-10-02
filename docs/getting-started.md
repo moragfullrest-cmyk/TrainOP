@@ -14,7 +14,7 @@ dotnet add package TrainOP
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="TrainOP" Version="0.18.0" />
+  <PackageReference Include="TrainOP" Version="0.19.0" />
 </ItemGroup>
 ```
 

@@ -35,7 +35,9 @@ namespace TrainOP.Tests.DataOriented
             var report = PaymentRoute.BuildInvalidAmount().Travel();
 
             Assert.False(report.ReachedDestination);
-            Assert.Equal(2, report.Visits.Count);
+            Assert.Equal(3, report.Visits.Count);
+            Assert.Equal(HopOutcome.Skipped, report.Visits[2].Outcome);
+            Assert.Equal("MustNotRun", report.Visits[2].StationName);
             var red = Assert.IsType<RedSignal>(report.TerminalSignal);
             Assert.Equal("INVALID_TOTAL", red.Issue.Code);
             Assert.Equal("Validate", red.Issue.StationName);

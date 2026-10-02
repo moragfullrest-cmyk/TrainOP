@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using TrainOP.Generators.Chain;
 using TrainOP.Generators.Handlers;
 
 namespace TrainOP.Generators
@@ -17,7 +19,9 @@ namespace TrainOP.Generators
             bool allowTypedMerge,
             string inputNamesVariable,
             string stationLabelExpression,
-            NamingScope names)
+            NamingScope names,
+            string callerChainKeyExpression,
+            IReadOnlyList<ChainSiteBinding> optionalFallbackSites)
         {
             Pull = pull;
             UseNeutralWagonNames = useNeutralWagonNames;
@@ -29,6 +33,8 @@ namespace TrainOP.Generators
             InputNamesVariable = inputNamesVariable;
             StationLabelExpression = stationLabelExpression;
             Names = names;
+            CallerChainKeyExpression = callerChainKeyExpression;
+            OptionalFallbackSites = optionalFallbackSites;
         }
 
         /// <summary>How wagon pull statements are emitted inside the adapter body.</summary>
@@ -64,10 +70,21 @@ namespace TrainOP.Generators
         /// <summary>Generated field and method names for this delegate group.</summary>
         public NamingScope Names { get; }
 
+        /// <summary>Expression that reads the caller chain key inside the adapter lambda.</summary>
+        public string CallerChainKeyExpression { get; }
+
+        /// <summary>
+        /// Call sites whose optional-wagon substitutes differ. Null when every site shares one substitute.
+        /// </summary>
+        public IReadOnlyList<ChainSiteBinding> OptionalFallbackSites { get; }
+
         /// <summary>
         /// Context for canonical adapters with static metadata fields.
         /// </summary>
-        public static CodegenContext ForCanonical(NamingScope names, bool allocateDefaultItemN)
+        public static CodegenContext ForCanonical(
+            NamingScope names,
+            bool allocateDefaultItemN,
+            IReadOnlyList<ChainSiteBinding> optionalFallbackSites = null)
         {
             return new CodegenContext(
                 PullStrategy.LiteralNames,
@@ -79,13 +96,18 @@ namespace TrainOP.Generators
                 allowTypedMerge: true,
                 inputNamesVariable: "inputNames",
                 stationLabelExpression: "stationName",
-                names);
+                names,
+                callerChainKeyExpression: "route.CallerChainKey",
+                optionalFallbackSites);
         }
 
         /// <summary>
         /// Context for chain-dispatch adapters with runtime binding locals.
         /// </summary>
-        public static CodegenContext ForChain(NamingScope names, bool allowTypedMerge = true)
+        public static CodegenContext ForChain(
+            NamingScope names,
+            bool allowTypedMerge = true,
+            IReadOnlyList<ChainSiteBinding> optionalFallbackSites = null)
         {
             return new CodegenContext(
                 PullStrategy.NameArray,
@@ -97,7 +119,9 @@ namespace TrainOP.Generators
                 allowTypedMerge: allowTypedMerge,
                 inputNamesVariable: "inputNames",
                 stationLabelExpression: "stationName",
-                names);
+                names,
+                callerChainKeyExpression: "chainKey",
+                optionalFallbackSites);
         }
     }
 }

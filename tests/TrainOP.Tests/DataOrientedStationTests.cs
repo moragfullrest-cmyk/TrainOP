@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -114,7 +116,10 @@ namespace TrainOP.Tests.DataOriented
             var report = route.Travel();
 
             Assert.False(report.ReachedDestination);
-            Assert.Equal(2, report.Visits.Count);
+            Assert.Equal(3, report.Visits.Count);
+            Assert.Equal(HopOutcome.Skipped, report.Visits[2].Outcome);
+            Assert.Equal("MustNotRun", report.Visits[2].StationName);
+            Assert.Equal(2, report.Visits[2].Index);
             var red = Assert.IsType<RedSignal>(report.TerminalSignal);
             Assert.Equal("INVALID_TOTAL", red.Issue.Code);
             Assert.Equal("Validate", red.Issue.StationName);
@@ -201,8 +206,10 @@ namespace TrainOP.Tests.DataOriented
             var report = route.Travel();
 
             Assert.False(report.ReachedDestination);
-            Assert.Equal(3, report.Visits.Count);
-            Assert.DoesNotContain(report.Visits, visit => visit.StationName == "MustNotRun");
+            Assert.Equal(4, report.Visits.Count);
+            Assert.Equal(HopOutcome.Skipped, report.Visits[3].Outcome);
+            Assert.Equal("MustNotRun", report.Visits[3].StationName);
+            Assert.Equal(3, report.Visits[3].Index);
             var red = Assert.IsType<RedSignal>(report.TerminalSignal);
             Assert.Equal("CANNOT_RECOVER", red.Issue.Code);
             Assert.Equal("Recovery", red.Issue.StationName);
@@ -259,8 +266,10 @@ namespace TrainOP.Tests.DataOriented
             var report = route.Travel();
 
             Assert.False(report.ReachedDestination);
-            Assert.Equal(4, report.Visits.Count);
-            Assert.DoesNotContain(report.Visits, visit => visit.StationName == "MustNotRun");
+            Assert.Equal(5, report.Visits.Count);
+            Assert.Equal(HopOutcome.Skipped, report.Visits[4].Outcome);
+            Assert.Equal("MustNotRun", report.Visits[4].StationName);
+            Assert.Equal(4, report.Visits[4].Index);
             var red = Assert.IsType<RedSignal>(report.TerminalSignal);
             Assert.Equal("SKIP_SECOND", red.Issue.Code);
             Assert.Equal("Second", red.Issue.StationName);
@@ -317,7 +326,10 @@ namespace TrainOP.Tests.DataOriented
             var report = route.Travel();
 
             Assert.True(report.ReachedDestination);
-            Assert.DoesNotContain(report.Visits, visit => visit.StationName == "TooEarly");
+            Assert.Equal(HopOutcome.Skipped, report.Visits[1].Outcome);
+            Assert.Equal("TooEarly", report.Visits[1].StationName);
+            Assert.Equal(1, report.Visits[1].Index);
+            Assert.Equal(TimeSpan.Zero, report.Visits[1].Elapsed);
             Assert.Equal(10, report.Manifest.PullWagon<int>("value"));
         }
 
@@ -346,25 +358,22 @@ namespace TrainOP.Tests.DataOriented
         }
 
         /// <summary>
-        /// Verifies that White on ServiceStation does not write ref mutations back to the manifest.
+        /// Verifies that a green ServiceStation return updates an existing wagon.
         /// </summary>
         [Fact]
-        public void ServiceStation_Pass_DoesNotWritebackRefMutations()
+        public void ServiceStation_GreenReturn_UpdatesExistingWagon()
         {
             var route = new TrainRoute()
                 .Station("Seed", () => new { value = 0 })
                 .Station("Validate", (int value) => RailwaySignals.Red("NON_POSITIVE", "value must be positive"))
-                .ServiceStation("Recovery", (ref int value, RedSignal red) =>
-                {
-                    value = 1;
-                    return RailwaySignals.White;
-                })
+                .ServiceStation("Recovery", (int value, RedSignal red) =>
+                    RailwaySignals.Green(new { value = 1 }))
                 .Station("Double", (int value) => new { value = value * 2 });
 
             var report = route.Travel();
 
             Assert.True(report.ReachedDestination);
-            Assert.Equal(0, report.Manifest.PullWagon<int>("value"));
+            Assert.Equal(2, report.Manifest.PullWagon<int>("value"));
         }
 
         /// <summary>
@@ -469,6 +478,46 @@ namespace TrainOP.Tests.DataOriented
 
             Assert.Equal("external", report.Manifest.PullWagon<string>("paymentId"));
             Assert.Equal(10m, report.Manifest.PullWagon<decimal>("amount"));
+        }
+
+        /// <summary>
+        /// Verifies that a service station receives visits recorded before it, and an empty list when the journal is off.
+        /// </summary>
+        [Fact]
+        public void ServiceStation_VisitJournal_SeesStepsBeforeItself()
+        {
+            IReadOnlyList<StationVisit> seen = null;
+            var route = new TrainRoute()
+                .Station("Seed", () => new { value = 1 })
+                .Station("Halt", (int value) => RailwaySignals.Red("HALT", "stop"))
+                .ServiceStation("Fix", (int value, SignalIssue issue, IReadOnlyList<StationVisit> visits) =>
+                {
+                    seen = visits;
+                    return issue.Code == "HALT"
+                        ? RailwaySignals.Green(new { value })
+                        : RailwaySignals.Red("NOPE", "no");
+                });
+
+            var report = route.Travel();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal(3, report.Visits.Count);
+            Assert.Equal(2, seen.Count);
+            Assert.Equal("Seed", seen[0].StationName);
+            Assert.Equal(HopOutcome.Green, seen[0].Outcome);
+            Assert.Equal(0, seen[0].Index);
+            Assert.Equal("Halt", seen[1].StationName);
+            Assert.Equal(HopOutcome.Red, seen[1].Outcome);
+            Assert.Equal(1, seen[1].Index);
+            Assert.Equal("Fix", report.Visits[2].StationName);
+
+            seen = null;
+            var light = route.TravelLight();
+
+            Assert.True(light.ReachedDestination);
+            Assert.Empty(light.Visits);
+            Assert.NotNull(seen);
+            Assert.Empty(seen);
         }
 
         /// <summary>

@@ -18,7 +18,10 @@ namespace TrainOP.Generators
             var names = NamingScope.ForDelegate(merged.DelegateTypeId, handlerBinding, merged.ReturnMembers);
             // Non-mergeable return shapes share one CLR Func; bake merge from the canonical binding
             // would apply the wrong ItemN / member-name plan to other call sites.
-            var context = CodegenContext.ForChain(names, allowTypedMerge: !merged.RequiresPerSiteReturnMetadata());
+            var context = CodegenContext.ForChain(
+                names,
+                allowTypedMerge: !merged.RequiresPerSiteReturnMetadata(),
+                optionalFallbackSites: OptionalFallbackSites.WhenTheyDiffer(handlerBinding, merged.ChainBindings));
             var table = new ChainBindingTable(names, merged.ChainBindings, handlerBinding, merged.ReturnMembers);
             table.Emit(writer);
             writer.AppendLine();

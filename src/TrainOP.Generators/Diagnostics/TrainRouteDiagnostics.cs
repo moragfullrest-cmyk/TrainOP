@@ -226,5 +226,38 @@ namespace TrainOP.Generators
             category: "TrainOP.Generators",
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when <c>Travel</c> or <c>TravelLight</c> runs a chain the graph already knows contains an async station.
+        /// </summary>
+        public static readonly DiagnosticDescriptor SyncTravelOnAsyncChain = new DiagnosticDescriptor(
+            id: "TOP021",
+            title: "Synchronous Travel on an async chain",
+            messageFormat: "Synchronous '{0}' runs a chain that contains an async station; call '{0}Async' instead",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when a wagon parameter default is not a constant the generator can substitute.
+        /// </summary>
+        public static readonly DiagnosticDescriptor NonConstantWagonDefault = new DiagnosticDescriptor(
+            id: "TOP022",
+            title: "Wagon default is not a constant",
+            messageFormat: "Station '{0}' wagon '{1}' has a non-constant default; only a constant can be substituted when the key is missing",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        /// <summary>
+        /// Reported when a ServiceStation wagon is <c>ref</c> or <c>out</c>.
+        /// </summary>
+        public static readonly DiagnosticDescriptor ServiceStationWriteback = new DiagnosticDescriptor(
+            id: "TOP023",
+            title: "ServiceStation wagon uses ref or out",
+            messageFormat: "ServiceStation '{0}' wagon '{1}' is ref or out; update an existing wagon by returning it from a green result",
+            category: "TrainOP.Generators",
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }

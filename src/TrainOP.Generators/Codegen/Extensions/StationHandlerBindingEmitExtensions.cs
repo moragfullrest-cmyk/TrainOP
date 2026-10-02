@@ -28,23 +28,28 @@ namespace TrainOP.Generators
                 writer.AppendLine("if (handler == null) throw new ArgumentNullException(nameof(handler));");
                 if (incrementChainOrdinal)
                 {
-                    writer.AppendLine("route.NextChainRegistrationOrdinal();");
+                    writer.AppendLine("var chainStationIndex = route.NextChainRegistrationOrdinal();");
                 }
 
-                schema.EmitAdapterBody(writer, context);
+                schema.EmitAdapterBody(writer, context, attachSegments: incrementChainOrdinal);
             }
         }
 
         /// <summary>
-        /// Emits <c>return route.ServiceStation/RegisterStation(..., =&gt; { ... });</c> for one schema.
+        /// Emits the registration call for one schema.
+        /// When <paramref name="attachSegments"/> is true, the call is wrapped in <c>AttachRouteSegments</c>.
         /// </summary>
         internal static void EmitAdapterBody(
             this StationHandlerBinding schema,
             CodegenWriter writer,
-            CodegenContext context)
+            CodegenContext context,
+            bool attachSegments = false)
         {
-            EmitRegistrationOpen(writer, schema, context.StationLabelExpression);
-            using (writer.Block(closeSuffix: ");"))
+            EmitRegistrationOpen(writer, schema, context.StationLabelExpression, attachSegments);
+            var closeSuffix = attachSegments
+                ? "), route.CallerChainKey, chainStationIndex);"
+                : ");";
+            using (writer.Block(closeSuffix: closeSuffix))
             {
                 EmitPull(writer, schema, context);
                 EmitHandlerInvocation(writer, schema, context);
@@ -102,11 +107,9 @@ namespace TrainOP.Generators
                     .Append(names.CoreMethodName)
                     .Append("(route, stationName, handler, ")
                     .Append(names.ResolveChainBindingMethod)
-                    .Append("(chainKey, chainStationIndex));");
+                    .Append("(chainKey, chainStationIndex), chainKey, chainStationIndex);");
                 writer.EndLine();
-                writer.AppendIndented("return AttachStraight_")
-                    .Append(names.DelegateTypeId)
-                    .Append("(registered, chainKey, chainStationIndex);");
+                writer.AppendIndented("return AttachRouteSegments(registered, chainKey, chainStationIndex);");
                 writer.EndLine();
             }
 
@@ -118,7 +121,7 @@ namespace TrainOP.Generators
                 .Append(handlerTypeName)
                 .Append(" handler, ")
                 .Append(ChainBindingTypes.BindingTypeName)
-                .Append(" binding)");
+                .Append(" binding, string chainKey, int chainStationIndex)");
             writer.EndLine();
             using (writer.Block())
             {
@@ -143,26 +146,35 @@ namespace TrainOP.Generators
         private static void EmitRegistrationOpen(
             CodegenWriter writer,
             StationHandlerBinding schema,
-            string stationLabelExpression)
+            string stationLabelExpression,
+            bool attachSegments)
         {
+            var routePrefix = attachSegments ? "return AttachRouteSegments(route." : "return route.";
             if (schema.IsServiceStation)
             {
+                var adapterParameters = schema.IncludeVisitJournal
+                    ? "(red, manifest, visits, token)"
+                    : "(red, manifest, token)";
                 if (schema.IsAsync)
                 {
-                    writer.AppendIndented("return route.")
+                    writer.AppendIndented(routePrefix)
                         .Append(TrainRouteMethodNames.ServiceStation)
                         .Append("(")
                         .Append(stationLabelExpression)
-                        .Append(", async (red, manifest, token) =>");
+                        .Append(", async ")
+                        .Append(adapterParameters)
+                        .Append(" =>");
                     writer.EndLine();
                 }
                 else
                 {
-                    writer.AppendIndented("return route.")
+                    writer.AppendIndented(routePrefix)
                         .Append(TrainRouteMethodNames.ServiceStation)
                         .Append("(")
                         .Append(stationLabelExpression)
-                        .Append(", (red, manifest, token) =>");
+                        .Append(", ")
+                        .Append(adapterParameters)
+                        .Append(" =>");
                     writer.EndLine();
                 }
 
@@ -171,21 +183,24 @@ namespace TrainOP.Generators
 
             if (schema.IsAsync)
             {
-                writer.AppendIndented("return route.RegisterStation(")
+                writer.AppendIndented(routePrefix)
+                    .Append("RegisterStation(")
                     .Append(stationLabelExpression)
                     .Append(", async (manifest, token) =>");
                 writer.EndLine();
             }
             else if (schema.HasCancellationToken)
             {
-                writer.AppendIndented("return route.RegisterStation(")
+                writer.AppendIndented(routePrefix)
+                    .Append("RegisterStation(")
                     .Append(stationLabelExpression)
                     .Append(", (manifest, token) =>");
                 writer.EndLine();
             }
             else
             {
-                writer.AppendIndented("return route.RegisterStation(")
+                writer.AppendIndented(routePrefix)
+                    .Append("RegisterStation(")
                     .Append(stationLabelExpression)
                     .Append(", manifest =>");
                 writer.EndLine();
@@ -200,7 +215,9 @@ namespace TrainOP.Generators
                 {
                     schema.Wagons[i].EmitPull(
                         writer,
-                        PullContext.NameArray(i, context.InputNamesVariable));
+                        PullContext.NameArray(i, context.InputNamesVariable),
+                        context,
+                        i);
                 }
 
                 return;
@@ -208,7 +225,7 @@ namespace TrainOP.Generators
 
             for (var i = 0; i < schema.Wagons.Length; i++)
             {
-                schema.Wagons[i].EmitPull(writer, PullContext.Literal(schema.Wagons[i]));
+                schema.Wagons[i].EmitPull(writer, PullContext.Literal(schema.Wagons[i]), context, i);
             }
         }
 
@@ -232,7 +249,8 @@ namespace TrainOP.Generators
                 tokenVariable,
                 redVariable,
                 signalIssue,
-                signalIssues);
+                signalIssues,
+                "visits");
 
             var stationReturnType = GetStationReturnTypeDisplay(schema);
             if (schema.IsAsync)

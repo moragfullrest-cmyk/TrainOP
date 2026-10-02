@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -97,6 +99,62 @@ namespace TrainOP.Tests.DataOriented
             Assert.False(report.ReachedDestination);
             Assert.Equal("ERR", report.FailureCode);
             Assert.Equal("bad value", report.FailureMessage);
+        }
+
+        /// <summary>
+        /// Verifies that the report keeps a shallow key snapshot and does not expose a writable dictionary.
+        /// </summary>
+        [Fact]
+        public void RouteReport_SnapshotsKeys_SharesReferenceValues()
+        {
+            var box = new WagonBox { Value = 1 };
+            var live = new CargoManifest()
+                .LoadWagon("id", "a")
+                .LoadWagon("box", box);
+            var report = new RouteReport(new StationVisit[0], RailwaySignals.Green(), live);
+
+            live.LoadWagon("id", "b");
+            live.LoadWagon("extra", 1);
+            box.Value = 2;
+
+            Assert.Equal("a", report.Get<string>("id"));
+            Assert.False(report.TryGet<int>("extra", out var extra));
+            Assert.Equal(0, extra);
+            Assert.True(report.TryGet<WagonBox>("box", out var seen));
+            Assert.Same(box, seen);
+            Assert.Equal(2, seen.Value);
+
+            var view = report.Manifest.InspectWagons();
+            Assert.Throws<InvalidCastException>(() =>
+            {
+                var dictionary = (Dictionary<string, object>)view;
+                dictionary["id"] = "rewritten";
+            });
+            Assert.Equal("a", report.Get<string>("id"));
+        }
+
+        /// <summary>
+        /// Verifies TryGet returns false for a missing wagon and throws when the stored type does not match.
+        /// </summary>
+        [Fact]
+        public void TryGet_MissingWagon_ReturnsFalse_WrongTypeThrows()
+        {
+            var report = new RouteReport(
+                new StationVisit[0],
+                RailwaySignals.Green(),
+                new CargoManifest().LoadWagon("id", "a"));
+
+            Assert.True(report.TryGet<string>("id", out var id));
+            Assert.Equal("a", id);
+            Assert.False(report.TryGet<string>("missing", out var missing));
+            Assert.Null(missing);
+            Assert.Throws<InvalidCastException>(() => report.TryGet<int>("id", out _));
+            Assert.Throws<ArgumentException>(() => report.TryGet<string>(" ", out _));
+        }
+
+        private sealed class WagonBox
+        {
+            public int Value { get; set; }
         }
 
         private static class PaymentRoute

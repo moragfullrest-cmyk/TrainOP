@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -196,14 +198,100 @@ namespace TrainOP
     }
 
     /// <summary>
+    /// Read-only snapshot of wagon keys. Values are the same references as the trip manifest.
+    /// <see cref="InspectWagons"/> is a wrapper, not the live <see cref="Dictionary{TKey,TValue}"/>.
+    /// </summary>
+    public sealed class ReadOnlyManifest
+    {
+        private readonly Dictionary<string, object> _wagons;
+        private readonly ReadOnlyDictionary<string, object> _view;
+
+        /// <summary>
+        /// Copies keys from <paramref name="source"/>. Reference values stay shared.
+        /// </summary>
+        public ReadOnlyManifest(CargoManifest source)
+        {
+            if (source == null)
+            {
+                throw new ArgumentNullException(nameof(source));
+            }
+
+            _wagons = new Dictionary<string, object>();
+            foreach (var pair in source.InspectWagons())
+            {
+                _wagons[pair.Key] = pair.Value;
+            }
+
+            _view = new ReadOnlyDictionary<string, object>(_wagons);
+        }
+
+        /// <summary>
+        /// Checks whether a wagon with the specified name exists.
+        /// </summary>
+        public bool HasWagon(string wagonName)
+        {
+            if (string.IsNullOrWhiteSpace(wagonName))
+            {
+                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
+            }
+
+            return _wagons.ContainsKey(wagonName);
+        }
+
+        /// <summary>
+        /// Tries to read a wagon value by name without throwing when the wagon is missing.
+        /// </summary>
+        public bool TryGetWagon(string wagonName, out object cargo)
+        {
+            if (string.IsNullOrWhiteSpace(wagonName))
+            {
+                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
+            }
+
+            return _wagons.TryGetValue(wagonName, out cargo);
+        }
+
+        /// <summary>
+        /// Reads a typed wagon value by name.
+        /// </summary>
+        public T PullWagon<T>(string wagonName)
+        {
+            if (string.IsNullOrWhiteSpace(wagonName))
+            {
+                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
+            }
+
+            if (!_wagons.TryGetValue(wagonName, out var value))
+            {
+                throw new KeyNotFoundException($"Wagon '{wagonName}' was not found in the manifest.");
+            }
+
+            return CargoManifest.CastWagonValue<T>(wagonName, value);
+        }
+
+        /// <summary>
+        /// Returns a read-only view that cannot be cast to <see cref="Dictionary{TKey,TValue}"/>.
+        /// </summary>
+        public IReadOnlyDictionary<string, object> InspectWagons()
+        {
+            return _view;
+        }
+    }
+
+    /// <summary>
     /// Describes a red signal reason.
     /// </summary>
     public sealed class SignalIssue
     {
         /// <summary>
-        /// Creates a signal issue.
+        /// Creates a signal issue. A null <paramref name="details"/> dictionary is stored as empty.
         /// </summary>
-        public SignalIssue(string code, string message, string stationName, Exception exception = null)
+        public SignalIssue(
+            string code,
+            string message,
+            string stationName,
+            Exception exception = null,
+            IReadOnlyDictionary<string, object> details = null)
         {
             if (string.IsNullOrWhiteSpace(code))
             {
@@ -219,6 +307,7 @@ namespace TrainOP
             Message = message;
             StationName = stationName ?? string.Empty;
             Exception = exception;
+            Details = CopyDetails(details);
         }
 
         /// <summary>
@@ -240,6 +329,44 @@ namespace TrainOP
         /// Gets the optional exception that caused the issue.
         /// </summary>
         public Exception Exception { get; }
+
+        /// <summary>
+        /// Gets application data attached to this issue. Empty when the station supplied none.
+        /// </summary>
+        public IReadOnlyDictionary<string, object> Details { get; }
+
+        /// <summary>
+        /// Returns a copy whose station name is <paramref name="stationName"/> when this issue has none.
+        /// An existing name and <see cref="Exception"/> stay as they are.
+        /// </summary>
+        internal SignalIssue WithStationNameIfEmpty(string stationName)
+        {
+            if (!string.IsNullOrEmpty(StationName))
+            {
+                return this;
+            }
+
+            return new SignalIssue(Code, Message, stationName, Exception, Details);
+        }
+
+        internal static IReadOnlyDictionary<string, object> CopyDetails(IReadOnlyDictionary<string, object> details)
+        {
+            if (details == null || details.Count == 0)
+            {
+                return EmptyDetails;
+            }
+
+            var copy = new Dictionary<string, object>(details.Count);
+            foreach (var pair in details)
+            {
+                copy.Add(pair.Key, pair.Value);
+            }
+
+            return copy;
+        }
+
+        private static readonly IReadOnlyDictionary<string, object> EmptyDetails =
+            new Dictionary<string, object>();
     }
 
     /// <summary>
@@ -296,7 +423,7 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Creates a red signal with an ordered issue chain (earliest/root first, immediate stop last).
+        /// Creates a red signal with the issues of one stop, in the given order.
         /// </summary>
         public RedSignal(IReadOnlyList<SignalIssue> issues)
         {
@@ -311,16 +438,16 @@ namespace TrainOP
                 _issues[i] = issues[i] ?? throw new ArgumentException("Issue entries cannot be null.", nameof(issues));
             }
 
-            Issue = _issues[_issues.Length - 1];
+            Issue = _issues[0];
         }
 
         /// <summary>
-        /// Gets the issue that stopped the route at this hop (last entry in <see cref="Issues"/>).
+        /// Gets the first issue of this stop. <see cref="RouteReport.FailureCode"/> reads the same entry.
         /// </summary>
         public SignalIssue Issue { get; }
 
         /// <summary>
-        /// Gets the ordered issue chain from nested/root causes through the immediate stop.
+        /// Gets the issues of this stop, in the order they were supplied.
         /// </summary>
         public IReadOnlyList<SignalIssue> Issues => _issues;
 
@@ -368,34 +495,6 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Creates a red signal with prior nested issues followed by the immediate stop issue.
-        /// </summary>
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public static RedSignal Red(
-            SignalIssue issue,
-            IReadOnlyList<SignalIssue> priorIssues)
-        {
-            if (issue == null)
-            {
-                throw new ArgumentNullException(nameof(issue));
-            }
-
-            if (priorIssues == null || priorIssues.Count == 0)
-            {
-                return new RedSignal(issue);
-            }
-
-            var combined = new SignalIssue[priorIssues.Count + 1];
-            for (var i = 0; i < priorIssues.Count; i++)
-            {
-                combined[i] = priorIssues[i] ?? throw new ArgumentException("Prior issue entries cannot be null.", nameof(priorIssues));
-            }
-
-            combined[priorIssues.Count] = issue;
-            return new RedSignal(combined);
-        }
-
-        /// <summary>
         /// Creates a red signal request for data-oriented handlers.
         /// The station name is filled in by generated adapters.
         /// </summary>
@@ -405,39 +504,132 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Creates a red signal request that preserves issues from a nested route failure.
-        /// Prior issues are ordered root-first; the adapter appends this station's issue last.
+        /// Creates a red signal request with one issue and the supplied details.
+        /// A null <paramref name="details"/> dictionary is stored as empty.
+        /// The station name is filled in by generated adapters.
         /// </summary>
-        public static RedFailure Red(string code, string message, IReadOnlyList<SignalIssue> priorIssues)
+        public static RedFailure Red(string code, string message, IReadOnlyDictionary<string, object> details)
         {
-            return new RedFailure(code, message, priorIssues);
+            return new RedFailure(code, message, details);
+        }
+
+        /// <summary>
+        /// Creates a red signal request for one or more issues of the same stop, in array order.
+        /// Not <c>params</c>: a single <see cref="SignalIssue"/> selects <see cref="Red(SignalIssue)"/>.
+        /// An empty array throws <see cref="ArgumentException"/>.
+        /// </summary>
+        public static RedFailure Red(SignalIssue[] issues)
+        {
+            return new RedFailure(issues);
         }
     }
 
     /// <summary>
-    /// Represents one executed station and whether it returned a green signal.
-    /// Failure details are available only from <see cref="RouteReport.TerminalSignal"/>.
+    /// Outcome of one plan step in the visit journal.
+    /// </summary>
+    public enum HopOutcome
+    {
+        /// <summary>
+        /// The station ran and returned green.
+        /// </summary>
+        Green = 0,
+
+        /// <summary>
+        /// The station ran and returned lunar white. The route still continues.
+        /// </summary>
+        White = 1,
+
+        /// <summary>
+        /// The station ran and returned red.
+        /// </summary>
+        Red = 2,
+
+        /// <summary>
+        /// The plan bypassed this step. Written only when the journal is enabled.
+        /// </summary>
+        Skipped = 3,
+    }
+
+    /// <summary>
+    /// One plan step in the visit journal: name, outcome, plan index, and elapsed time.
+    /// Failure details stay on <see cref="RouteReport.TerminalSignal"/>.
     /// </summary>
     public readonly struct StationVisit
     {
         /// <summary>
-        /// Creates station visit information.
+        /// Creates a green or red visit at index 0 with zero elapsed time.
         /// </summary>
         public StationVisit(string stationName, bool isGreen)
+            : this(stationName, isGreen ? HopOutcome.Green : HopOutcome.Red, 0, TimeSpan.Zero)
         {
-            StationName = stationName ?? throw new ArgumentNullException(nameof(stationName));
-            IsGreen = isGreen;
         }
 
         /// <summary>
-        /// Gets the executed station name.
+        /// Creates a visit for one plan step.
+        /// </summary>
+        public StationVisit(string stationName, HopOutcome outcome, int index, TimeSpan elapsed)
+        {
+            StationName = stationName ?? throw new ArgumentNullException(nameof(stationName));
+            if (!Enum.IsDefined(typeof(HopOutcome), outcome))
+            {
+                throw new ArgumentOutOfRangeException(nameof(outcome));
+            }
+
+            if (index < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
+
+            if (elapsed < TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(elapsed));
+            }
+
+            Outcome = outcome;
+            Index = index;
+            Elapsed = elapsed;
+        }
+
+        /// <summary>
+        /// Elapsed time from <paramref name="startedTimestamp"/>, taken with <see cref="Stopwatch.GetTimestamp"/>.
+        /// A non-positive delta is <see cref="TimeSpan.Zero"/>.
+        /// </summary>
+        public static TimeSpan ElapsedSince(long startedTimestamp)
+        {
+            var delta = Stopwatch.GetTimestamp() - startedTimestamp;
+            if (delta <= 0)
+            {
+                return TimeSpan.Zero;
+            }
+
+            return TimeSpan.FromTicks((long)(delta * (TimeSpan.TicksPerSecond / (double)Stopwatch.Frequency)));
+        }
+
+        /// <summary>
+        /// Gets the station name.
         /// </summary>
         public string StationName { get; }
 
         /// <summary>
-        /// Gets whether the station returned a green signal on this hop.
+        /// Gets how this plan step ended.
         /// </summary>
-        public bool IsGreen { get; }
+        public HopOutcome Outcome { get; }
+
+        /// <summary>
+        /// Gets the step index in the plan. Duplicate names stay distinguishable by this index.
+        /// </summary>
+        public int Index { get; }
+
+        /// <summary>
+        /// Gets how long the step ran. A skipped step is <see cref="TimeSpan.Zero"/>.
+        /// </summary>
+        public TimeSpan Elapsed { get; }
+
+        /// <summary>
+        /// Gets whether the route continued after this step.
+        /// True for <see cref="HopOutcome.Green"/> and <see cref="HopOutcome.White"/>.
+        /// </summary>
+        public bool IsGreen => Outcome == HopOutcome.Green || Outcome == HopOutcome.White;
     }
 
     /// <summary>
@@ -452,7 +644,12 @@ namespace TrainOP
         {
             Visits = visits ?? throw new ArgumentNullException(nameof(visits));
             TerminalSignal = terminalSignal ?? throw new ArgumentNullException(nameof(terminalSignal));
-            Manifest = manifest ?? throw new ArgumentNullException(nameof(manifest));
+            if (manifest == null)
+            {
+                throw new ArgumentNullException(nameof(manifest));
+            }
+
+            Manifest = new ReadOnlyManifest(manifest);
         }
 
         /// <summary>
@@ -466,9 +663,9 @@ namespace TrainOP
         public Signal TerminalSignal { get; }
 
         /// <summary>
-        /// Gets the terminal cargo manifest for this run.
+        /// Gets the terminal wagon snapshot for this run. Keys cannot be loaded or unloaded here.
         /// </summary>
-        public CargoManifest Manifest { get; }
+        public ReadOnlyManifest Manifest { get; }
 
         /// <summary>
         /// Gets whether the route reached its destination with a green signal.
@@ -488,7 +685,7 @@ namespace TrainOP
             TerminalSignal is RedSignal red ? red.Issue.Message : null;
 
         /// <summary>
-        /// Gets the ordered issue chain when the route stopped with a red signal; otherwise empty.
+        /// Gets the issues of the terminal red signal, in stop order; otherwise empty.
         /// </summary>
         public IReadOnlyList<SignalIssue> FailureIssues =>
             TerminalSignal is RedSignal red ? red.Issues : Array.Empty<SignalIssue>();
@@ -523,6 +720,27 @@ namespace TrainOP
 
             return CargoManifest.CastWagonValue<T>(wagonName, value);
         }
+
+        /// <summary>
+        /// Tries to read a typed terminal wagon. Returns false when the name is missing.
+        /// An empty name throws. A present value of the wrong type throws <see cref="InvalidCastException"/>.
+        /// </summary>
+        public bool TryGet<T>(string wagonName, out T value)
+        {
+            if (string.IsNullOrWhiteSpace(wagonName))
+            {
+                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
+            }
+
+            if (!Manifest.TryGetWagon(wagonName, out var cargo))
+            {
+                value = default;
+                return false;
+            }
+
+            value = CargoManifest.CastWagonValue<T>(wagonName, cargo);
+            return true;
+        }
     }
 
     /// <summary>
@@ -536,7 +754,8 @@ namespace TrainOP
     {
         private readonly List<StationPlan> _route = new List<StationPlan>();
         private readonly string _callerChainKey;
-        private Func<bool, RouteReport> _straightTravel;
+        private List<StationPlan> _sealedRoute;
+        private bool _planSealed;
         private int _chainRegistrationOrdinal;
 
         private static string BuildCallerChainKey(string filePath, int lineNumber, string memberName)
@@ -563,12 +782,35 @@ namespace TrainOP
         public string CallerChainKey => _callerChainKey;
 
         /// <summary>
-        /// Attaches a generated straight-chain runner. Later stations replace an earlier runner.
+        /// Attaches a pure segment that starts at <paramref name="startIndex"/> and covers
+        /// <paramref name="length"/> plans already registered on this route.
+        /// The interpreter runs it instead of those hops, writes the manifest at the segment boundary,
+        /// and records one visit per step.
         /// </summary>
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public void AttachStraightTravel(Func<bool, RouteReport> runner)
+        public TrainRoute AttachSegment(
+            int startIndex,
+            int length,
+            Func<CargoManifest, CancellationToken, SegmentVisitLog, int, Signal> runner)
         {
-            _straightTravel = runner;
+            EnsurePlanOpen();
+            if (runner == null)
+            {
+                throw new ArgumentNullException(nameof(runner));
+            }
+
+            if (startIndex < 0
+                || length < 2
+                || startIndex + length > _route.Count
+                || _route[startIndex].IsServiceStation
+                || _route[startIndex].IsAsync)
+            {
+                return this;
+            }
+
+            _route[startIndex].SegmentRunner = runner;
+            _route[startIndex].SegmentLength = length;
+            return this;
         }
 
         /// <summary>
@@ -597,7 +839,7 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(throughStation));
             }
 
-            _route.Add(new StationPlan(stationName, throughStation));
+            AddPlan(new StationPlan(stationName, throughStation));
             return this;
         }
 
@@ -618,7 +860,7 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(throughStationWithToken));
             }
 
-            _route.Add(new StationPlan(stationName, throughStationWithToken));
+            AddPlan(new StationPlan(stationName, throughStationWithToken));
             return this;
         }
 
@@ -639,7 +881,7 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(station));
             }
 
-            _route.Add(new StationPlan(stationName, station));
+            AddPlan(new StationPlan(stationName, station));
             return this;
         }
 
@@ -660,7 +902,7 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(stationWithToken));
             }
 
-            _route.Add(new StationPlan(stationName, stationWithToken));
+            AddPlan(new StationPlan(stationName, stationWithToken));
             return this;
         }
 
@@ -681,7 +923,7 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(throughAsyncStation));
             }
 
-            _route.Add(new StationPlan(stationName, (manifest, _) => throughAsyncStation(manifest)));
+            AddPlan(new StationPlan(stationName, (manifest, _) => throughAsyncStation(manifest)));
             return this;
         }
 
@@ -702,7 +944,7 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(throughAsyncStation));
             }
 
-            _route.Add(new StationPlan(stationName, throughAsyncStation));
+            AddPlan(new StationPlan(stationName, throughAsyncStation));
             return this;
         }
 
@@ -723,7 +965,7 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(asyncStation));
             }
 
-            _route.Add(new StationPlan(stationName, (manifest, _) => asyncStation(manifest)));
+            AddPlan(new StationPlan(stationName, (manifest, _) => asyncStation(manifest)));
             return this;
         }
 
@@ -744,7 +986,7 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(asyncStation));
             }
 
-            _route.Add(new StationPlan(stationName, asyncStation));
+            AddPlan(new StationPlan(stationName, asyncStation));
             return this;
         }
 
@@ -870,6 +1112,27 @@ namespace TrainOP
             string stationName,
             Func<RedSignal, CargoManifest, CancellationToken, Signal> handler)
         {
+            if (handler == null)
+            {
+                throw new ArgumentNullException(nameof(handler));
+            }
+
+            return ServiceStation(
+                stationName,
+                (RedSignal red, CargoManifest manifest, IReadOnlyList<StationVisit> _, CancellationToken token) =>
+                    handler(red, manifest, token));
+        }
+
+        /// <summary>
+        /// Registers a service-station hop with the visit journal and cancellation support in route order.
+        /// Entered only when the previous hop left a red signal; skipped after green.
+        /// <paramref name="handler"/> receives visits already recorded before this hop.
+        /// When the journal is disabled the list is empty. This hop is not in the list.
+        /// </summary>
+        public TrainRoute ServiceStation(
+            string stationName,
+            Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Signal> handler)
+        {
             if (string.IsNullOrWhiteSpace(stationName))
             {
                 throw new ArgumentException("Station name cannot be empty.", nameof(stationName));
@@ -880,7 +1143,7 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(handler));
             }
 
-            _route.Add(new StationPlan(new ServiceStationPlan(stationName, handler)));
+            AddPlan(new StationPlan(new ServiceStationPlan(stationName, handler)));
             return this;
         }
 
@@ -934,6 +1197,27 @@ namespace TrainOP
             string stationName,
             Func<RedSignal, CargoManifest, CancellationToken, Task<Signal>> handler)
         {
+            if (handler == null)
+            {
+                throw new ArgumentNullException(nameof(handler));
+            }
+
+            return ServiceStation(
+                stationName,
+                (RedSignal red, CargoManifest manifest, IReadOnlyList<StationVisit> _, CancellationToken token) =>
+                    handler(red, manifest, token));
+        }
+
+        /// <summary>
+        /// Registers an asynchronous service-station hop with the visit journal and cancellation support in route order.
+        /// Entered only when the previous hop left a red signal; skipped after green.
+        /// <paramref name="handler"/> receives visits already recorded before this hop.
+        /// When the journal is disabled the list is empty. This hop is not in the list.
+        /// </summary>
+        public TrainRoute ServiceStation(
+            string stationName,
+            Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Task<Signal>> handler)
+        {
             if (string.IsNullOrWhiteSpace(stationName))
             {
                 throw new ArgumentException("Station name cannot be empty.", nameof(stationName));
@@ -944,25 +1228,20 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(handler));
             }
 
-            _route.Add(new StationPlan(new ServiceStationPlan(stationName, handler)));
+            AddPlan(new StationPlan(new ServiceStationPlan(stationName, handler)));
             return this;
         }
 
         private const string StationExceptionCode = "STATION_EXCEPTION";
-        private const string ServiceStationExceptionCode = "SERVICE_STATION_EXCEPTION";
 
         /// <summary>
         /// Executes all route hops synchronously and returns the final report.
-        /// Regular stations run after green; service stations run after red; otherwise the hop is skipped.
+        /// Regular stations run after green; service stations run after red.
+        /// A bypassed hop is recorded as skipped when the journal is enabled.
         /// </summary>
         private RouteReport TravelCore(CancellationToken cancellationToken, bool recordVisits)
         {
-            if (_straightTravel != null && !cancellationToken.CanBeCanceled)
-            {
-                return _straightTravel(recordVisits);
-            }
-
-            var route = new List<StationPlan>(_route);
+            var route = SealPlan();
             var current = new CargoManifest();
             var visits = recordVisits ? new List<StationVisit>(route.Count) : null;
             Signal previous = RailwaySignals.Green();
@@ -976,15 +1255,26 @@ namespace TrainOP
                 }
 
                 var plan = route[i];
-                if (!ShouldEnterHop(plan, previous))
+                if (TryRunSegment(plan, i, ref i, current, visits, cancellationToken, ref previous))
                 {
                     continue;
                 }
 
+                if (!ShouldEnterHop(plan, previous))
+                {
+                    if (visits != null)
+                    {
+                        visits.Add(new StationVisit(plan.StationName, HopOutcome.Skipped, i, TimeSpan.Zero));
+                    }
+
+                    continue;
+                }
+
+                var started = Stopwatch.GetTimestamp();
                 var signal = plan.IsServiceStation
-                    ? ExecuteServiceStation(plan, (RedSignal)previous, ref current, cancellationToken)
+                    ? ExecuteServiceStation(plan, (RedSignal)previous, ref current, visits, cancellationToken)
                     : ExecuteStation(plan, ref current, cancellationToken);
-                previous = RecordHop(signal, plan.StationName, visits);
+                previous = RecordHop(signal, plan.StationName, i, StationVisit.ElapsedSince(started), visits);
             }
 
             return new RouteReport(
@@ -995,11 +1285,12 @@ namespace TrainOP
 
         /// <summary>
         /// Executes all route hops asynchronously and returns the final report.
-        /// Regular stations run after green; service stations run after red; otherwise the hop is skipped.
+        /// Regular stations run after green; service stations run after red.
+        /// A bypassed hop is recorded as skipped when the journal is enabled.
         /// </summary>
         private async Task<RouteReport> TravelCoreAsync(CancellationToken cancellationToken, bool recordVisits)
         {
-            var route = new List<StationPlan>(_route);
+            var route = SealPlan();
             var manifest = new ManifestHolder(new CargoManifest());
             var visits = recordVisits ? new List<StationVisit>(route.Count) : null;
             Signal previous = RailwaySignals.Green();
@@ -1013,19 +1304,31 @@ namespace TrainOP
                 }
 
                 var plan = route[i];
-                if (!ShouldEnterHop(plan, previous))
+                if (TryRunSegment(plan, i, ref i, manifest.Current, visits, cancellationToken, ref previous))
                 {
                     continue;
                 }
 
+                if (!ShouldEnterHop(plan, previous))
+                {
+                    if (visits != null)
+                    {
+                        visits.Add(new StationVisit(plan.StationName, HopOutcome.Skipped, i, TimeSpan.Zero));
+                    }
+
+                    continue;
+                }
+
+                var started = Stopwatch.GetTimestamp();
                 var signal = plan.IsServiceStation
                     ? await ExecuteServiceStationAsync(
                         plan,
                         (RedSignal)previous,
                         manifest,
+                        visits,
                         cancellationToken).ConfigureAwait(false)
                     : await ExecuteStationAsync(plan, manifest, cancellationToken).ConfigureAwait(false);
-                previous = RecordHop(signal, plan.StationName, visits);
+                previous = RecordHop(signal, plan.StationName, i, StationVisit.ElapsedSince(started), visits);
             }
 
             return new RouteReport(
@@ -1045,6 +1348,66 @@ namespace TrainOP
             }
 
             public CargoManifest Current { get; set; }
+        }
+
+        /// <summary>
+        /// Copies the plan on the first travel and rejects later registration.
+        /// </summary>
+        private List<StationPlan> SealPlan()
+        {
+            if (_planSealed)
+            {
+                return _sealedRoute;
+            }
+
+            _sealedRoute = new List<StationPlan>(_route);
+            _planSealed = true;
+            return _sealedRoute;
+        }
+
+        /// <summary>
+        /// Throws when the plan was already copied by a travel.
+        /// </summary>
+        private void EnsurePlanOpen()
+        {
+            if (_planSealed)
+            {
+                throw new InvalidOperationException(
+                    "The route plan is sealed after the first travel. Pass request data in a wagon, or create a new TrainRoute for another plan.");
+            }
+        }
+
+        /// <summary>
+        /// Appends a hop while the plan is still open.
+        /// </summary>
+        private void AddPlan(StationPlan plan)
+        {
+            EnsurePlanOpen();
+            _route.Add(plan);
+        }
+
+        /// <summary>
+        /// Runs a pure segment stored on the first hop and advances the interpreter past it.
+        /// A skipped entry stays a normal hop so each later plan is recorded on its own.
+        /// </summary>
+        private static bool TryRunSegment(
+            StationPlan plan,
+            int index,
+            ref int i,
+            CargoManifest manifest,
+            List<StationVisit> visits,
+            CancellationToken cancellationToken,
+            ref Signal previous)
+        {
+            if (plan.SegmentRunner == null || plan.SegmentLength < 2 || !ShouldEnterHop(plan, previous))
+            {
+                return false;
+            }
+
+            var log = visits == null ? null : new SegmentVisitLog(visits);
+            previous = plan.SegmentRunner(manifest, cancellationToken, log, index);
+            i += plan.SegmentLength - 1;
+            return true;
         }
 
         /// <summary>
@@ -1177,12 +1540,33 @@ namespace TrainOP
         }
 
         /// <summary>
+        /// Copies visits recorded before the current hop.
+        /// A disabled journal yields an empty list, so a service station does not receive null.
+        /// </summary>
+        private static IReadOnlyList<StationVisit> JournalSoFar(List<StationVisit> visits)
+        {
+            if (visits == null || visits.Count == 0)
+            {
+                return Array.Empty<StationVisit>();
+            }
+
+            var copy = new StationVisit[visits.Count];
+            for (var i = 0; i < visits.Count; i++)
+            {
+                copy[i] = visits[i];
+            }
+
+            return copy;
+        }
+
+        /// <summary>
         /// Invokes one synchronous service-station hop for the current red signal.
         /// </summary>
         private static Signal ExecuteServiceStation(
             StationPlan plan,
             RedSignal redSignal,
             ref CargoManifest current,
+            List<StationVisit> visits,
             CancellationToken cancellationToken)
         {
             var servicePlan = plan.ServicePlan;
@@ -1194,7 +1578,7 @@ namespace TrainOP
 
             try
             {
-                return servicePlan.SyncHandler(redSignal, current, cancellationToken) ?? redSignal;
+                return servicePlan.SyncHandler(redSignal, current, JournalSoFar(visits), cancellationToken) ?? redSignal;
             }
             catch (OperationCanceledException)
             {
@@ -1202,7 +1586,7 @@ namespace TrainOP
             }
             catch (Exception exception)
             {
-                return WrapServiceStationException(servicePlan, exception);
+                throw AbortRoute(plan.StationName, redSignal, current, visits, exception);
             }
         }
 
@@ -1213,6 +1597,7 @@ namespace TrainOP
             StationPlan plan,
             RedSignal redSignal,
             ManifestHolder manifest,
+            List<StationVisit> visits,
             CancellationToken cancellationToken)
         {
             var servicePlan = plan.ServicePlan;
@@ -1221,12 +1606,20 @@ namespace TrainOP
                 Signal handled;
                 if (servicePlan.AsyncHandler != null)
                 {
-                    handled = await servicePlan.AsyncHandler(redSignal, manifest.Current, cancellationToken)
+                    handled = await servicePlan.AsyncHandler(
+                            redSignal,
+                            manifest.Current,
+                            JournalSoFar(visits),
+                            cancellationToken)
                         .ConfigureAwait(false);
                 }
                 else
                 {
-                    handled = servicePlan.SyncHandler(redSignal, manifest.Current, cancellationToken);
+                    handled = servicePlan.SyncHandler(
+                        redSignal,
+                        manifest.Current,
+                        JournalSoFar(visits),
+                        cancellationToken);
                 }
 
                 return handled ?? redSignal;
@@ -1237,23 +1630,48 @@ namespace TrainOP
             }
             catch (Exception exception)
             {
-                return WrapServiceStationException(servicePlan, exception);
+                throw AbortRoute(plan.StationName, redSignal, manifest.Current, visits, exception);
             }
         }
 
         /// <summary>
-        /// Normalizes the hop signal, optionally records a visit, and returns the signal that becomes "previous" for the next hop.
+        /// Stops travel because a service station threw. The throwing hop is not recorded.
+        /// </summary>
+        private static RouteAbortException AbortRoute(
+            string stationName,
+            RedSignal enteredWith,
+            CargoManifest manifest,
+            List<StationVisit> visits,
+            Exception exception)
+        {
+            var report = new RouteReport(
+                visits ?? (IReadOnlyList<StationVisit>)Array.Empty<StationVisit>(),
+                enteredWith,
+                manifest);
+            return new RouteAbortException(stationName, report, exception);
+        }
+
+        /// <summary>
+        /// Records the hop outcome, then normalizes the signal that becomes "previous" for the next hop.
+        /// Lunar white stays <see cref="HopOutcome.White"/> in the journal and continues the route as green.
         /// </summary>
         private static Signal RecordHop(
             Signal signal,
             string stationName,
+            int index,
+            TimeSpan elapsed,
             List<StationVisit> visits)
         {
             EnsureStationSignal(signal, stationName);
+            var outcome = signal is WhitePass
+                ? HopOutcome.White
+                : signal.IsGreen
+                    ? HopOutcome.Green
+                    : HopOutcome.Red;
             signal = NormalizeRequestSignal(signal, stationName);
             if (visits != null)
             {
-                visits.Add(new StationVisit(stationName, signal.IsGreen));
+                visits.Add(new StationVisit(stationName, outcome, index, elapsed));
             }
 
             if (!signal.IsGreen && !(signal is RedSignal))
@@ -1283,8 +1701,7 @@ namespace TrainOP
 
             if (signal is RedFailure failure)
             {
-                var issue = new SignalIssue(failure.Code, failure.Message, stationName);
-                return RailwaySignals.Red(issue, failure.PriorIssues);
+                return failure.ToRedSignal(stationName);
             }
 
             if (signal is GreenSignal || signal is RedSignal)
@@ -1325,20 +1742,6 @@ namespace TrainOP
             return RailwaySignals.Red(issue);
         }
 
-        /// <summary>
-        /// Converts an unhandled service-station exception into a red signal.
-        /// </summary>
-        private static Signal WrapServiceStationException(
-            ServiceStationPlan serviceStation,
-            Exception exception)
-        {
-            var issue = new SignalIssue(
-                ServiceStationExceptionCode,
-                $"Unhandled service station exception: {exception.Message}",
-                serviceStation.StationName,
-                exception);
-            return RailwaySignals.Red(issue);
-        }
     }
 }
 

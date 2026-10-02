@@ -10,13 +10,15 @@ namespace TrainOP.Generators
             string tokenVariable,
             string redVariable,
             string signalIssueExpression,
-            string signalIssuesExpression)
+            string signalIssuesExpression,
+            string visitJournalExpression)
         {
             UseNeutralWagonNames = useNeutralWagonNames;
             TokenVariable = tokenVariable;
             RedVariable = redVariable;
             SignalIssueExpression = signalIssueExpression;
             SignalIssuesExpression = signalIssuesExpression;
+            VisitJournalExpression = visitJournalExpression;
         }
 
         public bool UseNeutralWagonNames { get; }
@@ -28,5 +30,7 @@ namespace TrainOP.Generators
         public string SignalIssueExpression { get; }
 
         public string SignalIssuesExpression { get; }
+
+        public string VisitJournalExpression { get; }
     }
 }

@@ -204,6 +204,54 @@ public static class OptionalRoute
         }
 
         /// <summary>
+        /// Verifies that a missing optional key substitutes the constant default.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsConstantFallback_ForOptionalDefault()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class OptionalRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay"" })
+        .Station(""Tip"", (string paymentId, int amount = 0, string note = """", decimal? tip = 5) =>
+            new { paymentId, amount, note, tip });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("amount = 0;", generated);
+            Assert.Contains("note = \"\";", generated);
+            Assert.Contains("tip = 5m;", generated);
+        }
+
+        /// <summary>
+        /// Verifies that an annotated reference without its own default substitutes null.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsNullFallback_ForAnnotatedReference()
+        {
+            const string source = @"
+#nullable enable
+using TrainOP;
+
+public static class OptionalRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay"" })
+        .Station(""Note"", (string paymentId, string? note) =>
+            new { paymentId, note });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("manifest.HasWagonUnchecked(\"note\")", generated);
+            Assert.Contains("default(global::System.String)", generated);
+        }
+
+        /// <summary>
         /// Verifies that the generator emits sync cancellation-aware Station adapters.
         /// </summary>
         [Fact]
@@ -551,6 +599,105 @@ public static class AsyncRecoveryRoute
             Assert.Contains("TrainServiceStationHandler_", generated);
             Assert.Contains("async (red, manifest, token) =>", generated);
             Assert.DoesNotContain("ref global::System.Int32", generated);
+        }
+
+        /// <summary>
+        /// Verifies that a service-station handler can take the visit journal without changing handlers that omit it.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsServiceStationExtension_ForVisitJournal()
+        {
+            const string source = @"
+using System.Collections.Generic;
+using TrainOP;
+
+public static class JournalRecoveryRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { value = 0 })
+        .Station(""Validate"", (int value) => RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", (int value, SignalIssue issue, IReadOnlyList<StationVisit> visits) =>
+            new { value = visits.Count });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains(
+                "global::System.Collections.Generic.IReadOnlyList<global::TrainOP.StationVisit>",
+                generated);
+            Assert.Contains("(red, manifest, visits, token)", generated);
+            Assert.Contains("handler(value, red.Issue, visits)", generated);
+        }
+
+        /// <summary>
+        /// Verifies that a capture-free seed and a later station of another signature become one segment.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsRouteSegment_ForPureCrossSignatureSteps()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class TaxRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { amount = 10m })
+        .Station(""Tax"", (decimal amount) => new { amount = amount * 1.2m });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.Contains("AttachRouteSegments", generated);
+            Assert.Contains("AttachSegment(", generated);
+            Assert.Contains("amount * 1.2m", generated);
+            Assert.Contains("ThrowIfCancellationRequested", generated);
+            Assert.DoesNotContain("AttachStraightTravel", generated);
+            Assert.DoesNotContain("_straightTravel", generated);
+        }
+
+        /// <summary>
+        /// Verifies that a red signal between pure stations keeps them on the ordinary hop path.
+        /// </summary>
+        [Fact]
+        public void Generator_DoesNotEmitRouteSegment_WhenRedSignalBreaksTheRun()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class HaltRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { amount = 1m })
+        .Station(""Halt"", (decimal amount) => RailwaySignals.Red(""NO"", ""no""))
+        .Station(""Tax"", (decimal amount) => new { amount = amount * 2m });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.DoesNotContain("AttachSegment(", generated);
+            Assert.DoesNotContain("AttachStraightTravel", generated);
+        }
+
+        /// <summary>
+        /// Verifies that a captured local is not pasted into a segment method.
+        /// </summary>
+        [Fact]
+        public void Generator_DoesNotEmitRouteSegment_WhenExpressionCaptures()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class RateRoute
+{
+    public static TrainRoute Build(decimal rate) => new TrainRoute()
+        .Station(""Seed"", () => new { amount = 10m })
+        .Station(""Tax"", (decimal amount) => new { amount = amount * rate });
+}";
+
+            var generated = RunGenerators(source);
+
+            Assert.DoesNotContain("AttachSegment(", generated);
+            Assert.DoesNotContain("amount * rate", generated);
         }
 
         /// <summary>
@@ -1217,7 +1364,7 @@ public static class MultiSeedRoute
             var signatureIndex = generated.IndexOf(handlerSignatureMarker, StringComparison.Ordinal);
             Assert.True(signatureIndex >= 0, "Handler signature marker not found: " + handlerSignatureMarker);
 
-            var registerIndex = generated.IndexOf("return route.RegisterStation", signatureIndex, StringComparison.Ordinal);
+            var registerIndex = generated.IndexOf("route.RegisterStation", signatureIndex, StringComparison.Ordinal);
             Assert.True(registerIndex >= 0, "RegisterStation block not found for handler signature.");
 
             var blockStart = generated.IndexOf('{', registerIndex);

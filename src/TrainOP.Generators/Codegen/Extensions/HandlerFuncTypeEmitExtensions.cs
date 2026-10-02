@@ -122,6 +122,7 @@ namespace TrainOP.Generators
                     HandlerInputKind.RedSignal => ReturnTypeDisplayHelper.RedSignalReturnTypeDisplay,
                     HandlerInputKind.SignalIssue => ReturnTypeDisplayHelper.SignalIssueReturnTypeDisplay,
                     HandlerInputKind.SignalIssues => ReturnTypeDisplayHelper.SignalIssuesListReturnTypeDisplay,
+                    HandlerInputKind.VisitJournal => ReturnTypeDisplayHelper.VisitJournalReturnTypeDisplay,
                     HandlerInputKind.CargoManifest => ReturnTypeDisplayHelper.CargoManifestReturnTypeDisplay,
                     HandlerInputKind.CancellationToken => "CancellationToken",
                     _ => null
@@ -160,6 +161,9 @@ namespace TrainOP.Generators
                     HandlerInputKind.SignalIssues =>
                         "global::System.Collections.Generic.IReadOnlyList<SignalIssue> "
                         + (useNeutralParameterNames ? "pIssues" : "issues"),
+                    HandlerInputKind.VisitJournal =>
+                        "global::System.Collections.Generic.IReadOnlyList<StationVisit> "
+                        + (useNeutralParameterNames ? "pVisits" : "visits"),
                     HandlerInputKind.CargoManifest =>
                         "CargoManifest " + (useNeutralParameterNames ? "pManifest" : "manifest"),
                     HandlerInputKind.CancellationToken =>

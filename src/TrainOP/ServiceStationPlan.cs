@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,7 +15,7 @@ namespace TrainOP
         /// </summary>
         public ServiceStationPlan(
             string stationName,
-            Func<RedSignal, CargoManifest, CancellationToken, Signal> syncHandler)
+            Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Signal> syncHandler)
         {
             StationName = stationName;
             SyncHandler = syncHandler;
@@ -25,7 +26,7 @@ namespace TrainOP
         /// </summary>
         public ServiceStationPlan(
             string stationName,
-            Func<RedSignal, CargoManifest, CancellationToken, Task<Signal>> asyncHandler)
+            Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Task<Signal>> asyncHandler)
         {
             StationName = stationName;
             AsyncHandler = asyncHandler;
@@ -39,11 +40,11 @@ namespace TrainOP
         /// <summary>
         /// Gets the synchronous red-signal handler, if configured.
         /// </summary>
-        public Func<RedSignal, CargoManifest, CancellationToken, Signal> SyncHandler { get; }
+        public Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Signal> SyncHandler { get; }
 
         /// <summary>
         /// Gets the asynchronous red-signal handler, if configured.
         /// </summary>
-        public Func<RedSignal, CargoManifest, CancellationToken, Task<Signal>> AsyncHandler { get; }
+        public Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Task<Signal>> AsyncHandler { get; }
     }
 }

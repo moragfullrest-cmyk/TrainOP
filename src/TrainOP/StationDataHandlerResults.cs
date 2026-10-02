@@ -55,13 +55,40 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Creates a red failure request with optional prior issues from nested route stops.
+        /// Creates a red failure request with one issue and the supplied details.
+        /// A null <paramref name="details"/> dictionary is stored as empty.
         /// </summary>
-        public RedFailure(string code, string message, IReadOnlyList<SignalIssue> priorIssues)
+        public RedFailure(string code, string message, IReadOnlyDictionary<string, object> details)
         {
             Code = code ?? throw new ArgumentNullException(nameof(code));
             Message = message ?? throw new ArgumentNullException(nameof(message));
-            PriorIssues = priorIssues ?? Array.Empty<SignalIssue>();
+            Details = SignalIssue.CopyDetails(details);
+        }
+
+        /// <summary>
+        /// Creates a red failure request for the issues of one stop, in array order.
+        /// </summary>
+        internal RedFailure(SignalIssue[] issues)
+        {
+            if (issues == null)
+            {
+                throw new ArgumentNullException(nameof(issues));
+            }
+
+            if (issues.Length == 0)
+            {
+                throw new ArgumentException("At least one issue is required.", nameof(issues));
+            }
+
+            _issues = new SignalIssue[issues.Length];
+            for (var i = 0; i < issues.Length; i++)
+            {
+                _issues[i] = issues[i] ?? throw new ArgumentException("Issue entries cannot be null.", nameof(issues));
+            }
+
+            Code = _issues[0].Code;
+            Message = _issues[0].Message;
+            Details = _issues[0].Details;
         }
 
         /// <summary>
@@ -80,9 +107,31 @@ namespace TrainOP
         public string Message { get; }
 
         /// <summary>
-        /// Gets prior issues to preserve when this failure is mapped to a <see cref="RedSignal"/>.
+        /// Gets the details of the single-issue form, or the first issue when several were supplied.
         /// </summary>
-        internal IReadOnlyList<SignalIssue> PriorIssues { get; }
+        public IReadOnlyDictionary<string, object> Details { get; }
+
+        private readonly SignalIssue[] _issues;
+
+        /// <summary>
+        /// Maps this request to a route red signal.
+        /// Fills <paramref name="stationName"/> only on issues whose station name is empty.
+        /// </summary>
+        internal RedSignal ToRedSignal(string stationName)
+        {
+            if (_issues == null)
+            {
+                return new RedSignal(new SignalIssue(Code, Message, stationName, details: Details));
+            }
+
+            var stamped = new SignalIssue[_issues.Length];
+            for (var i = 0; i < _issues.Length; i++)
+            {
+                stamped[i] = _issues[i].WithStationNameIfEmpty(stationName);
+            }
+
+            return new RedSignal(stamped);
+        }
     }
 
     /// <summary>

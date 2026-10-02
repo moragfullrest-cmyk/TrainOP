@@ -46,10 +46,15 @@ internal sealed class NestedBranchingRouteExample : IExample
         var subReport = subRoute.Travel();
         if (!subReport.ReachedDestination)
         {
+            var subIssue = subReport.FailureIssues[0];
             return RailwaySignals.Red(
                 "BRANCH_FAILED",
                 $"branch '{channel}' did not complete",
-                subReport.FailureIssues);
+                new Dictionary<string, object>
+                {
+                    ["code"] = subIssue.Code,
+                    ["station"] = subIssue.StationName,
+                });
         }
 
         return new

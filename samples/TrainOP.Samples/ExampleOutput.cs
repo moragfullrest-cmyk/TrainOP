@@ -30,7 +30,7 @@ internal static class ExampleOutput
             Console.WriteLine($"Red signal: [{report.FailureCode}] {report.FailureMessage}");
             if (report.FailureIssues.Count > 0)
             {
-                Console.WriteLine("Issue chain:");
+                Console.WriteLine("Issues:");
                 for (var i = 0; i < report.FailureIssues.Count; i++)
                 {
                     var issue = report.FailureIssues[i];
@@ -43,12 +43,25 @@ internal static class ExampleOutput
     }
 
     /// <summary>
-    /// Prints all wagons in a manifest, sorted by wagon name.
+    /// Prints all wagons in a trip manifest, sorted by wagon name.
     /// </summary>
     public static void WriteManifest(string label, CargoManifest manifest)
     {
+        WriteWagons(label, manifest.InspectWagons());
+    }
+
+    /// <summary>
+    /// Prints all wagons in a report snapshot, sorted by wagon name.
+    /// </summary>
+    public static void WriteManifest(string label, ReadOnlyManifest manifest)
+    {
+        WriteWagons(label, manifest.InspectWagons());
+    }
+
+    private static void WriteWagons(string label, IReadOnlyDictionary<string, object> wagons)
+    {
         Console.WriteLine($"{label}:");
-        foreach (var pair in manifest.InspectWagons().OrderBy(p => p.Key, StringComparer.Ordinal))
+        foreach (var pair in wagons.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
             Console.WriteLine($"  {pair.Key} = {pair.Value}");
         }

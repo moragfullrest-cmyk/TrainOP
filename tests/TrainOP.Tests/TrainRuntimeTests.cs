@@ -100,17 +100,20 @@ namespace TrainOP.Tests
         }
 
         /// <summary>
-        /// Verifies that Travel throws when the route contains an async-only station.
+        /// Verifies that Travel still throws when an async station is registered outside the chain graph.
+        /// A visible <c>.Station</c> async chain is TOP021 and does not reach this path.
         /// </summary>
         [Fact]
         public void Train_Travel_ThrowsWhenRouteContainsAsyncStation()
         {
             var route = new TrainRoute()
-                .Station("AsyncOnly", async (CancellationToken token) =>
-                {
-                    await Task.Delay(1, token);
-                    return RailwaySignals.White;
-                });
+                .RegisterStation(
+                    "AsyncOnly",
+                    (Func<CargoManifest, CancellationToken, Task<Signal>>)(async (CargoManifest _, CancellationToken token) =>
+                    {
+                        await Task.Delay(1, token);
+                        return RailwaySignals.White;
+                    }));
 
             var exception = Assert.Throws<InvalidOperationException>(() =>
                 route.Travel());
@@ -175,7 +178,9 @@ namespace TrainOP.Tests
             var report = route.Travel();
 
             Assert.False(report.ReachedDestination);
-            Assert.Equal(2, report.Visits.Count);
+            Assert.Equal(3, report.Visits.Count);
+            Assert.Equal(HopOutcome.Skipped, report.Visits[2].Outcome);
+            Assert.Equal("MustNotRun", report.Visits[2].StationName);
             var red = Assert.IsType<RedSignal>(report.TerminalSignal);
             Assert.Equal("STATION_EXCEPTION", red.Issue.Code);
             Assert.Equal("Boom", red.Issue.StationName);
@@ -203,7 +208,9 @@ namespace TrainOP.Tests
             var report = await route.TravelAsync();
 
             Assert.False(report.ReachedDestination);
-            Assert.Equal(2, report.Visits.Count);
+            Assert.Equal(3, report.Visits.Count);
+            Assert.Equal(HopOutcome.Skipped, report.Visits[2].Outcome);
+            Assert.Equal("MustNotRun", report.Visits[2].StationName);
             var red = Assert.IsType<RedSignal>(report.TerminalSignal);
             Assert.Equal("STATION_EXCEPTION", red.Issue.Code);
             Assert.Equal("BoomAsync", red.Issue.StationName);
@@ -211,6 +218,115 @@ namespace TrainOP.Tests
             var exception = Assert.IsType<InvalidOperationException>(red.Issue.Exception);
             Assert.Equal("async exploded", exception.Message);
             Assert.False(report.Manifest.HasWagon("afterBoom"));
+        }
+
+        /// <summary>
+        /// Verifies that a service-station exception aborts travel with a report of the state at the break.
+        /// </summary>
+        [Fact]
+        public void Train_Travel_ServiceStationException_AbortsWithReport()
+        {
+            var ranAfter = false;
+            var route = new TrainRoute()
+                .Station("Seed", () => new { id = "pay" })
+                .Station("Fail", (Func<CancellationToken, Signal>)((CancellationToken _) =>
+                    throw new InvalidOperationException("station exploded")))
+                .ServiceStation("Recovery", (Func<RedSignal, CargoManifest, Signal>)((red, manifest) =>
+                {
+                    manifest.LoadWagon("touched", true);
+                    throw new InvalidOperationException("service exploded");
+                }))
+                .Station("After", () =>
+                {
+                    ranAfter = true;
+                    return new { id = "nope" };
+                });
+
+            var abort = Assert.Throws<RouteAbortException>(() => route.Travel());
+
+            Assert.False(ranAfter);
+            Assert.Equal("Recovery", abort.StationName);
+            var inner = Assert.IsType<InvalidOperationException>(abort.InnerException);
+            Assert.Equal("service exploded", inner.Message);
+            Assert.Equal(2, abort.Report.Visits.Count);
+            Assert.Equal("Seed", abort.Report.Visits[0].StationName);
+            Assert.True(abort.Report.Visits[0].IsGreen);
+            Assert.Equal("Fail", abort.Report.Visits[1].StationName);
+            Assert.False(abort.Report.Visits[1].IsGreen);
+            var red = Assert.IsType<RedSignal>(abort.Report.TerminalSignal);
+            Assert.Equal("STATION_EXCEPTION", red.Issue.Code);
+            Assert.Equal("Fail", red.Issue.StationName);
+            Assert.Equal("pay", abort.Report.Manifest.PullWagon<string>("id"));
+            Assert.True(abort.Report.Manifest.PullWagon<bool>("touched"));
+            Assert.False(abort.Report.ReachedDestination);
+        }
+
+        /// <summary>
+        /// Verifies that an async service-station exception aborts TravelAsync with the same report.
+        /// </summary>
+        [Fact]
+        public async Task Train_TravelAsync_ServiceStationException_AbortsWithReport()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { id = "pay" })
+                .Station("Fail", (Func<CancellationToken, Signal>)((CancellationToken _) =>
+                    throw new InvalidOperationException("station exploded")))
+                .ServiceStation("Recovery", async (RedSignal red, CancellationToken token) =>
+                {
+                    await Task.Yield();
+                    throw new InvalidOperationException("service exploded");
+                });
+
+            var abort = await Assert.ThrowsAsync<RouteAbortException>(() => route.TravelAsync());
+
+            Assert.Equal("Recovery", abort.StationName);
+            Assert.Equal("service exploded", abort.InnerException.Message);
+            Assert.Equal(2, abort.Report.Visits.Count);
+            Assert.DoesNotContain(abort.Report.Visits, visit => visit.StationName == "Recovery");
+            Assert.Equal("STATION_EXCEPTION", abort.Report.FailureCode);
+            Assert.Equal("pay", abort.Report.Manifest.PullWagon<string>("id"));
+        }
+
+        /// <summary>
+        /// Verifies that cancellation inside a service station stays an OperationCanceledException.
+        /// </summary>
+        [Fact]
+        public void Train_Travel_ServiceStationCancellation_Propagates()
+        {
+            var route = new TrainRoute()
+                .Station("Fail", (Func<CancellationToken, Signal>)((CancellationToken _) =>
+                    throw new InvalidOperationException("station exploded")))
+                .ServiceStation("Recovery", (Func<RedSignal, Signal>)((RedSignal red) =>
+                {
+                    throw new OperationCanceledException();
+                }));
+
+            Assert.Throws<OperationCanceledException>(() => route.Travel());
+        }
+
+        /// <summary>
+        /// Verifies that a green service-station return repairs a station exception and the route continues.
+        /// </summary>
+        [Fact]
+        public void ServiceStation_GreenReturn_RepairsStationException()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { id = "pay" })
+                .Station("Boom", (Func<CancellationToken, Signal>)((CancellationToken _) =>
+                    throw new InvalidOperationException("boom")))
+                .ServiceStation("Recovery", (Func<RedSignal, Signal>)((RedSignal red) =>
+                {
+                    Assert.Equal("STATION_EXCEPTION", red.Issue.Code);
+                    return RailwaySignals.Green();
+                }))
+                .Station("After", (string id) => new { id, recovered = true });
+
+            var report = route.Travel();
+
+            Assert.True(report.ReachedDestination);
+            Assert.Equal("pay", report.Manifest.PullWagon<string>("id"));
+            Assert.True(report.Manifest.PullWagon<bool>("recovered"));
+            Assert.Equal(4, report.Visits.Count);
         }
 
         /// <summary>
@@ -223,11 +339,8 @@ namespace TrainOP.Tests
                 .Station("Seed", () => new { marker = true })
                 .Station("Boom", (bool marker) =>
                     RailwaySignals.Red("BOOM", "simulated failure"))
-                .ServiceStation("SignalControlAsync", (ref bool marker, RedSignal red) =>
-                {
-                    marker = true;
-                    return RailwaySignals.White;
-                })
+                .ServiceStation("SignalControlAsync", (bool marker, RedSignal red) =>
+                    RailwaySignals.White)
                 .Station("AfterRecovery", (bool marker) => new { after = "ok", marker });
 
             var report = await route.TravelAsync();
@@ -299,7 +412,9 @@ namespace TrainOP.Tests
             Assert.Equal("recovered", report.Manifest.PullWagon<string>("id"));
             Assert.Equal(3, report.Visits.Count);
             Assert.Equal("Recover", report.Visits[2].StationName);
+            Assert.Equal(HopOutcome.White, report.Visits[2].Outcome);
             Assert.True(report.Visits[2].IsGreen);
+            Assert.Equal(2, report.Visits[2].Index);
         }
 
         /// <summary>
@@ -354,18 +469,20 @@ namespace TrainOP.Tests
         }
 
         /// <summary>
-        /// Verifies that Travel snapshots the plan at start; later builder mutations affect only the next Travel.
+        /// Verifies that the first Travel seals the plan, so a later RegisterStation throws and the next Travel repeats the sealed list.
         /// </summary>
         [Fact]
-        public void Travel_SnapshotsRouteAtStart_LaterMutationsAffectNextTravelOnly()
+        public void Travel_SealsPlan_LaterRegisterStationThrows()
         {
             var route = new TrainRoute()
                 .RegisterStation("Only", manifest => manifest.LoadWagon("id", "ok"));
 
             var first = route.Travel();
-            route.RegisterStation("Extra", manifest => manifest.LoadWagon("extra", "seen"));
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                route.RegisterStation("Extra", manifest => manifest.LoadWagon("extra", "seen")));
             var second = route.Travel();
 
+            Assert.Contains("sealed", exception.Message);
             Assert.True(first.ReachedDestination);
             Assert.Equal(1, first.Visits.Count);
             Assert.Equal("Only", first.Visits[0].StationName);
@@ -373,9 +490,10 @@ namespace TrainOP.Tests
             Assert.False(first.Manifest.HasWagon("extra"));
 
             Assert.True(second.ReachedDestination);
-            Assert.Equal(2, second.Visits.Count);
-            Assert.Equal("Extra", second.Visits[1].StationName);
-            Assert.Equal("seen", second.Manifest.PullWagon<string>("extra"));
+            Assert.Equal(1, second.Visits.Count);
+            Assert.Equal("Only", second.Visits[0].StationName);
+            Assert.Equal("ok", second.Manifest.PullWagon<string>("id"));
+            Assert.False(second.Manifest.HasWagon("extra"));
         }
 
         /// <summary>
@@ -484,6 +602,156 @@ namespace TrainOP.Tests
             Assert.Equal("DATA_STOP", report.FailureCode);
             Assert.Equal("halted", report.FailureMessage);
             Assert.Equal("cargo", report.Get<string>("id"));
+        }
+
+        /// <summary>
+        /// Verifies the journal keeps white, a bypassed step, the plan index, and duplicate names.
+        /// </summary>
+        [Fact]
+        public void Train_Travel_JournalRecordsOutcomeIndexAndSkip()
+        {
+            var report = new TrainRoute()
+                .Station("Seed", () => new { value = 1 })
+                .Station("Gate", (int value) => RailwaySignals.White)
+                .ServiceStation("TooEarly", (int value, RedSignal red) =>
+                    RailwaySignals.Green(new { value = 99 }))
+                .Station("Halt", (int value) => RailwaySignals.Red("STOP", "halt"))
+                .Station("Gate", (int value) => new { value })
+                .Travel();
+
+            Assert.False(report.ReachedDestination);
+            Assert.Equal(5, report.Visits.Count);
+            Assert.Equal(HopOutcome.Green, report.Visits[0].Outcome);
+            Assert.Equal(0, report.Visits[0].Index);
+            Assert.Equal(HopOutcome.White, report.Visits[1].Outcome);
+            Assert.True(report.Visits[1].IsGreen);
+            Assert.Equal(1, report.Visits[1].Index);
+            Assert.Equal(HopOutcome.Skipped, report.Visits[2].Outcome);
+            Assert.Equal("TooEarly", report.Visits[2].StationName);
+            Assert.Equal(2, report.Visits[2].Index);
+            Assert.Equal(TimeSpan.Zero, report.Visits[2].Elapsed);
+            Assert.False(report.Visits[2].IsGreen);
+            Assert.Equal(HopOutcome.Red, report.Visits[3].Outcome);
+            Assert.Equal(3, report.Visits[3].Index);
+            Assert.Equal(HopOutcome.Skipped, report.Visits[4].Outcome);
+            Assert.Equal("Gate", report.Visits[4].StationName);
+            Assert.Equal(4, report.Visits[4].Index);
+            Assert.Equal(1, report.Get<int>("value"));
+        }
+
+        /// <summary>
+        /// Verifies TravelAsync records a bypassed step and TravelLight still returns an empty journal.
+        /// </summary>
+        [Fact]
+        public async Task Train_TravelAsync_JournalRecordsSkip_TravelLightStaysEmpty()
+        {
+            TrainRoute Build()
+            {
+                return new TrainRoute()
+                    .Station("Seed", () => new { value = 1 })
+                    .Station("Halt", (int value) => RailwaySignals.Red("STOP", "halt"))
+                    .Station("Later", (int value) => new { value });
+            }
+
+            var report = await Build().TravelAsync();
+            var light = Build().TravelLight();
+
+            Assert.Equal(3, report.Visits.Count);
+            Assert.Equal(HopOutcome.Red, report.Visits[1].Outcome);
+            Assert.Equal(HopOutcome.Skipped, report.Visits[2].Outcome);
+            Assert.Equal("Later", report.Visits[2].StationName);
+            Assert.Equal(2, report.Visits[2].Index);
+            Assert.Empty(light.Visits);
+            Assert.False(light.ReachedDestination);
+        }
+
+        /// <summary>
+        /// Verifies elapsed time comes from a timestamp and the legacy constructor stays zeroed.
+        /// </summary>
+        [Fact]
+        public void Train_Travel_JournalElapsed_LegacyConstructorStaysZero()
+        {
+            var report = new TrainRoute()
+                .Station("Wait", () =>
+                {
+                    Thread.Sleep(20);
+                    return new { id = "slept" };
+                })
+                .Travel();
+
+            var legacyGreen = new StationVisit("Legacy", true);
+            var legacyRed = new StationVisit("Legacy", false);
+
+            Assert.Equal(HopOutcome.Green, report.Visits[0].Outcome);
+            Assert.True(report.Visits[0].Elapsed > TimeSpan.Zero);
+            Assert.Equal(HopOutcome.Green, legacyGreen.Outcome);
+            Assert.Equal(0, legacyGreen.Index);
+            Assert.Equal(TimeSpan.Zero, legacyGreen.Elapsed);
+            Assert.True(legacyGreen.IsGreen);
+            Assert.Equal(HopOutcome.Red, legacyRed.Outcome);
+            Assert.Equal(0, legacyRed.Index);
+            Assert.Equal(TimeSpan.Zero, legacyRed.Elapsed);
+            Assert.False(legacyRed.IsGreen);
+        }
+
+        /// <summary>
+        /// Verifies that Travel and Travel(token) share one sealed plan, including a later pure step.
+        /// </summary>
+        [Fact]
+        public void Train_Travel_SealsPlan_SecondTravelReusesIt()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { amount = 10m })
+                .Station("Tax", (decimal amount) => new { amount = amount * 1.2m });
+
+            var first = route.Travel();
+            var second = route.Travel(CancellationToken.None);
+
+            Assert.Equal(12m, first.Get<decimal>("amount"));
+            Assert.Equal(12m, second.Get<decimal>("amount"));
+            Assert.Equal(2, first.Visits.Count);
+            Assert.Equal(HopOutcome.Green, first.Visits[0].Outcome);
+            Assert.Equal(0, first.Visits[0].Index);
+            Assert.Equal(HopOutcome.Green, first.Visits[1].Outcome);
+            Assert.Equal(1, first.Visits[1].Index);
+            Assert.Equal(2, second.Visits.Count);
+
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                route.Station("Later", (decimal amount) => new { amount }));
+            Assert.Contains("sealed", exception.Message);
+        }
+
+        /// <summary>
+        /// Verifies that TravelLight seals the plan against a later service station.
+        /// </summary>
+        [Fact]
+        public void Train_TravelLight_SealsPlan()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { amount = 1m });
+
+            var report = route.TravelLight();
+
+            Assert.Equal(1m, report.Get<decimal>("amount"));
+            Assert.Throws<InvalidOperationException>(() =>
+                route.ServiceStation("Fix", (Func<RedSignal, Signal>)(red => RailwaySignals.Green())));
+        }
+
+        /// <summary>
+        /// Verifies that TravelAsync seals the plan against a later registration.
+        /// </summary>
+        [Fact]
+        public async Task Train_TravelAsync_SealsPlan()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { amount = 1m });
+
+            await route.TravelAsync();
+
+            Assert.Throws<InvalidOperationException>(() =>
+                route.RegisterStation(
+                    "Later",
+                    (Func<CargoManifest, CargoManifest>)(manifest => manifest)));
         }
 
         /// <summary>

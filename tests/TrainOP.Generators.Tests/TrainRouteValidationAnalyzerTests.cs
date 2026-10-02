@@ -1521,7 +1521,7 @@ public static class RecoveryRoute
         .Station(""Seed"", () => new { value = 0 })
         .Station(""Validate"", (int value) =>
             value > 0 ? RailwaySignals.Green(new { value }) : RailwaySignals.Red(""ERR"", ""bad""))
-        .ServiceStation(""Recovery"", (ref int value, RedSignal red) => RailwaySignals.White)
+        .ServiceStation(""Recovery"", (int value, RedSignal red) => RailwaySignals.Green(new { value }))
         .Station(""After"", (int value) => new { value = value + 1 });
 }";
 
@@ -1531,17 +1531,17 @@ public static class RecoveryRoute
         }
 
         /// <summary>
-        /// Verifies that ServiceStation handlers with Signal delegate return and RailwaySignals.White are allowed.
+        /// Verifies that TOP023 is reported for each ref wagon on ServiceStation, and that in is still allowed.
         /// </summary>
         [Fact]
-        public async Task Analyzer_AllowsServiceStation_WithRefWagonsAndPassReturn()
+        public async Task Analyzer_ReportsTop023_WhenServiceStationUsesRef()
         {
             const string source = @"
 using TrainOP;
 
 public static class RecoveryRoute
 {
-    public static TrainRoute Build() => new TrainRoute()
+    public static TrainRoute RefRoute() => new TrainRoute()
         .Station(""Seed"", () => new { paymentId = ""pay-1"", amount = -1m })
         .Station(""Validate"", (string paymentId, decimal amount) =>
             amount > 0 ? RailwaySignals.Green(new { paymentId, amount }) : RailwaySignals.Red(""ERR"", ""bad""))
@@ -1550,13 +1550,135 @@ public static class RecoveryRoute
             paymentId = ""pay-fixed"";
             amount = 50m;
             return RailwaySignals.White;
-        })
-        .Station(""After"", (string paymentId, decimal amount) => new { paymentId, amount });
+        });
+
+    public static TrainRoute InRoute() => new TrainRoute()
+        .Station(""Seed"", () => new { value = 0 })
+        .Station(""Validate"", (int value) => RailwaySignals.Red(""ERR"", ""bad""))
+        .ServiceStation(""Recovery"", (in int value, RedSignal red) => RailwaySignals.White);
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+            var top023 = diagnostics.Where(d => d.Id == "TOP023").ToList();
+
+            Assert.Equal(2, top023.Count);
+            Assert.Contains(top023, d => d.GetMessage().Contains("paymentId"));
+            Assert.Contains(top023, d => d.GetMessage().Contains("amount"));
+        }
+
+        /// <summary>
+        /// Verifies that a constant default does not require a live wagon.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_AllowsConstantDefault_WithoutTop001()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class OptionalRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay"" })
+        .Station(""Tip"", (string paymentId, int amount = 0, string note = """", decimal? tip = 5) =>
+            new { paymentId, amount, note, tip });
 }";
 
             var diagnostics = await RunAnalyzerAsync(source);
 
-            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP010");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP022");
+        }
+
+        /// <summary>
+        /// Verifies that an annotated reference wagon does not require a live key.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_AllowsAnnotatedReference_WithoutTop001()
+        {
+            const string source = @"
+#nullable enable
+using TrainOP;
+
+public static class OptionalRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay"" })
+        .Station(""Note"", (string paymentId, string? note) =>
+            new { paymentId, note });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP001");
+        }
+
+        /// <summary>
+        /// Verifies that a bare reference stays required when nullable annotations are enabled.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop001_WhenReferenceIsNotAnnotated()
+        {
+            const string source = @"
+#nullable enable
+using TrainOP;
+
+public static class OptionalRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay"" })
+        .Station(""Note"", (string paymentId, string note) =>
+            new { paymentId, note });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP001");
+        }
+
+        /// <summary>
+        /// Verifies that <c>string?</c> stays required when the nullable context is disabled.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop001_WhenNullableContextIsDisabled()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class OptionalRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay"" })
+        .Station(""Note"", (string paymentId, string? note) =>
+            new { paymentId, note });
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP001");
+        }
+
+        /// <summary>
+        /// Verifies that a non-constant wagon default is TOP022.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop022_WhenDefaultIsNotConstant()
+        {
+            const string source = @"
+using TrainOP;
+
+public static class OptionalRoute
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Seed"", () => new { paymentId = ""pay"" })
+        .Station(""Tip"", (string paymentId, int amount = Next()) =>
+            new { paymentId, amount });
+
+    private static int Next() => 1;
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.Contains(diagnostics, d => d.Id == "TOP022");
         }
 
         /// <summary>
@@ -1637,6 +1759,7 @@ public static class RecoveryRoute
             var diagnostics = await RunAnalyzerAsync(source);
 
             Assert.Contains(diagnostics, d => d.Id == "TOP015");
+            Assert.Contains(diagnostics, d => d.Id == "TOP023");
         }
 
         /// <summary>
@@ -1733,6 +1856,105 @@ public static class PayRoute
             var diagnostics = await RunAnalyzerAsync(source);
 
             Assert.Contains(diagnostics, d => d.Id == "TOP020");
+        }
+
+        /// <summary>
+        /// Verifies that TOP021 is reported for Travel and TravelLight on a chain the graph already knows is async.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_ReportsTop021_WhenSyncTravelRunsKnownAsyncChain()
+        {
+            const string source = @"
+using System.Threading;
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class AsyncTravelRoute
+{
+    public static RouteReport LocalTravel()
+    {
+        var route = new TrainRoute()
+            .Station(""Wait"", async (CancellationToken token) =>
+            {
+                await Task.Delay(1, token);
+                return new { value = 1 };
+            });
+        return route.Travel();
+    }
+
+    public static RouteReport FluentLight() =>
+        new TrainRoute()
+            .Station(""Wait"", async (CancellationToken token) =>
+            {
+                await Task.Delay(1, token);
+                return new { value = 1 };
+            })
+            .TravelLight();
+
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Wait"", async (CancellationToken token) =>
+        {
+            await Task.Delay(1, token);
+            return new { value = 1 };
+        });
+
+    public static RouteReport FactoryTravel() => Build().Travel();
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+            var top021 = diagnostics.Where(d => d.Id == "TOP021").ToList();
+
+            Assert.Equal(3, top021.Count);
+            Assert.Contains(top021, d => d.GetMessage().Contains("TravelAsync"));
+            Assert.Contains(top021, d => d.GetMessage().Contains("TravelLightAsync"));
+        }
+
+        /// <summary>
+        /// Verifies that TOP021 stays silent for TravelAsync, a sync chain, a parameter, and a field.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_DoesNotReportTop021_WhenChainIsSyncOrOpaque()
+        {
+            const string source = @"
+using System.Threading;
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class OpaqueTravelRoute
+{
+    private static readonly TrainRoute Field = new TrainRoute()
+        .Station(""Wait"", async (CancellationToken token) =>
+        {
+            await Task.Delay(1, token);
+            return new { value = 1 };
+        });
+
+    public static Task<RouteReport> AsyncCall()
+    {
+        var route = new TrainRoute()
+            .Station(""Wait"", async (CancellationToken token) =>
+            {
+                await Task.Delay(1, token);
+                return new { value = 1 };
+            });
+        return route.TravelAsync();
+    }
+
+    public static RouteReport SyncCall()
+    {
+        var route = new TrainRoute()
+            .Station(""Seed"", () => new { value = 1 });
+        return route.Travel();
+    }
+
+    public static RouteReport Parameter(TrainRoute route) => route.Travel();
+
+    public static RouteReport FieldCall() => Field.Travel();
+}";
+
+            var diagnostics = await RunAnalyzerAsync(source);
+
+            Assert.DoesNotContain(diagnostics, d => d.Id == "TOP021");
         }
 
         /// <summary>

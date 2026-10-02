@@ -104,13 +104,15 @@ namespace TrainOP.Generators
                 merged.AddReturnShape(_returnShapes[i]);
             }
 
+            // Keep every site even when this signature emits canonically. A segment joins
+            // consecutive stations across signatures, and those sites live on different groups.
+            merged.SetChainBindings(_chainBindings);
             if (ChainDispatchPolicy.RequiresChainDispatch(
                 _chainBindings,
                 _returnShapes,
                 CollectEntryWagonNameKeys()))
             {
                 ReportNonChainConflicts(reportDiagnostic);
-                merged.SetChainBindings(_chainBindings);
             }
             else
             {

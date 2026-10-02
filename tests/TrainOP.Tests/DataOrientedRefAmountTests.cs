@@ -131,6 +131,95 @@ namespace TrainOP.Tests.DataOriented
         }
 
         /// <summary>
+        /// Verifies that a missing key substitutes a constant parameter default.
+        /// </summary>
+        [Fact]
+        public void Station_ConstantDefault_MissingKey_UsesConstant()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { paymentId = "pay" })
+                .Station("Tip", (string paymentId, int amount = 0, string note = "", string blank = null, decimal? tip = 5) =>
+                    new { paymentId, amount, note, blank = blank ?? "none", tip = tip ?? 0m });
+
+            var manifest = route.Travel().Manifest;
+
+            Assert.Equal(0, manifest.PullWagon<int>("amount"));
+            Assert.Equal("", manifest.PullWagon<string>("note"));
+            Assert.Equal("none", manifest.PullWagon<string>("blank"));
+            Assert.Equal(5m, manifest.PullWagon<decimal>("tip"));
+        }
+
+        /// <summary>
+        /// Verifies that a present key wins over a constant parameter default.
+        /// </summary>
+        [Fact]
+        public void Station_ConstantDefault_PresentKey_UsesManifest()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { paymentId = "pay", amount = 4, note = "kept", tip = 9m })
+                .Station("Tip", (string paymentId, int amount = 0, string note = "", decimal? tip = 5) =>
+                    new { paymentId, amount, note, tip = tip ?? 0m });
+
+            var manifest = route.Travel().Manifest;
+
+            Assert.Equal(4, manifest.PullWagon<int>("amount"));
+            Assert.Equal("kept", manifest.PullWagon<string>("note"));
+            Assert.Equal(9m, manifest.PullWagon<decimal>("tip"));
+        }
+
+#nullable enable
+
+        /// <summary>
+        /// Verifies that an annotated reference wagon is null when the key is missing.
+        /// </summary>
+        [Fact]
+        public void Station_AnnotatedReference_MissingKey_IsNull()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { paymentId = "pay" })
+                .Station("Note", (string paymentId, string? note) =>
+                    new { paymentId, note = note ?? "none" });
+
+            var manifest = route.Travel().Manifest;
+
+            Assert.Equal("none", manifest.PullWagon<string>("note"));
+        }
+
+        /// <summary>
+        /// Verifies that an annotated reference wagon uses the manifest value when the key exists.
+        /// </summary>
+        [Fact]
+        public void Station_AnnotatedReference_PresentKey_UsesValue()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { paymentId = "pay", note = "kept" })
+                .Station("Note", (string paymentId, string? note) =>
+                    new { paymentId, note = note ?? "none" });
+
+            var manifest = route.Travel().Manifest;
+
+            Assert.Equal("kept", manifest.PullWagon<string>("note"));
+        }
+
+        /// <summary>
+        /// Verifies that a constant default on an annotated reference wins over null when the key is missing.
+        /// </summary>
+        [Fact]
+        public void Station_AnnotatedReference_ConstantDefault_MissingKey_UsesConstant()
+        {
+            var route = new TrainRoute()
+                .Station("Seed", () => new { paymentId = "pay" })
+                .Station("Note", (string paymentId, string? note = "x") =>
+                    new { paymentId, note = note ?? "none" });
+
+            var manifest = route.Travel().Manifest;
+
+            Assert.Equal("x", manifest.PullWagon<string>("note"));
+        }
+
+#nullable restore
+
+        /// <summary>
         /// Verifies that out parameters seed wagons and a later out adds a wagon while ref readonly keeps one.
         /// </summary>
         [Fact]

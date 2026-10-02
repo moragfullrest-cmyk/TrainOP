@@ -21,7 +21,9 @@ namespace TrainOP.Generators.Wagons
             bool isOut = false,
             bool isRefReadonly = false,
             bool isIn = false,
-            bool isParams = false)
+            bool isParams = false,
+            string optionalFallback = null,
+            bool hasNonConstantDefault = false)
         {
             Name = name;
             TypeDisplay = typeDisplay;
@@ -34,6 +36,8 @@ namespace TrainOP.Generators.Wagons
             IsRefReadonly = isRefReadonly;
             IsIn = isIn;
             IsParams = isParams;
+            OptionalFallback = optionalFallback;
+            HasNonConstantDefault = hasNonConstantDefault;
         }
 
         public string Name { get; }
@@ -48,6 +52,12 @@ namespace TrainOP.Generators.Wagons
         public bool IsByReference { get; }
 
         public bool IsOptional { get; }
+
+        /// <summary>Expression used when an optional key is missing. Null means <c>default(TypeDisplay)</c>.</summary>
+        public string OptionalFallback { get; }
+
+        /// <summary>True when the parameter default is not a constant the generator can re-emit (TOP022).</summary>
+        public bool HasNonConstantDefault { get; }
 
         public string PullTypeDisplay { get; }
 

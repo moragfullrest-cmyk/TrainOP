@@ -18,6 +18,7 @@ namespace TrainOP.Generators
             bool includeRedSignal,
             bool includeSignalIssue,
             bool includeSignalIssues,
+            bool includeVisitJournal,
             bool includeManifest,
             bool isAsync,
             bool hasCancellationToken,
@@ -30,6 +31,7 @@ namespace TrainOP.Generators
             IncludeRedSignal = includeRedSignal;
             IncludeSignalIssue = includeSignalIssue;
             IncludeSignalIssues = includeSignalIssues;
+            IncludeVisitJournal = includeVisitJournal;
             IncludeManifest = includeManifest;
             IsAsync = isAsync;
             HasCancellationToken = hasCancellationToken;
@@ -47,6 +49,8 @@ namespace TrainOP.Generators
         public bool IncludeSignalIssue { get; }
 
         public bool IncludeSignalIssues { get; }
+
+        public bool IncludeVisitJournal { get; }
 
         public bool IncludeManifest { get; }
 
@@ -89,6 +93,7 @@ namespace TrainOP.Generators
                 handlerBinding.IncludeRedSignal,
                 handlerBinding.IncludeSignalIssue,
                 handlerBinding.IncludeSignalIssues,
+                handlerBinding.IncludeVisitJournal,
                 handlerBinding.IncludeManifest,
                 handlerBinding.IsAsync,
                 handlerBinding.HasCancellationToken,
@@ -135,6 +140,7 @@ namespace TrainOP.Generators
             builder.Append(signature.IncludeRedSignal ? "R1" : "R0");
             builder.Append(signature.IncludeSignalIssue ? "I1" : "I0");
             builder.Append(signature.IncludeSignalIssues ? "L1" : "L0");
+            builder.Append(signature.IncludeVisitJournal ? "J1" : "J0");
             builder.Append(signature.IncludeManifest ? "M1" : "M0");
             builder.Append(signature.IsAsync ? "A1" : "A0");
             builder.Append(signature.HasCancellationToken ? "C1" : "C0");

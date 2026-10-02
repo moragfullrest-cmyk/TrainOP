@@ -161,7 +161,9 @@ var lightAsync = await route.TravelLightAsync(cancellationToken);
 ```
 
 **Правильно:** `() => new { paymentId, amount }`, `() => repo.Get(id)`, или несколько станций, пока analyzer видит произведённые вагоны.  
-**Неправильно:** читать вагон до его появления (TOP001).
+**Неправильно:** читать обязательный вагон до его появления (TOP001).
+
+Необязательный параметр не требует живого ключа. `Nullable<T>` / `T?` и аннотированный `string?` получают `null`, когда ключа нет. Константный default (`int amount = 0`, `string note = ""`, `decimal? tip = 5`) подставляет эту константу, и прописанная константа у `decimal?` или `string?` побеждает `null`. Если ключ уже есть, в параметр приходит его значение. Голый `string` и голый `decimal` остаются обязательными. Неконстантный default — TOP022.
 
 Доступ к терминальным вагонам — через `RouteReport` (`Get<T>` / индексатор). Общий `RouteReport` не декомпозируется: при C# 15 и ниже у `var (a, b) = route.Travel()` нет уникального `Deconstruct`, пока статический тип — `TrainRoute`. Две пользовательские формы (потомок со своим `Travel()`, локальная функция на одну цепочку) — в учебнике, §17.1; прогон — `TerminalDecompositionExample`.
 
@@ -183,19 +185,19 @@ var route = new TrainRoute()
 var report = await route.TravelAsync();
 ```
 
-> **Важно:** вызов `Travel()` на маршруте с async-станциями бросает `InvalidOperationException` с текстом «Use TravelAsync».
+> **Важно:** синхронный `Travel` или `TravelLight` на цепочке, которую анализатор уже разобрал и в которой есть async-станция, — это **TOP021**. Если приёмник — параметр, поле или метод, чья цепочка не видна, вызов доходит до рантайма и бросает `InvalidOperationException` («Use TravelAsync»).
 
 ### Модификаторы и манифест
 
-Запись идёт только на зелёном проходе с данными. `Red` и `White` манифест не меняют.
+Запись ключей идёт только на зелёном проходе с данными. `Red` и `White` ключи не меняют. Содержимое ссылочного вагона меняется сразу, отката нет, поэтому вагоны маршрута — неизменяемые records. `IDisposable` в вагоне закрывает вызывающий после чтения отчёта. На `ServiceStation` `ref` и `out` запрещены (**TOP023**); `ref readonly` и `in` остаются.
 
 | Модификатор | Чтение | Запись на зелёном проходе | Если имени нет в возврате | Состав |
 |-------------|---------|---------------------------|---------------------------|--------|
 | по значению | из манифеста | только одноимённое поле возврата | снять на `.Station` | ключ не создаёт. На `.ServiceStation` снятие — **TOP016** |
-| `ref` | из манифеста | локал пишется обратно | оставить и записать локал | ключ не создаёт |
+| `ref` | из манифеста | локал пишется обратно | оставить и записать локал | ключ не создаёт. На `.ServiceStation` — **TOP023** |
 | `ref readonly` | из манифеста | нет | оставить как было | ключ не создаёт. Имя в возврате — **TOP019** |
 | `in` | из манифеста | нет | оставить как было | то же, что `ref readonly`. Имя в возврате — **TOP019** |
-| `out` | нет: локал `default` перед вызовом | локал пишется обратно | не вход, не снимается | создать или перезаписать. Новое имя на `.ServiceStation` — **TOP015**. То же имя в возврате — **TOP018** |
+| `out` | нет: локал `default` перед вызовом | локал пишется обратно | не вход, не снимается | создать или перезаписать. На `.ServiceStation` — **TOP023**. То же имя в возврате — **TOP018** |
 | `params` | из манифеста, один вагон-коллекция | только одноимённое поле возврата | снять на `.Station` | ключ не создаёт. Только последний параметр делегата — иначе **TOP020** |
 
 | Форма возврата | Эффект на манифест |
@@ -268,19 +270,29 @@ var report = await route.TravelAsync();
 - `Code` — машиночитаемый код ошибки
 - `Message` — описание для человека
 - `StationName` — имя станции, вернувшей красный сигнал
+- `Details` — прикладные данные; пустой словарь, если станция их не передала
+- `Exception` — исключение, если станция положила его в конструктор `SignalIssue`
 
-`RedSignal` хранит **цепочку** issues: `Issues` (от корневой/вложенной причины к непосредственной остановке), `Issue` — последний элемент (та же семантика, что у `FailureCode` / `FailureMessage` в отчёте). Одна станция без вложенных поездов — один элемент.
+`RedSignal` хранит плоский список `Issues` одной остановки. `Issue` — первый элемент, и ту же запись читают `FailureCode` / `FailureMessage`. Прикладные данные лежат в `SignalIssue.Details`.
 
-При провале подмаршрута пробрасывайте цепочку в родительский red:
+При провале подмаршрута родитель описывает остановку своей записью и кладёт нужное в `Details`:
 
 ```csharp
 if (!subReport.ReachedDestination)
 {
-    return RailwaySignals.Red("BRANCH_FAILED", "branch did not complete", subReport.FailureIssues);
+    var subIssue = subReport.FailureIssues[0];
+    return RailwaySignals.Red(
+        "BRANCH_FAILED",
+        "branch did not complete",
+        new Dictionary<string, object>
+        {
+            ["code"] = subIssue.Code,
+            ["station"] = subIssue.StationName,
+        });
 }
 ```
 
-`RouteReport.FailureIssues` — read-only вид той же цепочки из `TerminalSignal`.
+`RouteReport.FailureIssues` — read-only вид того же списка из `TerminalSignal`.
 
 ### Проверка результата
 
@@ -299,12 +311,13 @@ else
 // История прохождения
 foreach (var visit in report.Visits)
 {
-    Console.WriteLine($"{visit.StationName}: {(visit.IsGreen ? "green" : "red")}");
+    Console.WriteLine($"{visit.Index} {visit.StationName}: {visit.Outcome} {visit.Elapsed}");
 }
 ```
 
-`RouteReport` поддерживает readonly индексатор `report["wagonName"]`, typed-метод `report.Get<T>("wagonName")` и свойства `FailureCode` / `FailureMessage` для красного терминального сигнала.  
-Если вагона нет, бросается `KeyNotFoundException`.
+`RouteReport` поддерживает readonly индексатор `report["wagonName"]`, typed-методы `report.Get<T>("wagonName")` и `report.TryGet<T>("wagonName", out value)`, а также свойства `FailureCode` / `FailureMessage` для красного терминального сигнала. Если вагона нет, `Get` бросает `KeyNotFoundException`, а `TryGet` возвращает false.
+
+`Manifest` на отчёте — `ReadOnlyManifest`. Конструктор `RouteReport` по-прежнему принимает `CargoManifest` рейса и сам копирует ключи. Ссылочные значения остаются общими, запись ключей с отчёта недоступна. `InspectWagons()` нельзя привести к живому `Dictionary<string, object>`. Пока рейс идёт, станция получает мутабельный `CargoManifest`.
 
 ## Станция техобслуживания (ServiceStation)
 
@@ -357,19 +370,22 @@ var route = new TrainRoute()
 
 | Параметр | Источник |
 |----------|----------|
-| вагоны (`amount`, …) | манифест рейса (по значению или необязательный `ref`, как у `.Station`) |
+| вагоны (`amount`, …) | манифест рейса (по значению, `ref readonly` или `in`; `ref` / `out` — **TOP023**) |
 | `CargoManifest manifest` | тот же манифест рейса (framework-параметр / escape hatch) |
-| `SignalIssue issue` | `red.Issue` — **последний** элемент цепочки (непосредственная остановка) |
-| `IReadOnlyList<SignalIssue> issues` | `red.Issues` — полная цепочка (корень → непосредственная остановка) |
+| `SignalIssue issue` | `red.Issue` — первый элемент списка этой остановки |
+| `IReadOnlyList<SignalIssue> issues` | `red.Issues` — все ошибки этой остановки, в том же порядке |
+| `IReadOnlyList<StationVisit> visits` | шаги, уже записанные до этой станции; сам шаг в список не входит |
 | `RedSignal red` | полный красный сигнал (issues; без груза) |
 
-При одной ошибке без вложенных поездов `issue` и `issues[0]` — одна и та же запись. При провале подмаршрута `issue` — обёртка родителя; корневая причина — в `issues[0]`.
+В объявлении handler'а `visits` стоит после issue и перед `CargoManifest` и токеном. Список — снимок на вход в техобслуживание. На `TravelLight` журнал выключен, поэтому список пуст. Handler без этого параметра остаётся прежним. Конечной станции в библиотеке нет: аудит и освобождение ресурсов делает вызывающий после `Travel` и в `catch` для `RouteAbortException`.
 
-Возврат — тот же контракт, что у обычных станций над данными: `RailwaySignals.Green` / `Red` / `White`, анонимный тип, record, tuple. Отличие одно: запись в манифест **не меняет его состав**. Успешный возврат обновляет значения уже существующих ключей. Добавление ключа, снятие входного вагона или замена манифеста — **TOP015** / **TOP016** / **TOP017**. Красный сигнал и `RailwaySignals.White` манифест не трогают (в т.ч. изменения `ref` при `White` не записываются).
+`issue` и `issues[0]` — одна и та же запись. Красный возврат техобслуживания задаёт новые issue этой остановки и входящий список к ним не приклеивает.
 
-Handler с сигнатурой `Func<RedSignal, CargoManifest, Signal>` (и асинхронный вариант) — запасной низкоуровневый вариант без сгенерированного адаптера вагонов; правьте `manifest`, читайте `red.Issue` / `red.Issues`.
+Возврат — тот же контракт, что у обычных станций над данными: `RailwaySignals.Green` / `Red` / `White`, анонимный тип, record, tuple. Отличие одно: запись в манифест **не меняет его состав**. Успешный возврат обновляет значения уже существующих ключей полем зелёного возврата. `ref` и `out` на техобслуживании запрещены (**TOP023**). Добавление ключа, снятие входного вагона или замена манифеста — **TOP015** / **TOP016** / **TOP017**. Красный сигнал и `RailwaySignals.White` ключи не трогают.
 
-Вагоны на ServiceStation — как на станции (по значению или `ref`). C# запрещает `async` + `ref` (**CS1988**). Асинхронное восстановление с вагонами — по значению:
+Handler с сигнатурой `Func<RedSignal, CargoManifest, Signal>` (и асинхронный вариант) — запасной низкоуровневый вариант без сгенерированного адаптера вагонов; правьте `manifest`, читайте `red.Issue` / `red.Issues`. Рядом есть вариант с журналом, `Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Signal>`: список стоит третьим аргументом и вагоны через него не проецируются.
+
+Вагоны на ServiceStation читаются по значению, `ref readonly` или `in`. `ref` и `out` — **TOP023**. C# запрещает `async` вместе с `ref`, `in` и `out` (**CS1988**). Асинхронное восстановление с вагонами — по значению:
 
 ```csharp
 .ServiceStation("Recovery", async (decimal amount, SignalIssue issue, CancellationToken token) =>
@@ -425,10 +441,15 @@ var route = new TrainRoute()
         var subReport = subRoute.Travel();
         if (!subReport.ReachedDestination)
         {
+            var subIssue = subReport.FailureIssues[0];
             return RailwaySignals.Red(
                 "BRANCH_FAILED",
                 $"tier '{tier}' did not complete",
-                subReport.FailureIssues);
+                new Dictionary<string, object>
+                {
+                    ["code"] = subIssue.Code,
+                    ["station"] = subIssue.StationName,
+                });
         }
 
         return new
@@ -466,7 +487,7 @@ await route.TravelAsync(cts.Token);
 
 ## Необработанные исключения
 
-Исключение внутри станции (кроме отмены) преобразуется в красный сигнал:
+Исключение внутри обычной станции (кроме отмены) преобразуется в красный сигнал:
 
 | Поле | Значение |
 |------|----------|
@@ -474,7 +495,7 @@ await route.TravelAsync(cts.Token);
 | `Issue.Message` | `Unhandled station exception: {сообщение}` |
 | `Issue.StationName` | имя станции |
 
-Аналогично для `ServiceStation` — код `SERVICE_STATION_EXCEPTION`.
+Исключение `ServiceStation` (кроме отмены) прерывает `Travel` / `TravelAsync` исключением `RouteAbortException`. В нём имя станции, исходное исключение и отчёт: завершённые визиты, манифест как есть, красный сигнал входа в эту станцию. Визит сорвавшейся станции не записывается.
 
 ## Диагностики (analyzer)
 
@@ -500,6 +521,9 @@ await route.TravelAsync(cts.Token);
 | `TOP018` | Error | Имя `out` совпало с членом возврата |
 | `TOP019` | Error | Имя `in` или `ref readonly` присутствует в возврате |
 | `TOP020` | Error | `params` не последний параметр делегата |
+| `TOP021` | Error | Синхронный `Travel` / `TravelLight` на известной async-цепочке |
+| `TOP022` | Error | Неконстантный default у вагона: генератор подставляет только константу |
+| `TOP023` | Error | `ref` или `out` на ServiceStation |
 
 ### Chain-dispatch
 

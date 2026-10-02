@@ -39,7 +39,7 @@ namespace TrainOP.Generators.Handlers
         public bool IsAsync { get; }
 
         /// <summary>
-        /// Handler expression text for a straight-chain spike, or null when the body is not a single expression.
+        /// Capture-free expression text a segment method can paste, or null when the body must stay a hop.
         /// </summary>
         public string StraightExpression { get; }
 
@@ -58,6 +58,8 @@ namespace TrainOP.Generators.Handlers
         public bool IncludeSignalIssue => Input.IncludeSignalIssue;
 
         public bool IncludeSignalIssues => Input.IncludeSignalIssues;
+
+        public bool IncludeVisitJournal => Input.IncludeVisitJournal;
 
         public string ExtensionMethodName => Input.StationKind.ToMethodName();
 

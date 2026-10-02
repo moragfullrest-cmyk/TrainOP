@@ -49,6 +49,7 @@ namespace TrainOP.Generators
             var includeRedSignal = false;
             var includeSignalIssue = false;
             var includeSignalIssues = false;
+            var includeVisitJournal = false;
             var hasCancellationToken = false;
             var fallbackLocation = handlerLocation ?? handlerExpression?.GetLocation();
 
@@ -104,6 +105,15 @@ namespace TrainOP.Generators
 
                             includeSignalIssues = true;
                             continue;
+
+                        case HandlerInputKind.VisitJournal:
+                            if (!stationKind.IsServiceStation())
+                            {
+                                return null;
+                            }
+
+                            includeVisitJournal = true;
+                            continue;
                     }
                 }
 
@@ -120,7 +130,9 @@ namespace TrainOP.Generators
                 var isParams = WagonParameterMetadata.IsParams(parameter)
                     || WagonParameterMetadata.EnclosingMethodDeclaresParams(handlerExpression, name);
 
-                var isOptional = WagonParameterMetadata.IsOptionalNullableValueType(parameterType, out var underlyingType);
+                var option = WagonParameterMetadata.Classify(parameter, semanticModel);
+                var isOptional = option.IsOptional;
+                var underlyingType = option.UnderlyingType;
                 var pullTypeDisplay = WagonParameterMetadata.GetPullTypeDisplay(parameterType, underlyingType, isOptional);
                 var effectiveTypeSymbol = WagonParameterMetadata.GetEffectiveTypeSymbol(parameterType, underlyingType, isOptional);
                 var typeDisplay = ManifestWagonTypes.ToWagonParameterTypeDisplay(parameterType, underlyingType, isOptional);
@@ -141,18 +153,21 @@ namespace TrainOP.Generators
                     isOut,
                     isRefReadonly,
                     isIn,
-                    isParams));
+                    isParams,
+                    option.FallbackExpression,
+                    option.HasNonConstantDefault));
             }
 
             if (stationKind.IsServiceStation())
             {
                 // RedSignal (+ optional CargoManifest / CancellationToken) with no wagons is the built-in escape hatch.
-                if (wagons.Count == 0)
+                // A visit journal is a generated slot, so that shape stays on the data-oriented path.
+                if (wagons.Count == 0 && !includeVisitJournal)
                 {
                     return null;
                 }
 
-                if (!includeRedSignal && !includeSignalIssue && !includeSignalIssues)
+                if (!includeRedSignal && !includeSignalIssue && !includeSignalIssues && !includeVisitJournal)
                 {
                     return null;
                 }
@@ -171,6 +186,7 @@ namespace TrainOP.Generators
                 includeRedSignal,
                 includeSignalIssue,
                 includeSignalIssues,
+                includeVisitJournal,
                 hasCancellationToken);
 
             var returnShape = HandlerReturnSchemaInference.Infer(
@@ -183,13 +199,17 @@ namespace TrainOP.Generators
                 input,
                 HandlerOutputParameters.From(returnShape),
                 IsAsyncHandler(handlerSymbol, handlerExpression),
-                TryGetStraightExpression(body));
+                TryGetStraightExpression(body, semanticModel, handlerSymbol));
         }
 
         /// <summary>
-        /// Returns the expression text when the handler body is a single expression without route signals.
+        /// Returns the expression text when the handler body is a single expression without route signals,
+        /// captured variables, or symbols the generated segment method cannot see.
         /// </summary>
-        private static string TryGetStraightExpression(CSharpSyntaxNode body)
+        private static string TryGetStraightExpression(
+            CSharpSyntaxNode body,
+            SemanticModel semanticModel,
+            IMethodSymbol handlerSymbol)
         {
             ExpressionSyntax expression = null;
             if (body is ArrowExpressionClauseSyntax arrow)
@@ -201,7 +221,7 @@ namespace TrainOP.Generators
                 expression = node;
             }
 
-            if (expression == null)
+            if (expression == null || semanticModel == null)
             {
                 return null;
             }
@@ -212,7 +232,119 @@ namespace TrainOP.Generators
                 return null;
             }
 
+            var dataFlow = semanticModel.AnalyzeDataFlow(expression);
+            if (!dataFlow.Succeeded || dataFlow.Captured.Length > 0 || !IsPasteableExpression(expression, semanticModel, handlerSymbol))
+            {
+                return null;
+            }
+
             return text.Trim();
+        }
+
+        /// <summary>
+        /// True when every referenced symbol is a handler parameter, declared inside the expression,
+        /// or a type or member in the <c>System</c> namespace that <c>using System</c> can see.
+        /// </summary>
+        private static bool IsPasteableExpression(
+            ExpressionSyntax expression,
+            SemanticModel semanticModel,
+            IMethodSymbol handlerSymbol)
+        {
+            foreach (var node in expression.DescendantNodesAndSelf())
+            {
+                if (!(node is IdentifierNameSyntax) && !(node is GenericNameSyntax))
+                {
+                    continue;
+                }
+
+                if (node is IdentifierNameSyntax identifier && IsDeclarationName(identifier))
+                {
+                    continue;
+                }
+
+                var symbol = semanticModel.GetSymbolInfo(node).Symbol;
+                if (symbol == null)
+                {
+                    if (node is IdentifierNameSyntax projected
+                        && projected.Parent is AnonymousObjectMemberDeclaratorSyntax)
+                    {
+                        continue;
+                    }
+
+                    return false;
+                }
+
+                if (symbol.Kind == SymbolKind.ErrorType)
+                {
+                    return false;
+                }
+
+                if (IsDeclaredInside(symbol, expression)
+                    || IsHandlerParameter(symbol, handlerSymbol)
+                    || IsAnonymousTypeMember(symbol)
+                    || IsSystemNamespaceSymbol(symbol))
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// The name in <c>new { amount = 1 }</c> declares a member. <c>new { amount }</c> still names a value.
+        /// </summary>
+        private static bool IsDeclarationName(IdentifierNameSyntax identifier)
+        {
+            return identifier.Parent is NameEqualsSyntax;
+        }
+
+        private static bool IsDeclaredInside(ISymbol symbol, ExpressionSyntax expression)
+        {
+            var references = symbol.DeclaringSyntaxReferences;
+            for (var i = 0; i < references.Length; i++)
+            {
+                var syntax = references[i].GetSyntax();
+                if (syntax.SyntaxTree == expression.SyntaxTree && expression.Span.Contains(syntax.Span))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsHandlerParameter(ISymbol symbol, IMethodSymbol handlerSymbol)
+        {
+            if (handlerSymbol == null || !(symbol is IParameterSymbol))
+            {
+                return false;
+            }
+
+            return SymbolEqualityComparer.Default.Equals(symbol.ContainingSymbol, handlerSymbol);
+        }
+
+        private static bool IsAnonymousTypeMember(ISymbol symbol)
+        {
+            return symbol.ContainingType != null && symbol.ContainingType.IsAnonymousType;
+        }
+
+        /// <summary>
+        /// The generated file imports <c>System</c> only, so <c>System.Linq</c> and user namespaces stay hops.
+        /// </summary>
+        private static bool IsSystemNamespaceSymbol(ISymbol symbol)
+        {
+            if (symbol is INamespaceSymbol namespaceSymbol)
+            {
+                return namespaceSymbol.IsGlobalNamespace
+                    || string.Equals(namespaceSymbol.ToDisplayString(), "System", StringComparison.Ordinal);
+            }
+
+            var containing = symbol.ContainingNamespace;
+            return containing != null
+                && string.Equals(containing.ToDisplayString(), "System", StringComparison.Ordinal);
         }
 
         /// <summary>

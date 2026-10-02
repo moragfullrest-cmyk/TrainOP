@@ -82,12 +82,11 @@ namespace TrainOP.Benchmarks.Caller
 
                 return RailwaySignals.Green(new { orderId, amount, units, currency });
             })
-            .ServiceStation("Recover", (ref int units, RedSignal red) =>
+            .ServiceStation("Recover", (int units, RedSignal red) =>
             {
                 if (red.Issue.Code == "STOCK_LIMIT")
                 {
-                    units = 10;
-                    return RailwaySignals.White;
+                    return RailwaySignals.Green(new { units = 10 });
                 }
 
                 return RailwaySignals.Red("UNRECOVERABLE", "cannot recover from " + red.Issue.Code);

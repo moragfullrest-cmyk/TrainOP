@@ -31,7 +31,7 @@ Railway Oriented Programming: станции — шаги пайплайна, з
 | Маршрут | `TrainRoute` | builder + `Travel` / `TravelAsync` |
 | Сигнал | `Signal` / `GreenSignal` / `RedSignal` | только управление (без манифеста) |
 | DSL | `RailwaySignals.*` | что возвращает data-handler |
-| Отчёт | `RouteReport` | визиты, failure, `Manifest`, `Get<T>(wagon)` |
+| Отчёт | `RouteReport` | визиты, failure, снимок `ReadOnlyManifest`, `Get<T>` / `TryGet<T>` |
 
 ### Минимальный маршрут
 
@@ -297,7 +297,7 @@ Handler schema строится **один раз** в discovery (`StationLink`)
 
 ##### HandlerInputSchemaBuilder.TryBuild
 
-**Входы:** Wagon / `CargoManifest` / `RedSignal` / `SignalIssue` / `CancellationToken`; `ref` → writeback (`RefKind.Ref`); `out` → тот же writeback без pull, вагон создаётся локалом `default` перед вызовом; `ref readonly` и `in` → pull, без writeback, слот не снимается (имя в возврате — TOP019); `params` → один вагон-коллекция по значению, только последний параметр делегата (иначе TOP020); ServiceStation пишет только обновления существующих ключей (`out` нового имени — TOP015); optional nullable → `IsOptional`; слоты → `HandlerCallSlot[]`.
+**Входы:** Wagon / `CargoManifest` / `RedSignal` / `SignalIssue` / `IReadOnlyList<StationVisit>` / `CancellationToken`; `ref` → writeback (`RefKind.Ref`); `out` → тот же writeback без pull, вагон создаётся локалом `default` перед вызовом; `ref readonly` и `in` → pull, без writeback, слот не снимается (имя в возврате — TOP019); `params` → один вагон-коллекция по значению, только последний параметр делегата (иначе TOP020); ServiceStation пишет только обновления существующих ключей полем зелёного возврата (`ref` / `out` — TOP023, `out` нового имени — TOP015); `Nullable<T>`, аннотированный `string?` и константный default → `IsOptional` (неконстантный default — TOP022); слоты → `HandlerCallSlot[]`.
 
 **Выход:** `HandlerReturnInference` — void, anonymous/record, tuple, `Task<T>`, Green/Red/White, `CargoManifest`, unknown; имена членов tuple/record (иначе позже TOP006).
 
@@ -668,15 +668,18 @@ flowchart LR
 | Шаг | Что происходит |
 |-----|----------------|
 | `RegisterStation` | Сгенерированный адаптер кладётся в список `StationPlan` на `TrainRoute` |
-| `Travel` / `TravelAsync` | Снимок плана + пустой `CargoManifest`; обход: обычная после зелёного, сервисная после красного, иначе пропуск |
-| Adapter | `PullWagon` по именам → handler → запись возврата в манифест рейса → Green\|Red (без груза в сигнале) |
-| Зелёный | Манифест рейса идёт дальше; визит пишется; следующие обычные входят, сервисные пропускаются |
-| Красный | Визит пишется; следующие сервисные входят, обычные пропускаются; если красный в конце плана — стоп + `FailureCode` / `FailureMessage` |
-| Exception | Кроме `OperationCanceledException` → Red с `STATION_EXCEPTION` / `SERVICE_STATION_EXCEPTION` |
+| `Travel` / `TravelAsync` | Первый вызов копирует список и ставит печать; дальше `RegisterStation` и `ServiceStation` бросают `InvalidOperationException`. Обход идёт по этой копии: обычная после зелёного, сервисная после красного, иначе `Skipped`, если журнал включён |
+| Adapter | `PullWagon` по именам; необязательный параметр (`Nullable<T>`, аннотированный `string?`, константный default) при отсутствии ключа получает `null` или константу → handler → запись возврата в манифест рейса → Green\|White\|Red (без груза в сигнале) |
+| Зелёный | Манифест рейса идёт дальше; визит `Green`; следующие обычные входят, сервисные пропускаются |
+| Белый | Манифест не меняется; в журнале `White`, для следующего шага рейс продолжается как после зелёного |
+| Красный | Визит `Red`; следующие сервисные входят, обычные пропускаются; если красный в конце плана — стоп + `FailureCode` / `FailureMessage` |
+| Exception | Обычная станция, кроме `OperationCanceledException` → Red `STATION_EXCEPTION`. `ServiceStation`, кроме отмены → `RouteAbortException` с отчётом на момент срыва |
+
+Подряд идущие чистые выражения без захвата едут одним участком внутри того же обхода. Участок читает нужные вагоны, выполняет шаги и на границе записывает состав. Красный сигнал, `ServiceStation`, `async`, `ref`, `out`, токен или необязательный вагон в handler разрывают участок, и такой шаг идёт обычным hop. Визит пишется на каждую станцию, а отменяемый токен проверяется и между шагами участка.
 
 ### Sync vs Async
 
-Есть async-станция (`Task` / `Task<T>`) → только `TravelAsync`. Синхронный `Travel()` бросит `InvalidOperationException` («Use TravelAsync»).
+Есть async-станция (`Task` / `Task<T>`) → только `TravelAsync` / `TravelLightAsync`. На уже разобранной цепочке синхронный `Travel` / `TravelLight` — **TOP021**. Если цепочка с вызова не видна, остаётся рантайм: `InvalidOperationException` («Use TravelAsync»).
 
 ```csharp
 var route = new TrainRoute()
@@ -692,9 +695,9 @@ var report = await route.TravelAsync();
 
 ### ServiceStation
 
-Шаг в общем плане маршрута. Вход только после красного предыдущего шага; после зелёного — пропуск. На входе получает `RedSignal` (и при необходимости вагоны, `SignalIssue` / цепочку). Успешное восстановление (зелёный / `White`) снова открывает обычные станции дальше по плану.
+Шаг в общем плане маршрута. Вход только после красного предыдущего шага; после зелёного — пропуск. На входе получает `RedSignal` (и при необходимости вагоны, `SignalIssue` / список issue этой остановки, `IReadOnlyList<StationVisit>` шагов до неё). Успешное восстановление (зелёный / `White`) снова открывает обычные станции дальше по плану.
 
-Data-oriented ServiceStation работает как обычная станция (по значению или `ref`, `Green` / `Red` / `White` / данные), но запись возврата **не меняет состав** манифеста: только обновление уже существующих ключей. Добавление вагона (**TOP015**), опуск входного non-`ref` (**TOP016**) или `CargoManifest` (**TOP017**) — ошибки analyzer'а. Хвост маршрута уже проверен на исходный набор вагонов, а техобслуживание вызывается только на красном. C# запрещает `async` + `ref`/`in`/`out` (**CS1988**); асинхронное восстановление с вагонами — по значению. Запасной вариант без вагонов — `(RedSignal red, CargoManifest manifest)` / `(RedSignal red, CargoManifest manifest, CancellationToken token)` и правки через `manifest.LoadWagon`. Пользовательский контракт — [core-api.md → модификаторы и манифест](core-api.md#модификаторы-и-манифест).
+Data-oriented ServiceStation читает вагоны по значению, `ref readonly` или `in` и возвращает `Green` / `Red` / `White` / данные. Запись возврата **не меняет состав** манифеста: существующий ключ обновляется полем зелёного возврата. `ref` и `out` запрещены (**TOP023**). Добавление вагона (**TOP015**), опуск входного non-`ref` (**TOP016**) или `CargoManifest` (**TOP017**) — ошибки analyzer'а. Хвост маршрута уже проверен на исходный набор вагонов, а техобслуживание вызывается только на красном. C# запрещает `async` + `ref`/`in`/`out` (**CS1988**); асинхронное восстановление с вагонами — по значению. Запасной вариант без вагонов — `(RedSignal red, CargoManifest manifest)` / `(RedSignal red, CargoManifest manifest, CancellationToken token)` и правки через `manifest.LoadWagon`. Пользовательский контракт — [core-api.md → модификаторы и манифест](core-api.md#модификаторы-и-манифест).
 
 ```csharp
 var route = new TrainRoute()
@@ -755,10 +758,10 @@ Handler обычно не трогает манифест руками. Он в�
 
 - `CargoManifest` — читать лишнее без формального input;
 - `CancellationToken`;
-- для ServiceStation — `RedSignal` / `SignalIssue` (последний) / `IReadOnlyList<SignalIssue>` (цепочка);
+- для ServiceStation — `RedSignal` / `SignalIssue` (первый) / `IReadOnlyList<SignalIssue>` (все issue остановки) / `IReadOnlyList<StationVisit>` (шаги до этой станции; на `TravelLight` список пуст);
 - `ref` параметры вагонов — обратная запись через `refLocalValues`. `out` использует тот же массив: локал `default` перед вызовом, без pull; отсутствующий ключ создаётся. `ref readonly` и `in` передаются как `in`, в `refLocalValues` не пишутся и не снимаются частичным возвратом. `params` — объявление делегата, в вызов уходит один аргумент-коллекция. Несовместимо с `async` для `ref` / `in` / `out` / `ref readonly` (CS1988). На ServiceStation новый `out` — TOP015.
 
-Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
+Необязательный вагон (`Nullable<T>`, аннотированный `string?`, константный default): нет ключа — `null` или константа, живой ключ не требуется. Неконстантный default — TOP022. Голый `string` и value type без этих форм обязательны.
 
 ---
 
@@ -786,7 +789,7 @@ Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 
 ### E. Framework-параметры Station / ServiceStation
 
-`FrameworkParametersExample.cs` — `CargoManifest`, `CancellationToken`, `SignalIssue`, `IReadOnlyList<SignalIssue>`, `RedSignal` (в т.ч. цепочка issues из подмаршрута).
+`FrameworkParametersExample.cs` — `CargoManifest`, `CancellationToken`, `SignalIssue`, `IReadOnlyList<SignalIssue>`, `RedSignal` (в т.ч. `Details` из подмаршрута).
 
 ### F. Cross-assembly
 
@@ -814,6 +817,7 @@ Nullable value-type wagon: `HasWagon(...) ? PullWagon<T>() : default`.
 | TOP012 | Factory paths с разным терминалом | Error | Analyzer (factory paths) |
 | TOP013 | Factory path с unknown terminal | Error | Analyzer (factory paths) |
 | TOP014 | Больше одного `new TrainRoute()` на одной строке | Error | Analyzer (validation) |
+| TOP022 | Неконстантный default вагона | Error | Analyzer (simulator) |
 
 Описания: `src/TrainOP.Generators/TrainRouteDiagnostics.cs`.
 

@@ -49,6 +49,12 @@ namespace TrainOP.Generators
                 return true;
             }
 
+            if (IsVisitJournal(typeSymbol))
+            {
+                kind = HandlerInputKind.VisitJournal;
+                return true;
+            }
+
             return false;
         }
 
@@ -127,6 +133,46 @@ namespace TrainOP.Generators
             }
 
             return IsSignalIssue(named.TypeArguments[0]);
+        }
+
+        /// <summary>
+        /// Determines whether the type is <c>IReadOnlyList&lt;StationVisit&gt;</c>.
+        /// </summary>
+        public static bool IsVisitJournal(ITypeSymbol typeSymbol)
+        {
+            if (!(typeSymbol is INamedTypeSymbol named)
+                || named.TypeArguments.Length != 1
+                || !string.Equals(named.Name, "IReadOnlyList", StringComparison.Ordinal)
+                || !IsStationVisit(named.TypeArguments[0]))
+            {
+                return false;
+            }
+
+            // An unbound IReadOnlyList<StationVisit> is an error type in the global namespace
+            // when the file has no using for System.Collections.Generic. The argument is still StationVisit.
+            if (named.TypeKind == TypeKind.Error)
+            {
+                return true;
+            }
+
+            var ns = named.ContainingNamespace?.ToDisplayString();
+            return string.Equals(ns, "System.Collections.Generic", StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Determines whether the type is StationVisit.
+        /// </summary>
+        public static bool IsStationVisit(ITypeSymbol typeSymbol)
+        {
+            if (!(typeSymbol is INamedTypeSymbol named)
+                || named.IsGenericType
+                || !string.Equals(named.Name, "StationVisit", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var ns = named.ContainingNamespace?.ToDisplayString();
+            return string.Equals(ns, "TrainOP", StringComparison.Ordinal);
         }
     }
 }
