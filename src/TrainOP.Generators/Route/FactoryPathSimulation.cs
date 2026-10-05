@@ -15,11 +15,13 @@ namespace TrainOP.Generators.Route
         public FactoryPathSimulation(
             ImmutableArray<WagonBinding> terminalWagons,
             bool hasUnknownReturn,
-            Location location)
+            Location location,
+            bool isAsync = false)
         {
             TerminalWagons = terminalWagons;
             HasUnknownReturn = hasUnknownReturn;
             Location = location;
+            IsAsync = isAsync;
         }
 
         public ImmutableArray<WagonBinding> TerminalWagons { get; }
@@ -27,5 +29,10 @@ namespace TrainOP.Generators.Route
         public bool HasUnknownReturn { get; }
 
         public Location Location { get; }
+
+        /// <summary>
+        /// True when this path contains an async station, including an async factory it continues.
+        /// </summary>
+        public bool IsAsync { get; }
     }
 }

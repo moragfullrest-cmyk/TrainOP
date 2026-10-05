@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+### Added
+
+- **Exported route sync:** `[RouteSchemaFor]` carries `IsAsync`. The generator sets it when any return path of the factory contains an async station, including a factory that path only returns. `Travel` / `TravelLight` on that factory is **TOP021** in a referencing assembly. A schema emitted without the flag still reads as synchronous.
+
 ### Changed
 
 - **Open plan:** `Travel`, `TravelAsync`, and `TravelLight*` walk the live station list. A later `RegisterStation`, `Station`, or `ServiceStation` extends that list for the next run. The first-travel copy and the `InvalidOperationException` that rejected registration after the first run are removed. Each run still starts from an empty manifest.

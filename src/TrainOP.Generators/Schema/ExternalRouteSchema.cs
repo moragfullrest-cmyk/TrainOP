@@ -14,13 +14,15 @@ namespace TrainOP.Generators
         public ExternalRouteSchema(
             ImmutableArray<WagonBinding> terminalWagons,
             string callerChainKey,
-            int stationCount)
+            int stationCount,
+            bool isAsync = false)
         {
             TerminalWagons = terminalWagons.IsDefault
                 ? ImmutableArray<WagonBinding>.Empty
                 : terminalWagons;
             CallerChainKey = callerChainKey ?? string.Empty;
             StationCount = stationCount < 0 ? 0 : stationCount;
+            IsAsync = isAsync;
         }
 
         /// <summary>Terminal wagon slots exported by the factory schema.</summary>
@@ -36,6 +38,12 @@ namespace TrainOP.Generators
         /// Number of Station/ServiceStation registrations inside the factory before return.
         /// </summary>
         public int StationCount { get; }
+
+        /// <summary>
+        /// True when any return path of the exported factory contains an async station.
+        /// False when the schema predates the flag.
+        /// </summary>
+        public bool IsAsync { get; }
 
         /// <summary>
         /// True when schema carries dispatch identity required for factory-extension chain-dispatch.

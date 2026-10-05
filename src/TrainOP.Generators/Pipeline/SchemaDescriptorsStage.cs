@@ -101,7 +101,8 @@ namespace TrainOP.Generators
                         methodSymbol,
                         terminals,
                         callerChainKey,
-                        stationCount));
+                        stationCount,
+                        validation.IsAsync));
                 }
             }
 

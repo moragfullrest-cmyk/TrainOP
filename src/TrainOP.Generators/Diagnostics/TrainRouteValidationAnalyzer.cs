@@ -262,8 +262,8 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// Reports TOP021 when <c>Travel</c> or <c>TravelLight</c> runs a chain the graph already resolved and that chain has an async station.
-        /// A parameter, field, or method the graph did not open stays silent; runtime still rejects it.
+        /// Reports TOP021 when <c>Travel</c> or <c>TravelLight</c> runs a chain the graph already resolved, or a factory whose exported schema says <c>IsAsync</c>.
+        /// A parameter, field, or method the graph did not open and whose schema does not mark the route async stays silent; runtime still rejects it.
         /// </summary>
         private static void ReportSyncTravelOnAsyncChain(
             SemanticModelAnalysisContext modelContext,
@@ -350,13 +350,13 @@ namespace TrainOP.Generators
             if (receiver is InvocationExpressionSyntax invocation)
             {
                 if (graph.TryGetChainForInvocation(invocation, out var stationChain)
-                    && RouteHasAsyncStation(stationChain, graph))
+                    && RouteHasAsyncStation(stationChain, graph, semanticModel.Compilation))
                 {
                     return true;
                 }
 
                 return semanticModel.GetSymbolInfo(invocation).Symbol is IMethodSymbol method
-                    && MethodHasAsyncChain(method, graph);
+                    && MethodHasAsyncChain(method, graph, semanticModel.Compilation);
             }
 
             if (receiver is not IdentifierNameSyntax identifier)
@@ -376,7 +376,7 @@ namespace TrainOP.Generators
 
             return LocalBindingMaterializer.TryMaterialize(identifier, semanticModel, out var binding)
                 && binding.FactoryMethod != null
-                && MethodHasAsyncChain(binding.FactoryMethod, graph);
+                && MethodHasAsyncChain(binding.FactoryMethod, graph, semanticModel.Compilation);
         }
 
         private static bool LocalHasAsyncChain(
@@ -399,7 +399,7 @@ namespace TrainOP.Generators
                     continue;
                 }
 
-                if (RouteHasAsyncStation(chain, graph))
+                if (RouteHasAsyncStation(chain, graph, semanticModel.Compilation))
                 {
                     return true;
                 }
@@ -408,17 +408,17 @@ namespace TrainOP.Generators
             return false;
         }
 
-        private static bool RouteHasAsyncStation(RouteChain chain, RouteGraph graph)
+        private static bool RouteHasAsyncStation(RouteChain chain, RouteGraph graph, Compilation compilation)
         {
             if (ChainHasAsyncStation(chain))
             {
                 return true;
             }
 
-            return chain.FactoryMethod != null && MethodHasAsyncChain(chain.FactoryMethod, graph);
+            return chain.FactoryMethod != null && MethodHasAsyncChain(chain.FactoryMethod, graph, compilation);
         }
 
-        private static bool MethodHasAsyncChain(IMethodSymbol method, RouteGraph graph)
+        private static bool MethodHasAsyncChain(IMethodSymbol method, RouteGraph graph, Compilation compilation)
         {
             if (method == null)
             {
@@ -446,7 +446,7 @@ namespace TrainOP.Generators
                 }
             }
 
-            return false;
+            return FactoryRouteAsync.MethodRequiresAsyncTravel(method, compilation);
         }
 
         private static bool ChainHasAsyncStation(RouteChain chain)

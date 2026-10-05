@@ -18,10 +18,10 @@ public static class PaymentModule
 
 Reference the `TrainOP` package in the library project (runtime + generator). The generator **emits** schema metadata on a generated partial type (do not hand-author these attributes in consumer code):
 
-- `[RouteSchemaFor(typeof(PaymentModule), "Build", CallerChainKey = "<hash>", StationCount = N)]`
+- `[RouteSchemaFor(typeof(PaymentModule), "Build", CallerChainKey = "<hash>", StationCount = N, IsAsync = false)]`
 - repeated `[RouteSchemaWagon(name, typeof(T))]` attributes
 
-`CallerChainKey` is the same ctor-site key runtime stamps on `new TrainRoute()` inside the factory. `StationCount` is the number of Station/ServiceStation registrations inside the factory (ordinal offset for consumer extension stations). Together they keep caller chain-dispatch aligned when the consumer continues the route after a public factory.
+`CallerChainKey` is the same ctor-site key runtime stamps on `new TrainRoute()` inside the factory. `StationCount` is the number of Station/ServiceStation registrations inside the factory (ordinal offset for consumer extension stations). Together they keep caller chain-dispatch aligned when the consumer continues the route after a public factory. `IsAsync` is true when any return path contains an async station, so a consumer `Travel` / `TravelLight` on that factory is **TOP021**. A schema emitted without the flag still reads as synchronous.
 
 Schemas that lack `CallerChainKey` (older packages) cannot reliably dispatch extension stations under conflicting CLR signatures — the generator does not invent index `0` for that case.
 

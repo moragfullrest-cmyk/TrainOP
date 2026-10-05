@@ -18,11 +18,13 @@ namespace TrainOP.Generators
             public ValidationResult(
                 bool isValid,
                 ImmutableArray<WagonBinding> terminalWagons,
-                ImmutableArray<Diagnostic> diagnostics)
+                ImmutableArray<Diagnostic> diagnostics,
+                bool isAsync = false)
             {
                 IsValid = isValid;
                 TerminalWagons = terminalWagons;
                 Diagnostics = diagnostics;
+                IsAsync = isAsync;
             }
 
             public bool IsValid { get; }
@@ -30,6 +32,12 @@ namespace TrainOP.Generators
             public ImmutableArray<WagonBinding> TerminalWagons { get; }
 
             public ImmutableArray<Diagnostic> Diagnostics { get; }
+
+            /// <summary>
+            /// True when any return path contains an async station.
+            /// A factory that can come back either way is async: <c>Travel</c> is not safe.
+            /// </summary>
+            public bool IsAsync { get; }
         }
 
         /// <summary>
@@ -123,7 +131,17 @@ namespace TrainOP.Generators
                 return new ValidationResult(false, ImmutableArray<WagonBinding>.Empty, diagnostics.ToImmutable());
             }
 
-            return new ValidationResult(true, reference, ImmutableArray<Diagnostic>.Empty);
+            var isAsync = false;
+            for (var i = 0; i < paths.Length; i++)
+            {
+                if (paths[i].IsAsync)
+                {
+                    isAsync = true;
+                    break;
+                }
+            }
+
+            return new ValidationResult(true, reference, ImmutableArray<Diagnostic>.Empty, isAsync);
         }
     }
 }

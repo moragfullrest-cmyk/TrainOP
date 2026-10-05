@@ -280,7 +280,8 @@ namespace TrainOP.Generators
                 return new FactoryPathSimulation(
                     terminals.Wagons,
                     terminals.HasUnknownReturn,
-                    location);
+                    location,
+                    FactoryRouteAsync.ChainRequiresAsyncTravel(chain, compilation));
             }
 
             if (BuildChainsStage.FactoryExtension(
@@ -308,7 +309,8 @@ namespace TrainOP.Generators
                 return new FactoryPathSimulation(
                     terminals.Wagons,
                     terminals.HasUnknownReturn,
-                    location);
+                    location,
+                    FactoryRouteAsync.ChainRequiresAsyncTravel(extensionChain, compilation));
             }
 
             if (TrySimulateBareFactoryInvocation(expression, semanticModel, compilation, location, out var bareSimulation))
@@ -372,7 +374,8 @@ namespace TrainOP.Generators
             simulation = new FactoryPathSimulation(
                 terminals.Wagons,
                 terminals.HasUnknownReturn,
-                location);
+                location,
+                FactoryRouteAsync.MethodRequiresAsyncTravel(factoryMethod, compilation));
             return true;
         }
     }

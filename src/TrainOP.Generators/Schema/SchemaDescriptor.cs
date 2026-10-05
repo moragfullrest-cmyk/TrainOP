@@ -18,12 +18,14 @@ namespace TrainOP.Generators
             IMethodSymbol method,
             TerminalSet terminals,
             string callerChainKey,
-            int stationCount)
+            int stationCount,
+            bool isAsync)
         {
             Method = method ?? throw new ArgumentNullException(nameof(method));
             Terminals = terminals ?? TerminalSet.Empty(TerminalSet.Origin.FactoryPath);
             CallerChainKey = callerChainKey ?? string.Empty;
             StationCount = stationCount < 0 ? 0 : stationCount;
+            IsAsync = isAsync;
             OwnerTypeDisplay = Method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             MethodName = Method.Name;
             SchemaTypeName = BuildSchemaTypeName(Method);
@@ -56,6 +58,12 @@ namespace TrainOP.Generators
 
         /// <summary>Number of Station/ServiceStation registrations inside the factory.</summary>
         public int StationCount { get; }
+
+        /// <summary>
+        /// True when any return path contains an async station.
+        /// Written to <c>RouteSchemaFor.IsAsync</c>.
+        /// </summary>
+        public bool IsAsync { get; }
 
         /// <summary>
         /// True when descriptor carries dispatch identity (<c>CallerChainKey</c> / <c>StationCount</c>).

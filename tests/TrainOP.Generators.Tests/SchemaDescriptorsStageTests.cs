@@ -38,6 +38,7 @@ public static class PaymentModule
             Assert.True(descriptor.HasDispatchIdentity);
             Assert.False(string.IsNullOrEmpty(descriptor.CallerChainKey));
             Assert.Equal(2, descriptor.StationCount);
+            Assert.False(descriptor.IsAsync);
             Assert.Equal(TerminalSet.Origin.FactoryPath, descriptor.Terminals.Provenance);
             Assert.False(descriptor.Terminals.HasUnknownReturn);
             Assert.Equal(2, descriptor.TerminalWagons.Length);

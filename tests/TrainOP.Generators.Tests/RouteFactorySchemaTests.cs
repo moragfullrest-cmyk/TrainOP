@@ -59,6 +59,7 @@ public static class PaymentModule
             Assert.Contains("[RouteSchemaFor(typeof(global::PaymentModule), \"Build\"", generated);
             Assert.Contains("CallerChainKey = \"", generated);
             Assert.Contains("StationCount = 2", generated);
+            Assert.Contains("IsAsync = false", generated);
             Assert.Contains("[RouteSchemaWagon(\"amount\"", generated);
             Assert.Contains("[RouteSchemaWagon(\"paymentId\"", generated);
             Assert.Contains("internal static class PaymentModule_Build_Schema { }", generated);
@@ -270,6 +271,7 @@ public static class PaymentModule
                 out ExternalRouteSchema schema));
             Assert.True(schema.HasDispatchIdentity);
             Assert.Equal(2, schema.StationCount);
+            Assert.False(schema.IsAsync);
             Assert.Matches("^[0-9a-f]{16}$", schema.CallerChainKey);
         }
 
@@ -300,6 +302,164 @@ public static class ServiceFactory
             RunGeneratorOnCompilation(compilation, out var generated);
             Assert.Contains("StationCount = 3", generated);
             Assert.Contains("CallerChainKey = \"", generated);
+            Assert.Contains("IsAsync = false", generated);
+        }
+
+        /// <summary>
+        /// Verifies an async station on any return path sets <c>IsAsync</c>, including a private factory the public method only returns.
+        /// </summary>
+        [Fact]
+        public void Generator_EmitsIsAsync_WhenAnyReturnPathContainsAsyncStation()
+        {
+            const string direct = @"
+using System.Threading;
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class AsyncModule
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Wait"", async (CancellationToken token) =>
+        {
+            await Task.Delay(1, token);
+            return new { value = 1 };
+        });
+}";
+
+            var directGenerated = TrainRouteStationGeneratorTestsHelper.RunAllGeneratedSources(direct);
+            Assert.Contains("IsAsync = true", directGenerated);
+
+            const string nested = @"
+using System.Threading;
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class AsyncModule
+{
+    public static TrainRoute Build() => Seed();
+
+    private static TrainRoute Seed() => new TrainRoute()
+        .Station(""Wait"", async (CancellationToken token) =>
+        {
+            await Task.Delay(1, token);
+            return new { value = 1 };
+        });
+}";
+
+            var nestedGenerated = TrainRouteStationGeneratorTestsHelper.RunAllGeneratedSources(nested);
+            Assert.Contains("AsyncModule_Build_Schema", nestedGenerated);
+            Assert.Contains("IsAsync = true", nestedGenerated);
+
+            const string mixed = @"
+using System.Threading;
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class AsyncModule
+{
+    public static TrainRoute Build(bool slow) =>
+        slow
+            ? new TrainRoute().Station(""Wait"", async (CancellationToken token) =>
+            {
+                await Task.Delay(1, token);
+                return new { value = 1 };
+            })
+            : new TrainRoute().Station(""Now"", () => new { value = 2 });
+}";
+
+            var mixedGenerated = TrainRouteStationGeneratorTestsHelper.RunAllGeneratedSources(mixed);
+            Assert.Contains("IsAsync = true", mixedGenerated);
+        }
+
+        /// <summary>
+        /// Verifies a consumer Travel on an exported async factory is TOP021, and a schema without the flag stays silent.
+        /// </summary>
+        [Fact]
+        public async Task Analyzer_CrossAssemblySyncTravel_UsesSchemaIsAsync()
+        {
+            const string routeLibSource = @"
+using System.Threading;
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class PaymentModule
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .Station(""Wait"", async (CancellationToken token) =>
+        {
+            await Task.Delay(1, token);
+            return new { value = 1 };
+        });
+}";
+
+            const string consumerSource = @"
+using TrainOP;
+
+public static class AppRoute
+{
+    public static RouteReport Call() => PaymentModule.Build().Travel();
+
+    public static RouteReport Local()
+    {
+        var route = PaymentModule.Build();
+        return route.TravelLight();
+    }
+
+    public static RouteReport Extended() =>
+        PaymentModule.Build()
+            .Station(""Next"", (int value) => new { value })
+            .Travel();
+}";
+
+            var diagnostics = await RunCrossAssemblyAnalyzerAsync(routeLibSource, consumerSource);
+            var top021 = diagnostics.Where(d => d.Id == "TOP021").ToList();
+
+            Assert.Equal(3, top021.Count);
+
+            const string legacyLibSource = @"
+using System.Threading;
+using System.Threading.Tasks;
+using TrainOP;
+
+public static class LegacyModule
+{
+    public static TrainRoute Build() => new TrainRoute()
+        .RegisterStation(""Wait"", async (CargoManifest manifest, CancellationToken token) =>
+        {
+            await Task.Delay(1, token);
+            return manifest.LoadWagon(""value"", 1);
+        });
+}";
+
+            var legacyLib = CSharpCompilation.Create(
+                "LegacyAsyncRouteLib",
+                new[] { CSharpSyntaxTree.ParseText(legacyLibSource, path: "LegacyLib.cs") },
+                TrainRouteValidationAnalyzerTests.GetMetadataReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            const string legacyConsumerSource = @"
+using TrainOP;
+
+[RouteSchemaFor(typeof(LegacyModule), ""Build"", CallerChainKey = ""0123456789abcdef"", StationCount = 1)]
+[RouteSchemaWagon(""value"", typeof(int))]
+internal static class LegacyModule_Build_Schema { }
+
+public static class Consumer
+{
+    public static RouteReport Run() => LegacyModule.Build().Travel();
+}";
+
+            var legacyConsumer = CSharpCompilation.Create(
+                "LegacyAsyncRouteConsumer",
+                new[] { CSharpSyntaxTree.ParseText(legacyConsumerSource, path: "Consumer.cs") },
+                TrainRouteValidationAnalyzerTests.GetMetadataReferences()
+                    .Concat(new[] { MetadataReference.CreateFromImage(EmitToImage(legacyLib)) })
+                    .ToArray(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new TrainRouteValidationAnalyzer());
+            var legacyDiagnostics = await legacyConsumer.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();
+            Assert.DoesNotContain(legacyDiagnostics, d => d.Id == "TOP021");
         }
 
         /// <summary>
@@ -315,6 +475,7 @@ public static class ServiceFactory
 
             Assert.False(schema.HasDispatchIdentity);
             Assert.Equal(2, schema.StationCount);
+            Assert.False(schema.IsAsync);
             Assert.True(string.IsNullOrEmpty(schema.CallerChainKey));
 
             var withKey = new ExternalRouteSchema(

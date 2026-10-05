@@ -45,5 +45,12 @@ namespace TrainOP
         /// before return (used as the ordinal offset for consumer extension stations).
         /// </summary>
         public int StationCount { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether any return path of the factory contains an async station.
+        /// When <c>true</c>, the route must run through <c>TravelAsync</c> or <c>TravelLightAsync</c>.
+        /// Schemas emitted before this flag omit it and read as synchronous.
+        /// </summary>
+        public bool IsAsync { get; set; }
     }
 }

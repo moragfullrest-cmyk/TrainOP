@@ -679,7 +679,7 @@ flowchart LR
 
 ### Sync vs Async
 
-Есть async-станция (`Task` / `Task<T>`) → только `TravelAsync` / `TravelLightAsync`. На уже разобранной цепочке синхронный `Travel` / `TravelLight` — **TOP021**. Если цепочка с вызова не видна, остаётся рантайм: `InvalidOperationException` («Use TravelAsync»).
+Есть async-станция (`Task` / `Task<T>`) → только `TravelAsync` / `TravelLightAsync`. На уже разобранной цепочке синхронный `Travel` / `TravelLight` — **TOP021**. Публичная фабрика выносит это в `[RouteSchemaFor(..., IsAsync = true)]`: флаг истинен, если хотя бы один путь возврата содержит async-станцию, и потребитель в другой сборке получает тот же **TOP021**. Схема без флага читается как синхронная. Если цепочка с вызова не видна и схема её не помечает, остаётся рантайм: `InvalidOperationException` («Use TravelAsync»).
 
 ```csharp
 var route = new TrainRoute()

@@ -154,10 +154,13 @@ namespace TrainOP.Generators
                 var pathTerminals = TerminalSetAdapters.FromSimulation(
                     simulation,
                     TerminalSet.Origin.FactoryPath);
+                var pathIsAsync = FactoryRouteAsync.ChainRequiresAsyncTravel(branch.Chain, semanticModel.Compilation)
+                    || FactoryRouteAsync.ChainRequiresAsyncTravel(downstreamChain, semanticModel.Compilation);
                 builder.Add(new FactoryPathSimulation(
                     pathTerminals.Wagons,
                     pathTerminals.HasUnknownReturn,
-                    location));
+                    location,
+                    pathIsAsync));
             }
 
             paths = builder.ToImmutable();

@@ -441,7 +441,7 @@ Runnable-обзор служебных параметров: `samples/TrainOP.Sa
 
 ## 8. Async, отмена и `ref`
 
-Станция может быть асинхронной: `async`-лямбда или возврат `Task` / `Task<T>`. Такой маршрут запускают через `TravelAsync` или `TravelLightAsync`. Если цепочка уже разобрана и в ней есть async-станция, синхронный `Travel` или `TravelLight` — это **TOP021**. Вызов на параметре, поле или результате метода, чью цепочку граф не открыл, диагностики не получает: до рантайма он доходит и там по-прежнему бросает `InvalidOperationException` («Use TravelAsync»).
+Станция может быть асинхронной: `async`-лямбда или возврат `Task` / `Task<T>`. Такой маршрут запускают через `TravelAsync` или `TravelLightAsync`. Если цепочка уже разобрана и в ней есть async-станция, синхронный `Travel` или `TravelLight` — это **TOP021**. Публичная фабрика пишет тот же факт в схему (`IsAsync = true`), поэтому вызов на ней получает **TOP021** и из другой сборки. Вызов на параметре, поле или методе, чью цепочку граф не открыл и чья схема не помечена `IsAsync`, диагностики не получает: до рантайма он доходит и там по-прежнему бросает `InvalidOperationException` («Use TravelAsync»).
 
 ```csharp
 var route = new TrainRoute()
@@ -999,10 +999,10 @@ public static class PaymentModule
 
 В проекте библиотеки нужен пакет `TrainOP` (generator уже внутри). Генератор **эмитит** метаданные на generated partial type (не пишите атрибуты руками в consumer-коде):
 
-- `[RouteSchemaFor(typeof(PaymentModule), "Build", CallerChainKey = "<hash>", StationCount = N)]`
+- `[RouteSchemaFor(typeof(PaymentModule), "Build", CallerChainKey = "<hash>", StationCount = N, IsAsync = false)]`
 - повторяющиеся `[RouteSchemaWagon(name, typeof(T))]`
 
-`CallerChainKey` — тот же ключ, что runtime штампует на `new TrainRoute()` внутри factory. `StationCount` — число регистраций Station/ServiceStation в factory (смещение ordinal для станций consumer'а). Вместе они держат caller dispatch при продолжении маршрута. Схемы без `CallerChainKey` (старые пакеты) не могут надёжно диспатчить extension при конфликтующих CLR-сигнатурах.
+`CallerChainKey` — тот же ключ, что runtime штампует на `new TrainRoute()` внутри factory. `StationCount` — число регистраций Station/ServiceStation в factory (смещение ordinal для станций consumer'а). Вместе они держат caller dispatch при продолжении маршрута. Схемы без `CallerChainKey` (старые пакеты) не могут надёжно диспатчить extension при конфликтующих CLR-сигнатурах. `IsAsync` истинен, если хотя бы один путь возврата содержит async-станцию: тогда `Travel` / `TravelLight` на этой фабрике — **TOP021** и в другой сборке. Схема без флага по-прежнему читается как синхронная.
 
 Типы атрибутов public для reflection/tooling, но `[EditorBrowsable(Never)]` в IDE.
 
@@ -1061,7 +1061,7 @@ public static class AppRoute
 | TOP018 | Error | `out` и поле возврата — одно имя | Analyzer |
 | TOP019 | Error | `in` или `ref readonly` присутствует в возврате | Analyzer |
 | TOP020 | Error | `params` не последний параметр делегата | Analyzer |
-| TOP021 | Error | Синхронный `Travel` / `TravelLight` на известной async-цепочке | Analyzer |
+| TOP021 | Error | Синхронный `Travel` / `TravelLight` на async-цепочке, видимой анализатору или помеченной `IsAsync` в схеме | Analyzer |
 | TOP022 | Error | Неконстантный default у вагона | Analyzer |
 | TOP023 | Error | `ref` или `out` на ServiceStation | Analyzer |
 
@@ -1303,7 +1303,7 @@ TrainOP.sln
 | ServiceStation добавляет / снимает / заменяет манифест | TOP015 / TOP016 / TOP017 |
 | Публичный `Travel(CargoManifest)` | Нет; только seed / замыкание первой станции |
 | `async` + `ref` | Запрет языка CS1988 |
-| Sync `Travel()` при async-станции в маршруте | На известной цепочке TOP021; если цепочка не видна — `InvalidOperationException`, нужен `TravelAsync` |
+| Sync `Travel()` при async-станции в маршруте | На известной цепочке или при `IsAsync` в схеме — TOP021; если цепочка не видна и схема не помечена — `InvalidOperationException`, нужен `TravelAsync` |
 
 ### Снятые / вне цели продукта
 

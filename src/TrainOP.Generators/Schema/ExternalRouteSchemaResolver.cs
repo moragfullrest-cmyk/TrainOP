@@ -15,6 +15,7 @@ namespace TrainOP.Generators
         private const string RouteSchemaWagonAttributeName = "RouteSchemaWagonAttribute";
         private const string CallerChainKeyNamedArg = "CallerChainKey";
         private const string StationCountNamedArg = "StationCount";
+        private const string IsAsyncNamedArg = "IsAsync";
 
         /// <summary>
         /// Attempts to resolve exported schema metadata for a factory method.
@@ -37,7 +38,8 @@ namespace TrainOP.Generators
                     out var ownerType,
                     out var methodName,
                     out var callerChainKey,
-                    out var stationCount))
+                    out var stationCount,
+                    out var isAsync))
                 {
                     continue;
                 }
@@ -54,7 +56,7 @@ namespace TrainOP.Generators
                     return false;
                 }
 
-                schema = new ExternalRouteSchema(terminalWagons, callerChainKey, stationCount);
+                schema = new ExternalRouteSchema(terminalWagons, callerChainKey, stationCount, isAsync);
                 return true;
             }
 
@@ -121,12 +123,14 @@ namespace TrainOP.Generators
             out INamedTypeSymbol ownerType,
             out string methodName,
             out string callerChainKey,
-            out int stationCount)
+            out int stationCount,
+            out bool isAsync)
         {
             ownerType = null;
             methodName = null;
             callerChainKey = string.Empty;
             stationCount = 0;
+            isAsync = false;
 
             foreach (var attribute in schemaType.GetAttributes())
             {
@@ -144,6 +148,7 @@ namespace TrainOP.Generators
                 methodName = attribute.ConstructorArguments[1].Value as string;
                 callerChainKey = ReadNamedString(attribute, CallerChainKeyNamedArg);
                 stationCount = ReadNamedInt(attribute, StationCountNamedArg);
+                isAsync = ReadNamedBool(attribute, IsAsyncNamedArg);
                 return ownerType != null && !string.IsNullOrEmpty(methodName);
             }
 
@@ -161,6 +166,20 @@ namespace TrainOP.Generators
             }
 
             return string.Empty;
+        }
+
+        private static bool ReadNamedBool(AttributeData attribute, string name)
+        {
+            foreach (var argument in attribute.NamedArguments)
+            {
+                if (string.Equals(argument.Key, name, StringComparison.Ordinal)
+                    && argument.Value.Value is bool boolValue)
+                {
+                    return boolValue;
+                }
+            }
+
+            return false;
         }
 
         private static int ReadNamedInt(AttributeData attribute, string name)

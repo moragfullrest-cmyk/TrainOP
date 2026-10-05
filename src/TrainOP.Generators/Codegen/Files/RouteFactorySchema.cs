@@ -29,6 +29,9 @@ namespace TrainOP.Generators
         /// <summary>Number of Station/ServiceStation registrations inside the factory.</summary>
         public int StationCount => Descriptor.StationCount;
 
+        /// <summary>True when any return path of the factory contains an async station.</summary>
+        public bool IsAsync => Descriptor.IsAsync;
+
         /// <summary>
         /// Emits schema attributes on a generated holder type.
         /// </summary>
@@ -48,6 +51,9 @@ namespace TrainOP.Generators
                     .Append("\", StationCount = ")
                     .Append(descriptor.StationCount);
             }
+
+            writer.Append(", IsAsync = ")
+                .Append(descriptor.IsAsync ? "true" : "false");
 
             writer.Append(")]");
             writer.EndLine();

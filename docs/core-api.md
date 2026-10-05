@@ -185,7 +185,7 @@ var route = new TrainRoute()
 var report = await route.TravelAsync();
 ```
 
-> **Важно:** синхронный `Travel` или `TravelLight` на цепочке, которую анализатор уже разобрал и в которой есть async-станция, — это **TOP021**. Если приёмник — параметр, поле или метод, чья цепочка не видна, вызов доходит до рантайма и бросает `InvalidOperationException` («Use TravelAsync»).
+> **Важно:** синхронный `Travel` или `TravelLight` на цепочке, которую анализатор уже разобрал и в которой есть async-станция, — это **TOP021**. То же получает вызов на публичной фабрике, чья схема помечена `IsAsync`. Если приёмник — параметр, поле или метод, чья цепочка не видна и чья схема не помечена, вызов доходит до рантайма и бросает `InvalidOperationException` («Use TravelAsync»).
 
 ### Модификаторы и манифест
 
@@ -521,7 +521,7 @@ await route.TravelAsync(cts.Token);
 | `TOP018` | Error | Имя `out` совпало с членом возврата |
 | `TOP019` | Error | Имя `in` или `ref readonly` присутствует в возврате |
 | `TOP020` | Error | `params` не последний параметр делегата |
-| `TOP021` | Error | Синхронный `Travel` / `TravelLight` на известной async-цепочке |
+| `TOP021` | Error | Синхронный `Travel` / `TravelLight` на async-цепочке, видимой анализатору или помеченной `IsAsync` в схеме |
 | `TOP022` | Error | Неконстантный default у вагона: генератор подставляет только константу |
 | `TOP023` | Error | `ref` или `out` на ServiceStation |
 
