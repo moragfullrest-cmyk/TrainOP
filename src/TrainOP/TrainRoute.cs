@@ -401,7 +401,7 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(handler));
             }
 
-            AddPlan(new StationPlan(new ServiceStationPlan(stationName, handler)));
+            AddPlan(new StationPlan(stationName, handler));
             return this;
         }
 
@@ -486,7 +486,7 @@ namespace TrainOP
                 throw new ArgumentNullException(nameof(handler));
             }
 
-            AddPlan(new StationPlan(new ServiceStationPlan(stationName, handler)));
+            AddPlan(new StationPlan(stationName, handler));
             return this;
         }
 
@@ -797,8 +797,7 @@ namespace TrainOP
             List<StationVisit> visits,
             CancellationToken cancellationToken)
         {
-            var servicePlan = plan.ServicePlan;
-            if (servicePlan.AsyncHandler != null)
+            if (plan.AsyncHandler != null)
             {
                 throw new InvalidOperationException(
                     $"Route contains async service station '{plan.StationName}'. Use TravelAsync instead of Travel.");
@@ -806,7 +805,7 @@ namespace TrainOP
 
             try
             {
-                return servicePlan.SyncHandler(redSignal, current, JournalSoFar(visits), cancellationToken) ?? redSignal;
+                return plan.SyncHandler(redSignal, current, JournalSoFar(visits), cancellationToken) ?? redSignal;
             }
             catch (OperationCanceledException)
             {
@@ -828,13 +827,12 @@ namespace TrainOP
             List<StationVisit> visits,
             CancellationToken cancellationToken)
         {
-            var servicePlan = plan.ServicePlan;
             try
             {
                 Signal handled;
-                if (servicePlan.AsyncHandler != null)
+                if (plan.AsyncHandler != null)
                 {
-                    handled = await servicePlan.AsyncHandler(
+                    handled = await plan.AsyncHandler(
                             redSignal,
                             manifest.Current,
                             JournalSoFar(visits),
@@ -843,7 +841,7 @@ namespace TrainOP
                 }
                 else
                 {
-                    handled = servicePlan.SyncHandler(
+                    handled = plan.SyncHandler(
                         redSignal,
                         manifest.Current,
                         JournalSoFar(visits),

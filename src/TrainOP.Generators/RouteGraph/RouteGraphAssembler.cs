@@ -67,7 +67,7 @@ namespace TrainOP.Generators
                 for (var stationIndex = 0; stationIndex < chain.Stations.Length; stationIndex++)
                 {
                     var station = chain.Stations[stationIndex];
-                    if (station.InvocationLocation == null)
+                    if (station.Location == null)
                     {
                         continue;
                     }
@@ -79,7 +79,7 @@ namespace TrainOP.Generators
                         station.Invocation,
                         station.Handler);
 
-                    RegisterBinding(chainIndex, station.InvocationLocation, binding);
+                    RegisterBinding(chainIndex, station.Location, binding);
                     RegisterByLocation(chainsByInvocationKey, station.Invocation.GetLocation(), chain);
                 }
             }

@@ -139,7 +139,7 @@ namespace TrainOP.Generators.Route
                 for (var stationIndex = 0; stationIndex < chain.Stations.Length; stationIndex++)
                 {
                     var stationPath = StringHelpers.NormalizeFilePath(
-                        chain.Stations[stationIndex].InvocationLocation?.GetLineSpan().Path);
+                        chain.Stations[stationIndex].Location?.GetLineSpan().Path);
                     if (string.IsNullOrEmpty(stationPath)
                         || string.Equals(stationPath, treePath, StringComparison.OrdinalIgnoreCase))
                     {

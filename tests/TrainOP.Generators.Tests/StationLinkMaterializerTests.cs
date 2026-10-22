@@ -31,10 +31,10 @@ public static class Route
             GetStationByName(source, "Next", out var invocation, out var model);
 
             Assert.True(StationLinkMaterializer.TryMaterialize(invocation, model, out var link));
-            Assert.Equal(StationLinkKind.Station, link.Kind);
+            Assert.NotNull(link.Handler);
+            Assert.False(link.Handler.IsServiceStation);
             Assert.Equal("Next", link.StationName);
             Assert.Same(invocation, link.Invocation);
-            Assert.NotNull(link.Handler);
             Assert.Equal("Next", link.StationName);
             Assert.Same(invocation, link.Invocation);
         }
@@ -65,7 +65,8 @@ public static class Route
                 .First(StationSyntaxHelper.IsCandidateServiceStationInvocation);
 
             Assert.True(StationLinkMaterializer.TryMaterializeServiceStation(service, model, null, out var link));
-            Assert.Equal(StationLinkKind.ServiceStation, link.Kind);
+            Assert.NotNull(link.Handler);
+            Assert.True(link.Handler.IsServiceStation);
             Assert.Equal("Recover", link.StationName);
         }
 

@@ -56,7 +56,7 @@ namespace TrainOP.Generators.Parts
             if (TryGetCachedStationLink(
                     stationInvocation,
                     stationLinksByKey,
-                    StationLinkKind.Station,
+                    expectServiceStation: false,
                     out link))
             {
                 return true;
@@ -70,7 +70,6 @@ namespace TrainOP.Generators.Parts
                     out var handlerBinding))
             {
                 link = new StationLink(
-                    StationLinkKind.Station,
                     stationName,
                     stationInvocation.ArgumentList.Arguments[0].GetLocation(),
                     handlerLocation,
@@ -100,7 +99,7 @@ namespace TrainOP.Generators.Parts
             if (TryGetCachedStationLink(
                     serviceInvocation,
                     stationLinksByKey,
-                    StationLinkKind.ServiceStation,
+                    expectServiceStation: true,
                     out link))
             {
                 return true;
@@ -114,7 +113,6 @@ namespace TrainOP.Generators.Parts
                     out var serviceHandlerBinding))
             {
                 link = new StationLink(
-                    StationLinkKind.ServiceStation,
                     serviceStationName,
                     serviceHandlerLocation,
                     serviceHandlerLocation,
@@ -129,7 +127,7 @@ namespace TrainOP.Generators.Parts
         private static bool TryGetCachedStationLink(
             InvocationExpressionSyntax invocation,
             IReadOnlyDictionary<string, StationLink> stationLinksByKey,
-            StationLinkKind expectedKind,
+            bool expectServiceStation,
             out StationLink link)
         {
             link = null;
@@ -141,8 +139,8 @@ namespace TrainOP.Generators.Parts
             var key = ChainSiteBindingLookup.BuildLocationKey(invocation.GetLocation());
             if (key.Length == 0
                 || !stationLinksByKey.TryGetValue(key, out link)
-                || link.Kind != expectedKind
-                || link.Handler == null)
+                || link.Handler == null
+                || link.Handler.IsServiceStation != expectServiceStation)
             {
                 link = null;
                 return false;

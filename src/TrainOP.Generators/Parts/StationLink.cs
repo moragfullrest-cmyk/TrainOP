@@ -13,14 +13,12 @@ namespace TrainOP.Generators.Parts
         /// Creates a station-link part from a materialized invocation.
         /// </summary>
         public StationLink(
-            StationLinkKind kind,
             string stationName,
             Location stationNameLocation,
             Location handlerLocation,
             StationHandlerBinding handler,
             InvocationExpressionSyntax invocation)
         {
-            Kind = kind;
             StationName = stationName;
             StationNameLocation = stationNameLocation;
             HandlerLocation = handlerLocation;
@@ -28,11 +26,6 @@ namespace TrainOP.Generators.Parts
             Invocation = invocation;
             Location = invocation?.GetLocation();
         }
-
-        /// <summary>
-        /// Station vs service-station role.
-        /// </summary>
-        public StationLinkKind Kind { get; }
 
         /// <summary>
         /// Resolved station name.
@@ -61,10 +54,5 @@ namespace TrainOP.Generators.Parts
 
         /// <inheritdoc />
         public Location Location { get; }
-
-        /// <summary>
-        /// Invocation location (alias of <see cref="Location"/> for call-site indexing).
-        /// </summary>
-        public Location InvocationLocation => Location;
     }
 }

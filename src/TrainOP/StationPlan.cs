@@ -99,18 +99,37 @@ namespace TrainOP
         }
 
         /// <summary>
-        /// Creates a plan for a service-station hop that runs only after a red signal.
+        /// Creates a plan for a synchronous service-station hop that runs only after a red signal.
         /// </summary>
-        public StationPlan(ServiceStationPlan servicePlan)
+        public StationPlan(
+            string stationName,
+            Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Signal> syncHandler)
         {
-            if (servicePlan == null)
+            if (syncHandler == null)
             {
-                throw new ArgumentNullException(nameof(servicePlan));
+                throw new ArgumentNullException(nameof(syncHandler));
             }
 
-            StationName = servicePlan.StationName;
+            StationName = stationName;
             Kind = StationInvokeKind.Service;
-            ServicePlan = servicePlan;
+            SyncHandler = syncHandler;
+        }
+
+        /// <summary>
+        /// Creates a plan for an asynchronous service-station hop that runs only after a red signal.
+        /// </summary>
+        public StationPlan(
+            string stationName,
+            Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Task<Signal>> asyncHandler)
+        {
+            if (asyncHandler == null)
+            {
+                throw new ArgumentNullException(nameof(asyncHandler));
+            }
+
+            StationName = stationName;
+            Kind = StationInvokeKind.Service;
+            AsyncHandler = asyncHandler;
         }
 
         /// <summary>
@@ -134,9 +153,14 @@ namespace TrainOP
         public bool IsServiceStation => Kind == StationInvokeKind.Service;
 
         /// <summary>
-        /// Gets the service-station plan when this hop is recovery, otherwise null.
+        /// Gets the synchronous service-station handler, or null when this hop is not one.
         /// </summary>
-        public ServiceStationPlan ServicePlan { get; }
+        public Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Signal> SyncHandler { get; }
+
+        /// <summary>
+        /// Gets the asynchronous service-station handler, or null when this hop is not one.
+        /// </summary>
+        public Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Task<Signal>> AsyncHandler { get; }
 
         /// <summary>
         /// Runs this hop and the following <see cref="SegmentLength"/> - 1 hops as one pure segment.
@@ -155,7 +179,7 @@ namespace TrainOP
         public bool IsAsync =>
             Kind == StationInvokeKind.SignalAsync
             || Kind == StationInvokeKind.ThroughAsync
-            || (ServicePlan != null && ServicePlan.AsyncHandler != null);
+            || AsyncHandler != null;
     }
 
     /// <summary>

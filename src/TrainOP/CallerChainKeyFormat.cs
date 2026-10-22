@@ -26,7 +26,7 @@ namespace TrainOP
 
         internal static string BuildCanonicalPayload(string filePath, int lineNumber, string memberName)
         {
-            filePath = StringHelpers.NormalizeFilePath(filePath);
+            filePath = NormalizeFilePath(filePath);
             if (filePath.Length == 0)
             {
                 filePath = "unknown";
@@ -59,6 +59,15 @@ namespace TrainOP
 
                 return result.ToString();
             }
+        }
+
+        /// <summary>
+        /// Normalizes path separators to forward slashes; empty paths become <see cref="string.Empty"/>.
+        /// Must stay aligned with <c>TrainOP.Generators.StringHelpers.NormalizeFilePath</c>.
+        /// </summary>
+        private static string NormalizeFilePath(string filePath)
+        {
+            return string.IsNullOrEmpty(filePath) ? string.Empty : filePath.Replace('\\', '/');
         }
     }
 }

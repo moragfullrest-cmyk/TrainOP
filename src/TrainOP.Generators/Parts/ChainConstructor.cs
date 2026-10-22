@@ -86,7 +86,7 @@ namespace TrainOP.Generators.Parts
             out ImmutableArray<Diagnostic> diagnostics)
         {
             var edge = new PartEdge(from, to, kind);
-            if (!PartEdgeValidator.TryValidate(edge, out diagnostics))
+            if (!TryValidate(edge, out diagnostics))
             {
                 return false;
             }
@@ -104,5 +104,33 @@ namespace TrainOP.Generators.Parts
                 _parts.Add(part);
             }
         }
+
+        /// <summary>
+        /// Validates that <paramref name="edge"/> may be connected.
+        /// </summary>
+        /// <returns><see langword="true"/> when the edge is accepted.</returns>
+        private static bool TryValidate(
+            PartEdge edge,
+            out ImmutableArray<Diagnostic> diagnostics)
+        {
+            diagnostics = ImmutableArray<Diagnostic>.Empty;
+
+            return edge.Kind switch
+            {
+                PartEdgeKind.Bind => IsOriginSeed(edge.From) && edge.To is LocalBinding,
+                PartEdgeKind.Append => IsAppendUpstream(edge.From) && edge.To is StationLink,
+                // J2 fills port rules; accept structurally for now.
+                PartEdgeKind.Join => edge.From is JoinArm && edge.To is JoinSeed,
+                // E1 fills port rules; accept structurally for now.
+                PartEdgeKind.Extend => edge.From is FactoryCall && edge.To is ExtensionTail,
+                _ => false
+            };
+        }
+
+        private static bool IsOriginSeed(IRoutePart part) =>
+            part is CreationSeed or FactoryCall;
+
+        private static bool IsAppendUpstream(IRoutePart part) =>
+            part is CreationSeed or FactoryCall or LocalBinding or StationLink or JoinSeed;
     }
 }

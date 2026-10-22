@@ -593,7 +593,7 @@ namespace TrainOP.Generators
         /// </summary>
         private static void ReportServiceStationWriteback(StationLink station, SimulationState state)
         {
-            if (station.Kind != StationLinkKind.ServiceStation)
+            if (station.Handler == null || !station.Handler.IsServiceStation)
             {
                 return;
             }

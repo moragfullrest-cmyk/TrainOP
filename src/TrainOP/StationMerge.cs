@@ -277,7 +277,7 @@ namespace TrainOP
             if (stationReturn is RedFailure)
             {
                 throw new InvalidOperationException(
-                    "RedFailure must be handled by StationAdapter.TryConvertPassthroughSignal.");
+                    "RedFailure must be handled by TryConvertPassthroughSignal before manifest merge.");
             }
 
             if (stationReturn is WhitePass)
@@ -480,7 +480,7 @@ namespace TrainOP
             bool removeOmittedRegularInputs,
             string[] returnMemberNames)
         {
-            return StationAdapter.ToSignal(
+            return ConvertToSignal(
                 manifest,
                 stationReturn,
                 stationName,
@@ -504,7 +504,7 @@ namespace TrainOP
             string[] returnMemberNames,
             bool allocateDefaultItemNElements)
         {
-            return StationAdapter.ToSignal(
+            return ConvertToSignal(
                 manifest,
                 stationReturn,
                 stationName,
@@ -529,7 +529,7 @@ namespace TrainOP
             bool[] byReferenceWagons,
             object[] refLocalValues)
         {
-            return StationAdapter.ToSignal(
+            return ConvertToSignal(
                 manifest,
                 stationReturn,
                 stationName,
@@ -557,7 +557,7 @@ namespace TrainOP
             bool allocateDefaultItemNElements,
             bool[] retainedWagons = null)
         {
-            return StationAdapter.ToSignal(
+            return ConvertToSignal(
                 manifest,
                 stationReturn,
                 stationName,
@@ -627,7 +627,7 @@ namespace TrainOP
             bool[] byReferenceWagons,
             object[] refLocalValues)
         {
-            return StationAdapter.ToServiceSignal(
+            return ConvertToServiceSignal(
                 manifest,
                 stationReturn,
                 stationName,
@@ -652,7 +652,7 @@ namespace TrainOP
             bool allocateDefaultItemNElements,
             bool[] retainedWagons = null)
         {
-            return StationAdapter.ToServiceSignal(
+            return ConvertToServiceSignal(
                 manifest,
                 stationReturn,
                 stationName,
@@ -662,6 +662,120 @@ namespace TrainOP
                 refLocalValues,
                 allocateDefaultItemNElements,
                 retainedWagons);
+        }
+
+        /// <summary>
+        /// Converts a station return into a route signal.
+        /// RedFailure, WhitePass, and Signal pass through. Cargo is written into the run manifest.
+        /// </summary>
+        private static Signal ConvertToSignal(
+            CargoManifest manifest,
+            object stationReturn,
+            string stationName,
+            string[] wagonNames,
+            bool removeOmittedRegularInputs,
+            string[] returnMemberNames,
+            bool[] byReferenceWagons,
+            object[] refLocalValues,
+            bool allocateDefaultItemNElements,
+            bool[] retainedWagons = null)
+        {
+            if (TryConvertPassthroughSignal(stationReturn, stationName, out var passthrough))
+            {
+                return passthrough;
+            }
+
+            stationReturn = WagonStationReturn.UnwrapGreenPayloadReturn(stationReturn);
+
+            if (stationReturn is CargoManifest replacement)
+            {
+                manifest.ReplaceWith(replacement);
+                return RailwaySignals.Green();
+            }
+
+            var merged = Apply(
+                manifest,
+                stationReturn,
+                wagonNames,
+                removeOmittedRegularInputs,
+                returnMemberNames,
+                byReferenceWagons,
+                refLocalValues,
+                allocateDefaultItemNElements,
+                retainedWagons);
+            if (!ReferenceEquals(merged, manifest))
+            {
+                manifest.ReplaceWith(merged);
+            }
+
+            return RailwaySignals.Green();
+        }
+
+        /// <summary>
+        /// Converts a service-station return into a route signal, overlaying existing wagons only.
+        /// </summary>
+        private static Signal ConvertToServiceSignal(
+            CargoManifest manifest,
+            object stationReturn,
+            string stationName,
+            string[] wagonNames,
+            string[] returnMemberNames,
+            bool[] byReferenceWagons,
+            object[] refLocalValues,
+            bool allocateDefaultItemNElements,
+            bool[] retainedWagons = null)
+        {
+            if (TryConvertPassthroughSignal(stationReturn, stationName, out var passthrough))
+            {
+                return passthrough;
+            }
+
+            var merged = ApplyOverlay(
+                manifest,
+                stationReturn,
+                wagonNames,
+                returnMemberNames,
+                byReferenceWagons,
+                refLocalValues,
+                allocateDefaultItemNElements,
+                retainedWagons);
+            if (!ReferenceEquals(merged, manifest))
+            {
+                manifest.ReplaceWith(merged);
+            }
+
+            return RailwaySignals.Green();
+        }
+
+        /// <summary>
+        /// Handles returns that are already route-facing signals, or RedFailure / WhitePass requests.
+        /// Shared by Station and ServiceStation conversion paths.
+        /// </summary>
+        private static bool TryConvertPassthroughSignal(
+            object stationReturn,
+            string stationName,
+            out Signal signal)
+        {
+            if (stationReturn is RedFailure fail)
+            {
+                signal = fail.ToRedSignal(stationName);
+                return true;
+            }
+
+            if (stationReturn is WhitePass white)
+            {
+                signal = white;
+                return true;
+            }
+
+            if (stationReturn is Signal directSignal)
+            {
+                signal = directSignal;
+                return true;
+            }
+
+            signal = null;
+            return false;
         }
 
         /// <summary>
