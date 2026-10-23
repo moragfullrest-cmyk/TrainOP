@@ -70,23 +70,6 @@ namespace TrainOP.Generators
         }
 
         /// <summary>
-        /// True when <paramref name="methodName"/> is <c>Station</c> or <c>ServiceStation</c>.
-        /// </summary>
-        public static bool IsStationOrServiceStationMethodName(string methodName)
-        {
-            return HandlerStationKindExtensions.IsStationOrServiceStationMethodName(methodName);
-        }
-
-        /// <summary>
-        /// True when <paramref name="methodName"/> is <c>Station</c>.
-        /// </summary>
-        public static bool IsStationMethodName(string methodName)
-        {
-            return HandlerStationKindExtensions.TryParseMethodName(methodName, out var kind)
-                && kind == HandlerStationKind.Station;
-        }
-
-        /// <summary>
         /// True when <paramref name="methodName"/> is <c>ServiceStation</c>.
         /// </summary>
         public static bool IsServiceStationMethodName(string methodName)
@@ -131,7 +114,8 @@ namespace TrainOP.Generators
             var receiver = ReceiverExpressionSyntaxPeel.WrapTransparentOutermost(expression);
             if (receiver.Parent is not MemberAccessExpressionSyntax access
                 || !ReferenceEquals(access.Expression, receiver)
-                || !IsStationOrServiceStationMethodName(access.Name.Identifier.ValueText))
+                || !HandlerStationKindExtensions.IsStationOrServiceStationMethodName(
+                    access.Name.Identifier.ValueText))
             {
                 return false;
             }
@@ -667,21 +651,8 @@ namespace TrainOP.Generators
         /// </summary>
         private static bool IsRouteExtensionMethodName(string methodName)
         {
-            return StationSyntaxHelper.IsStationMethodName(methodName)
-                || string.Equals(methodName, "RegisterStation", StringComparison.Ordinal)
-                || StationSyntaxHelper.IsServiceStationMethodName(methodName);
-        }
-
-        /// <summary>
-        /// Resolves a data-oriented handler argument to a method symbol in the current compilation.
-        /// Supports lambdas, anonymous methods, and method groups / local functions with source declarations.
-        /// </summary>
-        public static bool TryResolveHandler(
-            ExpressionSyntax expression,
-            SemanticModel semanticModel,
-            out ResolvedHandler resolved)
-        {
-            return StationHandlerResolver.TryResolveHandler(expression, semanticModel, out resolved);
+            return HandlerStationKindExtensions.IsStationOrServiceStationMethodName(methodName)
+                || string.Equals(methodName, "RegisterStation", StringComparison.Ordinal);
         }
 
         /// <summary>

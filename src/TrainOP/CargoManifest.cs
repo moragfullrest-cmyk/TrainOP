@@ -24,10 +24,7 @@ namespace TrainOP
         /// </summary>
         public bool HasWagon(string wagonName)
         {
-            if (string.IsNullOrWhiteSpace(wagonName))
-            {
-                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
-            }
+            NameChecks.RequireWagonName(wagonName, nameof(wagonName));
 
             return HasWagonUnchecked(wagonName);
         }
@@ -46,10 +43,7 @@ namespace TrainOP
         /// </summary>
         public bool TryGetWagon(string wagonName, out object cargo)
         {
-            if (string.IsNullOrWhiteSpace(wagonName))
-            {
-                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
-            }
+            NameChecks.RequireWagonName(wagonName, nameof(wagonName));
 
             return TryGetWagonUnchecked(wagonName, out cargo);
         }
@@ -68,10 +62,7 @@ namespace TrainOP
         /// </summary>
         public T PullWagon<T>(string wagonName)
         {
-            if (string.IsNullOrWhiteSpace(wagonName))
-            {
-                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
-            }
+            NameChecks.RequireWagonName(wagonName, nameof(wagonName));
 
             return PullWagonUnchecked<T>(wagonName);
         }
@@ -120,10 +111,7 @@ namespace TrainOP
         /// </summary>
         public CargoManifest LoadWagon(string wagonName, object cargo)
         {
-            if (string.IsNullOrWhiteSpace(wagonName))
-            {
-                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
-            }
+            NameChecks.RequireWagonName(wagonName, nameof(wagonName));
 
             return LoadWagonUnchecked(wagonName, cargo);
         }
@@ -143,10 +131,7 @@ namespace TrainOP
         /// </summary>
         public CargoManifest UnloadWagon(string wagonName)
         {
-            if (string.IsNullOrWhiteSpace(wagonName))
-            {
-                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
-            }
+            NameChecks.RequireWagonName(wagonName, nameof(wagonName));
 
             return UnloadWagonUnchecked(wagonName);
         }

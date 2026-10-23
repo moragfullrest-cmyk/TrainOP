@@ -15,10 +15,7 @@ namespace TrainOP
         public RouteAbortException(string stationName, RouteReport report, Exception innerException)
             : base(BuildMessage(stationName), innerException)
         {
-            if (string.IsNullOrWhiteSpace(stationName))
-            {
-                throw new ArgumentException("Station name cannot be empty.", nameof(stationName));
-            }
+            NameChecks.RequireStationName(stationName, nameof(stationName));
 
             if (innerException == null)
             {

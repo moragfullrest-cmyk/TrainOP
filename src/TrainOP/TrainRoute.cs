@@ -21,11 +21,6 @@ namespace TrainOP
         private readonly string _callerChainKey;
         private int _chainRegistrationOrdinal;
 
-        private static string BuildCallerChainKey(string filePath, int lineNumber, string memberName)
-        {
-            return CallerChainKeyFormat.Build(filePath, lineNumber, memberName);
-        }
-
         /// <summary>
         /// Internal ctor stamping caller identity for chain-dispatch in caller mode.
         /// </summary>
@@ -35,7 +30,7 @@ namespace TrainOP
             [CallerLineNumber] int lineNumber = 0,
             [CallerMemberName] string memberName = null)
         {
-            _callerChainKey = BuildCallerChainKey(filePath, lineNumber, memberName);
+            _callerChainKey = CallerChainKeyFormat.Build(filePath, lineNumber, memberName);
         }
 
         /// <summary>
@@ -56,10 +51,7 @@ namespace TrainOP
             int length,
             Func<CargoManifest, CancellationToken, SegmentVisitLog, int, Signal> runner)
         {
-            if (runner == null)
-            {
-                throw new ArgumentNullException(nameof(runner));
-            }
+            RequireHandler(runner, nameof(runner));
 
             if (startIndex < 0
                 || length < 2
@@ -91,15 +83,9 @@ namespace TrainOP
         [EditorBrowsable(EditorBrowsableState.Never)]
         public TrainRoute RegisterStation(string stationName, Func<CargoManifest, CargoManifest> throughStation)
         {
-            if (string.IsNullOrWhiteSpace(stationName))
-            {
-                throw new ArgumentException("Station name cannot be empty.", nameof(stationName));
-            }
+            NameChecks.RequireStationName(stationName, nameof(stationName));
 
-            if (throughStation == null)
-            {
-                throw new ArgumentNullException(nameof(throughStation));
-            }
+            RequireHandler(throughStation, nameof(throughStation));
 
             AddPlan(new StationPlan(stationName, throughStation));
             return this;
@@ -112,15 +98,9 @@ namespace TrainOP
         [EditorBrowsable(EditorBrowsableState.Never)]
         public TrainRoute RegisterStation(string stationName, Func<CargoManifest, CancellationToken, CargoManifest> throughStationWithToken)
         {
-            if (string.IsNullOrWhiteSpace(stationName))
-            {
-                throw new ArgumentException("Station name cannot be empty.", nameof(stationName));
-            }
+            NameChecks.RequireStationName(stationName, nameof(stationName));
 
-            if (throughStationWithToken == null)
-            {
-                throw new ArgumentNullException(nameof(throughStationWithToken));
-            }
+            RequireHandler(throughStationWithToken, nameof(throughStationWithToken));
 
             AddPlan(new StationPlan(stationName, throughStationWithToken));
             return this;
@@ -133,15 +113,9 @@ namespace TrainOP
         [EditorBrowsable(EditorBrowsableState.Never)]
         public TrainRoute RegisterStation(string stationName, Func<CargoManifest, Signal> station)
         {
-            if (string.IsNullOrWhiteSpace(stationName))
-            {
-                throw new ArgumentException("Station name cannot be empty.", nameof(stationName));
-            }
+            NameChecks.RequireStationName(stationName, nameof(stationName));
 
-            if (station == null)
-            {
-                throw new ArgumentNullException(nameof(station));
-            }
+            RequireHandler(station, nameof(station));
 
             AddPlan(new StationPlan(stationName, station));
             return this;
@@ -154,15 +128,9 @@ namespace TrainOP
         [EditorBrowsable(EditorBrowsableState.Never)]
         public TrainRoute RegisterStation(string stationName, Func<CargoManifest, CancellationToken, Signal> stationWithToken)
         {
-            if (string.IsNullOrWhiteSpace(stationName))
-            {
-                throw new ArgumentException("Station name cannot be empty.", nameof(stationName));
-            }
+            NameChecks.RequireStationName(stationName, nameof(stationName));
 
-            if (stationWithToken == null)
-            {
-                throw new ArgumentNullException(nameof(stationWithToken));
-            }
+            RequireHandler(stationWithToken, nameof(stationWithToken));
 
             AddPlan(new StationPlan(stationName, stationWithToken));
             return this;
@@ -175,15 +143,9 @@ namespace TrainOP
         [EditorBrowsable(EditorBrowsableState.Never)]
         public TrainRoute RegisterStation(string stationName, Func<CargoManifest, Task<CargoManifest>> throughAsyncStation)
         {
-            if (string.IsNullOrWhiteSpace(stationName))
-            {
-                throw new ArgumentException("Station name cannot be empty.", nameof(stationName));
-            }
+            NameChecks.RequireStationName(stationName, nameof(stationName));
 
-            if (throughAsyncStation == null)
-            {
-                throw new ArgumentNullException(nameof(throughAsyncStation));
-            }
+            RequireHandler(throughAsyncStation, nameof(throughAsyncStation));
 
             AddPlan(new StationPlan(stationName, (manifest, _) => throughAsyncStation(manifest)));
             return this;
@@ -196,15 +158,9 @@ namespace TrainOP
         [EditorBrowsable(EditorBrowsableState.Never)]
         public TrainRoute RegisterStation(string stationName, Func<CargoManifest, CancellationToken, Task<CargoManifest>> throughAsyncStation)
         {
-            if (string.IsNullOrWhiteSpace(stationName))
-            {
-                throw new ArgumentException("Station name cannot be empty.", nameof(stationName));
-            }
+            NameChecks.RequireStationName(stationName, nameof(stationName));
 
-            if (throughAsyncStation == null)
-            {
-                throw new ArgumentNullException(nameof(throughAsyncStation));
-            }
+            RequireHandler(throughAsyncStation, nameof(throughAsyncStation));
 
             AddPlan(new StationPlan(stationName, throughAsyncStation));
             return this;
@@ -217,15 +173,9 @@ namespace TrainOP
         [EditorBrowsable(EditorBrowsableState.Never)]
         public TrainRoute RegisterStation(string stationName, Func<CargoManifest, Task<Signal>> asyncStation)
         {
-            if (string.IsNullOrWhiteSpace(stationName))
-            {
-                throw new ArgumentException("Station name cannot be empty.", nameof(stationName));
-            }
+            NameChecks.RequireStationName(stationName, nameof(stationName));
 
-            if (asyncStation == null)
-            {
-                throw new ArgumentNullException(nameof(asyncStation));
-            }
+            RequireHandler(asyncStation, nameof(asyncStation));
 
             AddPlan(new StationPlan(stationName, (manifest, _) => asyncStation(manifest)));
             return this;
@@ -238,15 +188,9 @@ namespace TrainOP
         [EditorBrowsable(EditorBrowsableState.Never)]
         public TrainRoute RegisterStation(string stationName, Func<CargoManifest, CancellationToken, Task<Signal>> asyncStation)
         {
-            if (string.IsNullOrWhiteSpace(stationName))
-            {
-                throw new ArgumentException("Station name cannot be empty.", nameof(stationName));
-            }
+            NameChecks.RequireStationName(stationName, nameof(stationName));
 
-            if (asyncStation == null)
-            {
-                throw new ArgumentNullException(nameof(asyncStation));
-            }
+            RequireHandler(asyncStation, nameof(asyncStation));
 
             AddPlan(new StationPlan(stationName, asyncStation));
             return this;
@@ -326,10 +270,7 @@ namespace TrainOP
         /// </summary>
         public TrainRoute ServiceStation(string stationName, Func<RedSignal, Signal> handler)
         {
-            if (handler == null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
+            RequireHandler(handler, nameof(handler));
 
             return ServiceStation(stationName, (red, _, __) => handler(red));
         }
@@ -340,10 +281,7 @@ namespace TrainOP
         /// </summary>
         public TrainRoute ServiceStation(string stationName, Func<RedSignal, CancellationToken, Signal> handler)
         {
-            if (handler == null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
+            RequireHandler(handler, nameof(handler));
 
             return ServiceStation(stationName, (red, _, token) => handler(red, token));
         }
@@ -354,10 +292,7 @@ namespace TrainOP
         /// </summary>
         public TrainRoute ServiceStation(string stationName, Func<RedSignal, CargoManifest, Signal> handler)
         {
-            if (handler == null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
+            RequireHandler(handler, nameof(handler));
 
             return ServiceStation(stationName, (red, manifest, _) => handler(red, manifest));
         }
@@ -370,10 +305,7 @@ namespace TrainOP
             string stationName,
             Func<RedSignal, CargoManifest, CancellationToken, Signal> handler)
         {
-            if (handler == null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
+            RequireHandler(handler, nameof(handler));
 
             return ServiceStation(
                 stationName,
@@ -391,15 +323,9 @@ namespace TrainOP
             string stationName,
             Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Signal> handler)
         {
-            if (string.IsNullOrWhiteSpace(stationName))
-            {
-                throw new ArgumentException("Station name cannot be empty.", nameof(stationName));
-            }
+            NameChecks.RequireStationName(stationName, nameof(stationName));
 
-            if (handler == null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
+            RequireHandler(handler, nameof(handler));
 
             AddPlan(new StationPlan(stationName, handler));
             return this;
@@ -411,10 +337,7 @@ namespace TrainOP
         /// </summary>
         public TrainRoute ServiceStation(string stationName, Func<RedSignal, Task<Signal>> handler)
         {
-            if (handler == null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
+            RequireHandler(handler, nameof(handler));
 
             return ServiceStation(stationName, (red, _, __) => handler(red));
         }
@@ -425,10 +348,7 @@ namespace TrainOP
         /// </summary>
         public TrainRoute ServiceStation(string stationName, Func<RedSignal, CancellationToken, Task<Signal>> handler)
         {
-            if (handler == null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
+            RequireHandler(handler, nameof(handler));
 
             return ServiceStation(stationName, (red, _, token) => handler(red, token));
         }
@@ -439,10 +359,7 @@ namespace TrainOP
         /// </summary>
         public TrainRoute ServiceStation(string stationName, Func<RedSignal, CargoManifest, Task<Signal>> handler)
         {
-            if (handler == null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
+            RequireHandler(handler, nameof(handler));
 
             return ServiceStation(stationName, (red, manifest, _) => handler(red, manifest));
         }
@@ -455,10 +372,7 @@ namespace TrainOP
             string stationName,
             Func<RedSignal, CargoManifest, CancellationToken, Task<Signal>> handler)
         {
-            if (handler == null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
+            RequireHandler(handler, nameof(handler));
 
             return ServiceStation(
                 stationName,
@@ -476,15 +390,9 @@ namespace TrainOP
             string stationName,
             Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Task<Signal>> handler)
         {
-            if (string.IsNullOrWhiteSpace(stationName))
-            {
-                throw new ArgumentException("Station name cannot be empty.", nameof(stationName));
-            }
+            NameChecks.RequireStationName(stationName, nameof(stationName));
 
-            if (handler == null)
-            {
-                throw new ArgumentNullException(nameof(handler));
-            }
+            RequireHandler(handler, nameof(handler));
 
             AddPlan(new StationPlan(stationName, handler));
             return this;
@@ -512,18 +420,8 @@ namespace TrainOP
                 }
 
                 var plan = _route[i];
-                if (TryRunSegment(plan, i, ref i, current, visits, cancellationToken, ref previous))
+                if (TryBypassHop(plan, i, ref i, current, visits, cancellationToken, ref previous))
                 {
-                    continue;
-                }
-
-                if (!ShouldEnterHop(plan, previous))
-                {
-                    if (visits != null)
-                    {
-                        visits.Add(new StationVisit(plan.StationName, HopOutcome.Skipped, i, TimeSpan.Zero));
-                    }
-
                     continue;
                 }
 
@@ -535,7 +433,7 @@ namespace TrainOP
             }
 
             return new RouteReport(
-                visits ?? (IReadOnlyList<StationVisit>)Array.Empty<StationVisit>(),
+                VisitsOrEmpty(visits),
                 previous.IsGreen ? RailwaySignals.Green() : previous,
                 current);
         }
@@ -560,18 +458,8 @@ namespace TrainOP
                 }
 
                 var plan = _route[i];
-                if (TryRunSegment(plan, i, ref i, manifest.Current, visits, cancellationToken, ref previous))
+                if (TryBypassHop(plan, i, ref i, manifest.Current, visits, cancellationToken, ref previous))
                 {
-                    continue;
-                }
-
-                if (!ShouldEnterHop(plan, previous))
-                {
-                    if (visits != null)
-                    {
-                        visits.Add(new StationVisit(plan.StationName, HopOutcome.Skipped, i, TimeSpan.Zero));
-                    }
-
                     continue;
                 }
 
@@ -588,7 +476,7 @@ namespace TrainOP
             }
 
             return new RouteReport(
-                visits ?? (IReadOnlyList<StationVisit>)Array.Empty<StationVisit>(),
+                VisitsOrEmpty(visits),
                 previous.IsGreen ? RailwaySignals.Green() : previous,
                 manifest.Current);
         }
@@ -612,6 +500,55 @@ namespace TrainOP
         private void AddPlan(StationPlan plan)
         {
             _route.Add(plan);
+        }
+
+        private static void RequireHandler(Delegate handler, string handlerParameterName)
+        {
+            if (handler == null)
+            {
+                throw new ArgumentNullException(handlerParameterName);
+            }
+        }
+
+        private static IReadOnlyList<StationVisit> VisitsOrEmpty(List<StationVisit> visits)
+        {
+            if (visits != null)
+            {
+                return visits;
+            }
+
+            return Array.Empty<StationVisit>();
+        }
+
+        /// <summary>
+        /// Runs a pure segment or records a skipped hop.
+        /// Returns true when this plan is not entered.
+        /// </summary>
+        private static bool TryBypassHop(
+            StationPlan plan,
+            int index,
+            ref int i,
+            CargoManifest manifest,
+            List<StationVisit> visits,
+            CancellationToken cancellationToken,
+            ref Signal previous)
+        {
+            if (TryRunSegment(plan, index, ref i, manifest, visits, cancellationToken, ref previous))
+            {
+                return true;
+            }
+
+            if (ShouldEnterHop(plan, previous))
+            {
+                return false;
+            }
+
+            if (visits != null)
+            {
+                visits.Add(new StationVisit(plan.StationName, HopOutcome.Skipped, index, TimeSpan.Zero));
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -871,7 +808,7 @@ namespace TrainOP
             Exception exception)
         {
             var report = new RouteReport(
-                visits ?? (IReadOnlyList<StationVisit>)Array.Empty<StationVisit>(),
+                VisitsOrEmpty(visits),
                 enteredWith,
                 manifest);
             return new RouteAbortException(stationName, report, exception);

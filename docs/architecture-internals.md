@@ -842,7 +842,7 @@ Handler обычно не трогает манифест руками. Он в�
 | `ChainStationCallIndex.cs` | Индекс chain bindings по location + chainId |
 | `TypeSignatureGroup.cs` | Группировка call site'ов, TOP007, chain vs canonical (целевое: GroupSignatures + BranchPlan) |
 | `MergedStationSchema.cs` | Объединённая схема перед emit (целевое: BranchPlan в GenerationModel) |
-| `StationSyntaxHelper.cs` | Predicate + `TryGetData*Invocation` + `TryResolveHandler` (используются в `GetRouteHandlerCall` и analyzer) |
+| `StationSyntaxHelper.cs` | Predicate + разбор Station / ServiceStation. Разрешение handler'а — `StationHandlerResolver.TryResolveHandler` |
 | `HandlerInputSchemaBuilder.cs` | Wagon/framework classification → `StationHandlerBinding` |
 | `HandlerReturnInference.cs` | Return shape и member names из тела handler'а |
 | `ChainAwareStationCodegen.cs` | Таблицы `ResolveChainBinding_*` |

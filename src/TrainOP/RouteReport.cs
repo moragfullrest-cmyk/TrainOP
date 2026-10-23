@@ -79,11 +79,6 @@ namespace TrainOP
         /// </summary>
         public T Get<T>(string wagonName)
         {
-            if (string.IsNullOrWhiteSpace(wagonName))
-            {
-                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
-            }
-
             if (!Manifest.TryGetWagon(wagonName, out var value))
             {
                 throw new KeyNotFoundException($"Wagon '{wagonName}' was not found in the terminal report.");
@@ -98,11 +93,6 @@ namespace TrainOP
         /// </summary>
         public bool TryGet<T>(string wagonName, out T value)
         {
-            if (string.IsNullOrWhiteSpace(wagonName))
-            {
-                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
-            }
-
             if (!Manifest.TryGetWagon(wagonName, out var cargo))
             {
                 value = default;

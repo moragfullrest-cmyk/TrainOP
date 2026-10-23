@@ -37,10 +37,7 @@ namespace TrainOP
         /// </summary>
         public bool HasWagon(string wagonName)
         {
-            if (string.IsNullOrWhiteSpace(wagonName))
-            {
-                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
-            }
+            NameChecks.RequireWagonName(wagonName, nameof(wagonName));
 
             return _wagons.ContainsKey(wagonName);
         }
@@ -50,10 +47,7 @@ namespace TrainOP
         /// </summary>
         public bool TryGetWagon(string wagonName, out object cargo)
         {
-            if (string.IsNullOrWhiteSpace(wagonName))
-            {
-                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
-            }
+            NameChecks.RequireWagonName(wagonName, nameof(wagonName));
 
             return _wagons.TryGetValue(wagonName, out cargo);
         }
@@ -63,10 +57,7 @@ namespace TrainOP
         /// </summary>
         public T PullWagon<T>(string wagonName)
         {
-            if (string.IsNullOrWhiteSpace(wagonName))
-            {
-                throw new ArgumentException("Wagon name cannot be empty.", nameof(wagonName));
-            }
+            NameChecks.RequireWagonName(wagonName, nameof(wagonName));
 
             if (!_wagons.TryGetValue(wagonName, out var value))
             {

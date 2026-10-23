@@ -28,7 +28,7 @@ namespace TrainOP.Generators
             }
 
             var handlerExpression = invocation.ArgumentList.Arguments[1].Expression;
-            if (!StationSyntaxHelper.TryResolveHandler(handlerExpression, semanticModel, out var resolved)
+            if (!StationHandlerResolver.TryResolveHandler(handlerExpression, semanticModel, out var resolved)
                 || resolved == null)
             {
                 return HandlerSchemaResult.Failed(

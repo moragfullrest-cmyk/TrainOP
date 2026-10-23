@@ -42,60 +42,55 @@ namespace TrainOP
         /// Creates a plan for a synchronous signal-returning station.
         /// </summary>
         public StationPlan(string stationName, Func<CargoManifest, Signal> station)
+            : this(stationName, StationInvokeKind.Signal, station)
         {
-            StationName = stationName;
-            Kind = StationInvokeKind.Signal;
-            Handler = station;
         }
 
         /// <summary>
         /// Creates a plan for an asynchronous signal-returning station.
         /// </summary>
         public StationPlan(string stationName, Func<CargoManifest, CancellationToken, Task<Signal>> asyncStation)
+            : this(stationName, StationInvokeKind.SignalAsync, asyncStation)
         {
-            StationName = stationName;
-            Kind = StationInvokeKind.SignalAsync;
-            Handler = asyncStation;
         }
 
         /// <summary>
         /// Creates a plan for a synchronous manifest-returning station.
         /// </summary>
         public StationPlan(string stationName, Func<CargoManifest, CargoManifest> throughStation)
+            : this(stationName, StationInvokeKind.Through, throughStation)
         {
-            StationName = stationName;
-            Kind = StationInvokeKind.Through;
-            Handler = throughStation;
         }
 
         /// <summary>
         /// Creates a plan for an asynchronous manifest-returning station.
         /// </summary>
         public StationPlan(string stationName, Func<CargoManifest, CancellationToken, Task<CargoManifest>> throughAsyncStation)
+            : this(stationName, StationInvokeKind.ThroughAsync, throughAsyncStation)
         {
-            StationName = stationName;
-            Kind = StationInvokeKind.ThroughAsync;
-            Handler = throughAsyncStation;
         }
 
         /// <summary>
         /// Creates a plan for a synchronous signal-returning station with cancellation support.
         /// </summary>
         public StationPlan(string stationName, Func<CargoManifest, CancellationToken, Signal> stationWithToken)
+            : this(stationName, StationInvokeKind.SignalWithToken, stationWithToken)
         {
-            StationName = stationName;
-            Kind = StationInvokeKind.SignalWithToken;
-            Handler = stationWithToken;
         }
 
         /// <summary>
         /// Creates a plan for a synchronous manifest-returning station with cancellation support.
         /// </summary>
         public StationPlan(string stationName, Func<CargoManifest, CancellationToken, CargoManifest> throughStationWithToken)
+            : this(stationName, StationInvokeKind.ThroughWithToken, throughStationWithToken)
+        {
+        }
+
+        private StationPlan(string stationName, StationInvokeKind kind, Delegate handler)
         {
             StationName = stationName;
-            Kind = StationInvokeKind.ThroughWithToken;
-            Handler = throughStationWithToken;
+            Kind = kind;
+            Handler = handler;
         }
 
         /// <summary>
@@ -104,14 +99,13 @@ namespace TrainOP
         public StationPlan(
             string stationName,
             Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Signal> syncHandler)
+            : this(stationName)
         {
             if (syncHandler == null)
             {
                 throw new ArgumentNullException(nameof(syncHandler));
             }
 
-            StationName = stationName;
-            Kind = StationInvokeKind.Service;
             SyncHandler = syncHandler;
         }
 
@@ -121,15 +115,20 @@ namespace TrainOP
         public StationPlan(
             string stationName,
             Func<RedSignal, CargoManifest, IReadOnlyList<StationVisit>, CancellationToken, Task<Signal>> asyncHandler)
+            : this(stationName)
         {
             if (asyncHandler == null)
             {
                 throw new ArgumentNullException(nameof(asyncHandler));
             }
 
+            AsyncHandler = asyncHandler;
+        }
+
+        private StationPlan(string stationName)
+        {
             StationName = stationName;
             Kind = StationInvokeKind.Service;
-            AsyncHandler = asyncHandler;
         }
 
         /// <summary>

@@ -15,10 +15,7 @@ namespace TrainOP
         /// </summary>
         public RouteSchemaWagonAttribute(string name, Type type)
         {
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                throw new ArgumentException("Wagon name cannot be empty.", nameof(name));
-            }
+            NameChecks.RequireWagonName(name, nameof(name));
 
             Name = name;
             Type = type ?? throw new ArgumentNullException(nameof(type));
